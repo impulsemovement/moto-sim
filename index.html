@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e2e8f0; font-family: sans-serif; padding: 10px; }
+canvas { display: block; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; }
+.ui { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
+label { font-size: 12px; color: #8b949e; display: flex; justify-content: space-between; margin-bottom: 4px; }
+label span { color: #e2e8f0; font-weight: 600; }
+input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #3b82f6; }
+.stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: 10px; }
+.stat { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 8px; text-align: center; }
+.stat-n { font-size: 20px; font-weight: 700; color: #60a5fa; }
+.stat-l { font-size: 10px; color: #8b949e; margin-top: 2px; }
+select { background: #161b22; color: #e2e8f0; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px; width: 100%; margin-bottom: 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="stats">
+  <div class="stat"><div class="stat-n" id="st-travel">0</div><div class="stat-l">Travel (mm)</div></div>
+  <div class="stat"><div class="stat-n" id="st-spring">0</div><div class="stat-l">Spring F (N)</div></div>
+  <div class="stat"><div class="stat-n" id="st-damp">0</div><div class="stat-l">Damper F (N)</div></div>
+  <div class="stat"><div class="stat-n" id="st-speed">30</div><div class="stat-l">Speed (km/h)</div></div>
+</div>
+
+<div class="ui">
+  <div class="card">
+    <label>Spring rate <span id="lk">85 N/mm</span></label>
+    <input type="range" id="k" min="20" max="200" value="85">
+    <label>Preload <span id="lpre">0 mm</span></label>
+    <input type="range" id="pre" min="-20" max="20" value="0">
+    <label>Rider mass <span id="lmass">75 kg</span></label>
+    <input type="range" id="mass" min="40" max="140" value="75">
+  </div>
+  <div class="card">
+    <label>Compression damping <span id="ldc">40%</span></label>
+    <input type="range" id="dc" min="0" max="100" value="40">
+    <label>Rebound damping <span id="ldr">40%</span></label>
+    <input type="range" id="dr" min="0" max="100" value="40">
+    <label>Speed <span id="lspeed">30 km/h</span></label>
+    <input type="range" id="speed" min="5" max="100" value="30">
+  </div>
+  <div class="card" style="grid-column:1/-1">
+    <label>Terrain <span id="lterrain">Bumps</span></label>
+    <input type="range" id="terrain" min="0" max="3" value="0" step="1">
+    <div style="display:flex;gap:8px;font-size:11px;color:#8b949e;margin-top:-6px">
+      <span style="flex:1;text-align:left">Bumps</span>
+      <span style="flex:1;text-align:center">Whoops</span>
+      <span style="flex:1;text-align:center">Step drop</span>
+      <span style="flex:1;text-align:right">Flat</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth - 20;
+  canvas.height = 300;
+}
+resize();
+window.addEventListener('resize', resize);
+
+let P = { k:85, pre:0, dc:0.4, dr:0.4, mass:75, speed:30, terrain:0 };
+const TERRAINS = ['Bumps','Whoops','Step drop','Flat'];
+
+function bind(id, lblId, fn) {
+  const el = document.getElementById(id);
+  const lbl = document.getElementById(lblId);
+  el.addEventListener('input', () => { lbl.textContent = fn(+el.value); });
+}
+bind('k',    'lk',       v => { P.k=v;        return v+' N/mm'; });
+bind('pre',  'lpre',     v => { P.pre=v;       return v+' mm'; });
+bind('dc',   'ldc',      v => { P.dc=v/100;    return v+'%'; });
+bind('dr',   'ldr',      v => { P.dr=v/100;    return v+'%'; });
+bind('mass', 'lmass',    v => { P.mass=v;       return v+' kg'; });
+bind('speed','lspeed',   v => { P.speed=v; document.getElementById('st-speed').textContent=v; return v+' km/h'; });
+bind('terrain','lterrain', v => { P.terrain=+v; return TERRAINS[+v]; });
+
+// ── Physics constants ────────────────────────────────────────────────────────
+const WHEEL_R    = 20;      // px — wheel radius
+const REST_LEN   = 80;      // px — suspension natural length
+const MAX_TRAVEL = 130;     // px — full extension limit
+const MIN_TRAVEL = 10;      // px — full compression limit
+
+const G_EFF      = 800;     // px/s²  effective gravity (positive = downward, tuned for visual scale)
+const PX_SCALE   = 80;      // converts N/mm spring rates to display-unit force scale
+const M_UNSPRUNG = 15;      // kg  unsprung mass (wheel + tire + brake + fork lower)
+const K_TIRE     = 160000;  // display-unit tire spring (very stiff — keeps wheel on ground)
+
+// ── Two-mass state ───────────────────────────────────────────────────────────
+// All positions in screen px; positive Y = downward.
+let worldX  = 0;
+let sprungY = 0;   // sprung mass (body) Y position
+let vy      = 0;   // sprung mass velocity (px/s, positive = downward)
+let wheelY  = 0;   // unsprung mass (wheel centre) Y position
+let vWheel  = 0;   // wheel velocity (px/s, positive = downward)
+let initialized = false;
+let lastTs  = null;
+
+function groundY(wx) {
+  const ch   = canvas.height;
+  const base = ch * 0.70;
+  switch (P.terrain) {
+    case 0: // bumps
+      return base + Math.sin(wx * 0.045) * 22 + Math.sin(wx * 0.09) * 10;
+    case 1: { // whoops
+      const phase = ((wx % 55) / 55);
+      return base + (phase < 0.5 ? Math.sin(phase * Math.PI * 2) * 28 : 0);
+    }
+    case 2: { // step drop
+      const zone = (wx % 600);
+      return zone > 250 && zone < 320 ? base + 38 : base;
+    }
+    case 3: return base; // flat
+  }
+}
+
+function draw(ts) {
+  requestAnimationFrame(draw);
+
+  const W = canvas.width, H = canvas.height;
+  let dt = 0;
+  if (lastTs !== null) dt = Math.min((ts - lastTs) / 1000, 0.04);
+  lastTs = ts;
+
+  // Advance world position
+  const pxPerSec = (P.speed / 3.6) * 30;
+  worldX += pxPerSec * dt;
+
+  const screenWX  = W * 0.38;
+  const gy        = groundY(worldX + screenWX);
+  const natural_wy = gy - WHEEL_R;   // wheel centre when tire just touches ground (unloaded)
+
+  // Initialise positions near equilibrium on first frame
+  if (!initialized) {
+    wheelY  = natural_wy;
+    const K_S_init = P.k * PX_SCALE;
+    const disp_eq  = -G_EFF * (P.mass + 100) / K_S_init;  // static sag (negative = compressed)
+    sprungY = wheelY - REST_LEN - disp_eq;
+    initialized = true;
+  }
+
+  // ── Two-mass physics ───────────────────────────────────────────────────────
+  const M_S  = P.mass + 100;         // sprung mass (rider + frame ~100 kg)
+  const K_S  = P.k * PX_SCALE;       // effective suspension spring rate
+
+  const crit   = 2 * Math.sqrt(K_S * M_S);
+  const c_comp = P.dc * crit * 0.35;
+  const c_reb  = P.dr * crit * 0.35;
+
+  // Suspension: disp negative = spring compressed (wheel closer to body than REST_LEN)
+  const disp = (wheelY - sprungY) - REST_LEN - P.pre;
+  // Relative velocity: positive = extending (rebound), negative = compressing
+  const rv   = vWheel - vy;
+  const c_s  = rv < 0 ? c_comp : c_reb;
+
+  const f_spring = K_S * disp;       // positive = pulls apart (rebound direction)
+  const f_damp   = c_s * rv;
+
+  // Tire spring: upward (negative) when wheel is at/below natural ground level
+  const f_tire = wheelY > natural_wy
+    ? -K_TIRE * (wheelY - natural_wy)
+    : 0;
+
+  // Equations of motion (positive = downward in screen coords)
+  //   body:  gravity down + suspension (pulls body toward wheel when spring is extended)
+  //   wheel: gravity down − suspension + tire upward
+  const a_body  = G_EFF + (f_spring + f_damp) / M_S;
+  const a_wheel = G_EFF - (f_spring + f_damp) / M_UNSPRUNG + f_tire / M_UNSPRUNG;
+
+  vy     += a_body  * dt;
+  vWheel += a_wheel * dt;
+  sprungY += vy     * dt;
+  wheelY  += vWheel * dt;
+
+  // Suspension hard stops (bottom-out / top-out)
+  const travel = wheelY - sprungY;
+  if (travel > MAX_TRAVEL) {
+    wheelY  = sprungY + MAX_TRAVEL;
+    vWheel  = vy - Math.abs(vWheel - vy) * 0.2;  // shed relative velocity, small bounce
+  }
+  if (travel < MIN_TRAVEL) {
+    wheelY  = sprungY + MIN_TRAVEL;
+    vWheel  = vy + Math.abs(vWheel - vy) * 0.2;
+  }
+
+  const travelMM = Math.round(wheelY - sprungY);
+  document.getElementById('st-travel').textContent = travelMM;
+  document.getElementById('st-spring').textContent = Math.round(Math.abs(f_spring) / PX_SCALE);
+  document.getElementById('st-damp').textContent   = Math.round(Math.abs(f_damp)   / PX_SCALE);
+
+  // ── Draw ──────────────────────────────────────────────────────────────────
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#0a1628';
+  ctx.fillRect(0, 0, W, H * 0.68);
+
+  // Ground
+  ctx.beginPath();
+  for (let px = 0; px <= W; px += 3) {
+    const y = groundY(worldX + px);
+    px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+  }
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  ctx.fillStyle = '#1a2e1a';
+  ctx.fill();
+  ctx.strokeStyle = '#2d5a27';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Travel bar (right side)
+  const bx = W - 22, bTop = 20, bH = H * 0.6;
+  ctx.fillStyle = '#1f2937';
+  ctx.beginPath(); ctx.roundRect(bx, bTop, 12, bH, 6); ctx.fill();
+  const fillFrac  = Math.max(0, Math.min(1, (travelMM - MIN_TRAVEL) / (MAX_TRAVEL - MIN_TRAVEL)));
+  const fillH     = fillFrac * bH;
+  const barColor  = fillFrac < 0.5 ? '#4ade80' : fillFrac < 0.8 ? '#facc15' : '#f87171';
+  ctx.fillStyle   = barColor;
+  ctx.beginPath(); ctx.roundRect(bx, bTop + bH - fillH, 12, fillH, 6); ctx.fill();
+  ctx.fillStyle = '#64748b'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('travel', bx + 6, bTop - 6);
+
+  const sx  = screenWX;
+  const sy  = sprungY;
+  const wx2 = sx;
+  const wy2 = wheelY;   // now dynamic, not pinned to ground
+
+  // Fork / damper tube (behind spring)
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(sx, sy + 18); ctx.lineTo(wx2, wy2 - WHEEL_R + 4); ctx.stroke();
+
+  // Spring (zigzag)
+  const segs = 16;
+  const springAmp = 7;
+  ctx.strokeStyle = barColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= segs * 4; i++) {
+    const t2  = i / (segs * 4);
+    const py  = sy + (wy2 - sy) * t2;
+    const px2 = sx + Math.sin(t2 * Math.PI * 2 * segs) * springAmp;
+    i === 0 ? ctx.moveTo(px2, py) : ctx.lineTo(px2, py);
+  }
+  ctx.stroke();
+
+  // Wheel
+  ctx.beginPath();
+  ctx.arc(wx2, wy2, WHEEL_R, 0, Math.PI * 2);
+  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+  for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+    ctx.beginPath();
+    ctx.arc(wx2, wy2, WHEEL_R - 1, a, a + 0.2);
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(wx2, wy2, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#cbd5e1'; ctx.fill();
+
+  // Airborne indicator
+  if (f_tire === 0) {
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('AIR', wx2 + WHEEL_R + 4, wy2 + 4);
+  }
+
+  // Sprung mass (bike body)
+  ctx.fillStyle = '#1e3a5f';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(sx - 28, sy - 30, 56, 30, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#93c5fd';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('SPRUNG MASS', sx, sy - 11);
+
+  // Suspension travel label
+  ctx.fillStyle = '#64748b';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`↕ ${travelMM}mm`, sx + 14, (sy + wy2) / 2);
+}
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
