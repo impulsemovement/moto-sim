@@ -4,36 +4,33 @@
 <meta charset="utf-8">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0d1117; color: #e2e8f0; font-family: sans-serif; padding: 10px; }
-canvas { display: block; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; }
+body { background: #080808; color: #f0f0f0; font-family: sans-serif; padding: 10px; }
+canvas { display: block; background: #080808; border: 1px solid #1f1f1f; border-radius: 8px; }
 .ui { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; }
-label { font-size: 12px; color: #8b949e; display: flex; justify-content: space-between; margin-bottom: 4px; }
-label span { color: #e2e8f0; font-weight: 600; }
-input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #3b82f6; }
+.card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; }
+label { font-size: 12px; color: #777; display: flex; justify-content: space-between; margin-bottom: 4px; }
+label span { color: #f0f0f0; font-weight: 600; }
+input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #e11d48; }
 .stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: 10px; }
-.stat { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 8px; text-align: center; }
-.stat-n { font-size: 20px; font-weight: 700; color: #60a5fa; }
-.stat-l { font-size: 10px; color: #8b949e; margin-top: 2px; }
+.stat { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 6px; padding: 8px; text-align: center; }
+.stat-n { font-size: 20px; font-weight: 700; color: #f0f0f0; }
+.stat-l { font-size: 10px; color: #777; margin-top: 2px; }
 
-/* ── Curve editor toggle ─────────────────────────────────────────────────── */
-.toggle-group { display:flex; border:1px solid #30363d; border-radius:6px; overflow:hidden; }
+.toggle-group { display:flex; border:1px solid #1f1f1f; border-radius:6px; overflow:hidden; }
 .toggle-btn {
-  background:#161b22; color:#8b949e; border:none; padding:5px 14px;
+  background:#0f0f0f; color:#777; border:none; padding:5px 14px;
   font-size:12px; cursor:pointer; transition:background 0.15s, color 0.15s;
 }
-.toggle-btn:not(:last-child) { border-right:1px solid #30363d; }
-.toggle-btn.active { background:#1d3a5f; color:#93c5fd; font-weight:600; }
-.toggle-btn:hover:not(.active) { background:#21262d; }
+.toggle-btn:not(:last-child) { border-right:1px solid #1f1f1f; }
+.toggle-btn.active { background:#1a0000; color:#e11d48; font-weight:600; }
+.toggle-btn:hover:not(.active) { background:#1a1a1a; }
 
-/* ── Preset buttons ──────────────────────────────────────────────────────── */
 .preset-btn {
-  background:#1f2937; color:#94a3b8; border:1px solid #374151; border-radius:4px;
-  padding:4px 10px; font-size:11px; cursor:pointer; transition:background 0.15s, color 0.15s;
+  background:#0f0f0f; color:#777; border:1px solid #1f1f1f; border-radius:4px;
+  padding:4px 8px; font-size:11px; cursor:pointer; transition:background 0.15s, color 0.15s;
 }
-.preset-btn:hover { background:#374151; color:#e2e8f0; }
+.preset-btn:hover { background:#1f1f1f; color:#f0f0f0; }
 
-/* ── Curve canvas ────────────────────────────────────────────────────────── */
 #curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; }
 </style>
 </head>
@@ -49,6 +46,7 @@ input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #3b82f6; }
 </div>
 
 <div class="ui">
+  <!-- ── Spring / mass card ─────────────────────────────────────────────── -->
   <div class="card">
     <label>Spring rate <span id="lk">85 N/mm</span></label>
     <input type="range" id="k" min="20" max="200" value="85">
@@ -57,6 +55,8 @@ input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #3b82f6; }
     <label>Rider mass <span id="lmass">75 kg</span></label>
     <input type="range" id="mass" min="40" max="140" value="75">
   </div>
+
+  <!-- ── Damping / speed card ──────────────────────────────────────────── -->
   <div class="card">
     <label>Comp gain <span id="ldc">0.40×</span></label>
     <input type="range" id="dc" min="0" max="200" value="40">
@@ -64,46 +64,59 @@ input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #3b82f6; }
     <input type="range" id="dr" min="0" max="200" value="40">
     <label>Speed <span id="lspeed">30 km/h</span></label>
     <input type="range" id="speed" min="5" max="100" value="30">
+    <label>Time scale <span id="ltimescale">1.00×</span></label>
+    <input type="range" id="timescale" min="10" max="300" value="100">
   </div>
-  <div class="card" style="grid-column:1/-1">
+
+  <!-- ── Terrain card ───────────────────────────────────────────────────── -->
+  <div class="card">
     <label>Terrain <span id="lterrain">Bumps</span></label>
-    <input type="range" id="terrain" min="0" max="3" value="0" step="1">
-    <div style="display:flex;gap:8px;font-size:11px;color:#8b949e;margin-top:-6px;margin-bottom:10px">
+    <input type="range" id="terrain" min="0" max="4" value="0" step="1">
+    <div style="display:flex;gap:2px;font-size:10px;color:#555;margin-top:-6px;margin-bottom:10px">
       <span style="flex:1;text-align:left">Bumps</span>
       <span style="flex:1;text-align:center">Whoops</span>
-      <span style="flex:1;text-align:center">Step drop</span>
+      <span style="flex:1;text-align:center">Step</span>
+      <span style="flex:1;text-align:center">Kicker</span>
       <span style="flex:1;text-align:right">Flat</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
       <div>
-        <label>Amplitude <span id="lamp">1.00&times;</span></label>
-        <input type="range" id="amp" min="10" max="300" value="100">
+        <label>Amplitude <span id="lamp">1.00×</span></label>
+        <input type="range" id="amp" min="-300" max="300" value="100">
       </div>
       <div>
-        <label>Frequency <span id="lfreq">1.00&times;</span></label>
+        <label>Frequency <span id="lfreq">1.00×</span></label>
         <input type="range" id="freq" min="20" max="300" value="100">
+      </div>
+      <div>
+        <label>Roughness <span id="lrough">0%</span></label>
+        <input type="range" id="rough" min="0" max="100" value="0">
+      </div>
+      <div>
+        <label>Duty cycle <span id="lduty">30%</span></label>
+        <input type="range" id="duty" min="5" max="60" value="30">
       </div>
     </div>
   </div>
 
-  <!-- ── Damping curve editor ─────────────────────────────────────────── -->
-  <div class="card" id="curve-card" style="grid-column:1/-1">
+  <!-- ── Damping curve editor ──────────────────────────────────────────── -->
+  <div class="card" id="curve-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <div class="toggle-group">
-          <button class="toggle-btn active" id="btn-comp" onclick="setCurveMode('comp')">Compression</button>
-          <button class="toggle-btn"        id="btn-reb"  onclick="setCurveMode('reb')">Rebound</button>
+          <button class="toggle-btn active" id="btn-comp" onclick="setCurveMode('comp')">Comp</button>
+          <button class="toggle-btn"        id="btn-reb"  onclick="setCurveMode('reb')">Reb</button>
         </div>
-        <span style="font-size:11px;color:#64748b">F vs V &middot; drag points &middot; gain slider scales output</span>
+        <span style="font-size:10px;color:#444">click=add &middot; right-click=remove</span>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
         <button class="preset-btn" onclick="applyPreset('linear')">Linear</button>
-        <button class="preset-btn" onclick="applyPreset('progressive')">Progressive</button>
-        <button class="preset-btn" onclick="applyPreset('digressive')">Digressive</button>
-        <button class="preset-btn" onclick="applyPreset('quadratic')">Quadratic</button>
+        <button class="preset-btn" onclick="applyPreset('progressive')">Prog</button>
+        <button class="preset-btn" onclick="applyPreset('digressive')">Dig</button>
+        <button class="preset-btn" onclick="applyPreset('quadratic')">Quad</button>
       </div>
     </div>
-    <canvas id="curve-canvas" height="210"></canvas>
+    <canvas id="curve-canvas" height="190"></canvas>
   </div>
 </div>
 
@@ -124,68 +137,88 @@ window.addEventListener('resize', resize);
 // ════════════════════════════════════════════════════════════════════════════
 //  PARAMETERS
 // ════════════════════════════════════════════════════════════════════════════
-let P = { k:85, pre:0, dc:0.4, dr:0.4, mass:75, speed:30, terrain:0, amp:1.0, freq:1.0 };
-const TERRAINS = ['Bumps','Whoops','Step drop','Flat'];
+let P = {
+  k:85, pre:0, dc:0.4, dr:0.4, mass:75, speed:30,
+  terrain:0, amp:1.0, freq:1.0, rough:0, duty:0.30, timeScale:1.0
+};
+const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
 
 function bind(id, lblId, fn) {
   const el  = document.getElementById(id);
   const lbl = document.getElementById(lblId);
   el.addEventListener('input', () => { lbl.textContent = fn(+el.value); });
 }
-bind('k',       'lk',       v => { P.k       = v;        return v + ' N/mm'; });
-bind('pre',     'lpre',     v => { P.pre      = v;        return v + ' mm'; });
-bind('dc',      'ldc',      v => { P.dc       = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('dr',      'ldr',      v => { P.dr       = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('mass',    'lmass',    v => { P.mass      = v;        return v + ' kg'; });
-bind('speed',   'lspeed',   v => { P.speed     = v; document.getElementById('st-speed').textContent = v; return v + ' km/h'; });
-bind('terrain', 'lterrain', v => { P.terrain   = +v;       return TERRAINS[+v]; });
-bind('amp',     'lamp',     v => { P.amp       = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('freq',    'lfreq',    v => { P.freq      = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
+bind('k',         'lk',         v => { P.k         = v;        return v + ' N/mm'; });
+bind('pre',       'lpre',       v => { P.pre        = v;        return v + ' mm'; });
+bind('dc',        'ldc',        v => { P.dc         = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
+bind('dr',        'ldr',        v => { P.dr         = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
+bind('mass',      'lmass',      v => { P.mass        = v;        return v + ' kg'; });
+bind('speed',     'lspeed',     v => { P.speed       = v; document.getElementById('st-speed').textContent = v; return v + ' km/h'; });
+bind('timescale', 'ltimescale', v => { P.timeScale   = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
+bind('terrain',   'lterrain',   v => { P.terrain     = +v;       return TERRAINS[+v]; });
+bind('amp',       'lamp',       v => { P.amp         = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
+bind('freq',      'lfreq',      v => { P.freq        = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
+bind('rough',     'lrough',     v => { P.rough       = v / 100;  return v + '%'; });
+bind('duty',      'lduty',      v => { P.duty        = v / 100;  return v + '%'; });
 
 // ════════════════════════════════════════════════════════════════════════════
 //  PHYSICS CONSTANTS
 // ════════════════════════════════════════════════════════════════════════════
-const WHEEL_R    = 36;       // px  wheel radius (2x visual scale)
+const WHEEL_R    = 36;       // px  wheel radius
 const REST_LEN   = 130;      // px  suspension natural length
 const MAX_TRAVEL = 200;      // px  full extension limit
 const MIN_TRAVEL = 15;       // px  full compression limit
 
-const G_EFF      = 800;      // px/s2  effective gravity (positive = downward)
-const PX_SCALE   = 80;       // N/mm to display force units
-const M_UNSPRUNG = 15;       // kg  unsprung mass (wheel + tire + fork lower)
+const G_EFF      = 800;      // px/s²  effective gravity (positive = downward)
+const PX_SCALE   = 80;       // N/mm → display force units
+const M_UNSPRUNG = 15;       // kg  unsprung mass
 const K_TIRE     = 160000;   // display units  stiff tire spring
 
-const V_MAX_SIM  = 1000;            // px/s maps to 4.0 m/s on graph
-const F_MAX_SIM  = PX_SCALE * 4000; // display force units maps to 4000 N on graph
+const V_MAX_SIM  = 1000;             // px/s = 4.0 m/s on graph
+const F_MAX_SIM  = PX_SCALE * 4000;  // display units = 4000 N on graph
 
 // ════════════════════════════════════════════════════════════════════════════
-//  CATMULL-ROM SPLINE
+//  VALUE NOISE (deterministic 1D smooth noise, keyed to world position)
 // ════════════════════════════════════════════════════════════════════════════
-const CURVE_SAMPLES = 210;
+function valueNoise(x) {
+  const s  = x / 70.0;
+  const i  = Math.floor(s);
+  const f  = s - i;
+  const u  = f * f * (3.0 - 2.0 * f);
+  const h0 = Math.sin(i       * 127.1 + 311.7) * 43758.5453123;
+  const h1 = Math.sin((i + 1) * 127.1 + 311.7) * 43758.5453123;
+  const v0 = h0 - Math.floor(h0);
+  const v1 = h1 - Math.floor(h1);
+  return (v0 + (v1 - v0) * u) * 2.0 - 1.0;  // [-1, 1]
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CATMULL-ROM SPLINE (generic N-point)
+// ════════════════════════════════════════════════════════════════════════════
+const CURVE_SAMPLES = 256;
 
 function buildCurveLUT(pts) {
-  // pts: 4 control points [{x,y}], x ascending, all in [0,1]
-  // Phantom endpoints so the curve passes exactly through pts[0] and pts[3]
-  const ext = [
-    { x: 2*pts[0].x - pts[1].x, y: 2*pts[0].y - pts[1].y },
-    pts[0], pts[1], pts[2], pts[3],
-    { x: 2*pts[3].x - pts[2].x, y: 2*pts[3].y - pts[2].y }
-  ]; // ext[1..4] = pts[0..3], 3 real segments
-
-  const segs        = 3;
+  const n    = pts.length;
+  const segs = n - 1;
   const stepsPerSeg = Math.ceil(CURVE_SAMPLES / segs);
-  const lut         = [];
 
+  // Phantom endpoints so curve passes exactly through first and last control point
+  const ext = [
+    { x: 2*pts[0].x   - pts[1].x,     y: 2*pts[0].y   - pts[1].y },
+    ...pts,
+    { x: 2*pts[n-1].x - pts[n-2].x,   y: 2*pts[n-1].y - pts[n-2].y }
+  ];
+
+  const lut = [];
   for (let s = 0; s < segs; s++) {
-    // Interpolate between ext[s+1] and ext[s+2]
     const p0 = ext[s], p1 = ext[s+1], p2 = ext[s+2], p3 = ext[s+3];
     const endI = (s === segs - 1) ? stepsPerSeg : stepsPerSeg - 1;
     for (let i = 0; i <= endI; i++) {
       const t  = i / stepsPerSeg;
-      const t2 = t*t, t3 = t2*t;
-      const c0 = -0.5*t3 + t2       - 0.5*t;
+      const t2 = t * t, t3 = t2 * t;
+      const c0 = -0.5*t3 +       t2 - 0.5*t;
       const c1 =  1.5*t3 - 2.5*t2          + 1.0;
-      const c2 = -1.5*t3 + 2.0*t2   + 0.5*t;
+      const c2 = -1.5*t3 + 2.0*t2 + 0.5*t;
       const c3 =  0.5*t3 - 0.5*t2;
       lut.push({
         x: Math.max(0, Math.min(1,   c0*p0.x + c1*p1.x + c2*p2.x + c3*p3.x)),
@@ -193,17 +226,16 @@ function buildCurveLUT(pts) {
       });
     }
   }
-
   lut.sort((a, b) => a.x - b.x);
-  lut[0]              = { x: pts[0].x, y: pts[0].y };
-  lut[lut.length - 1] = { x: pts[3].x, y: pts[3].y };
+  lut[0]              = { x: pts[0].x,     y: pts[0].y };
+  lut[lut.length - 1] = { x: pts[n-1].x,   y: pts[n-1].y };
   return lut;
 }
 
 function evalCurveLUT(lut, x) {
   x = Math.max(0, Math.min(1, x));
-  if (x <= lut[0].x)             return lut[0].y;
-  if (x >= lut[lut.length-1].x)  return lut[lut.length-1].y;
+  if (x <= lut[0].x)            return lut[0].y;
+  if (x >= lut[lut.length-1].x) return lut[lut.length-1].y;
   let lo = 0, hi = lut.length - 1;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
@@ -232,40 +264,62 @@ let rebLUT  = buildCurveLUT(rebPts);
 //  TERRAIN
 // ════════════════════════════════════════════════════════════════════════════
 function groundY(wx) {
-  const ch   = canvas.height;
-  const base = ch * 0.80;
-  const amp  = P.amp;
-  const freq = P.freq;
+  const base     = canvas.height * 0.80;
+  const amp      = P.amp;
+  const freq     = P.freq;
+  const noiseOff = P.rough > 0 ? valueNoise(wx) * 30 * P.rough : 0;
+
   switch (P.terrain) {
-    case 0: // Bumps — amplitude and frequency scaled
+    case 0: // Bumps
       return base + Math.sin(wx * 0.045 * freq) * 35 * amp
-                  + Math.sin(wx * 0.09  * freq) * 16 * amp;
+                  + Math.sin(wx * 0.09  * freq) * 16 * amp
+                  + noiseOff;
+
     case 1: { // Whoops
-      const wl    = 55 / freq;          // wavelength shrinks as freq rises
-      const phase = (wx % wl) / wl;
-      return base + (phase < 0.5 ? Math.sin(phase * Math.PI * 2) * 45 * amp : 0);
+      const wl    = 55 / freq;
+      const phase = (((wx % wl) + wl) % wl) / wl;
+      return base + (phase < 0.5 ? Math.sin(phase * Math.PI * 2) * 45 * amp : 0) + noiseOff;
     }
-    case 2: { // Step drop — smooth cosine edges, amp scales drop height
-      const cycle     = 600;
-      const dropH     = 61 * amp;
-      const edgeW     = 40 / freq;      // edge transition width
-      const zone      = ((wx % cycle) + cycle) % cycle;
-      const dropStart = 200, dropEnd = dropStart + edgeW;
-      const riseStart = 340, riseEnd  = riseStart + edgeW;
+
+    case 2: { // Step drop with duty cycle
+      const cycle      = 600;
+      const dropH      = 61 * amp;
+      const edgeW      = Math.max(8, 40 / freq);
+      const zone       = ((wx % cycle) + cycle) % cycle;
+      const dropStart  = 200;
+      const dropEnd    = dropStart + edgeW;
+      const downLen    = P.duty * (cycle - dropEnd);
+      const riseStart  = dropEnd + downLen;
+      const riseEnd    = riseStart + edgeW;
       let t = 0;
       if (zone >= dropStart && zone < dropEnd) {
         t = (zone - dropStart) / edgeW;
-        t = (1 - Math.cos(t * Math.PI)) / 2;      // 0 → 1 smoothly
+        t = (1 - Math.cos(t * Math.PI)) / 2;
       } else if (zone >= dropEnd && zone < riseStart) {
         t = 1;
       } else if (zone >= riseStart && zone < riseEnd) {
         t = (zone - riseStart) / edgeW;
-        t = (1 + Math.cos(t * Math.PI)) / 2;      // 1 → 0 smoothly
+        t = (1 + Math.cos(t * Math.PI)) / 2;
       }
-      return base + t * dropH;
+      return base + t * dropH + noiseOff;
     }
-    case 3: return base; // Flat
+
+    case 3: { // Kicker — smooth sine hump (jump face)
+      const cycle  = 500 / freq;
+      const zone   = ((wx % cycle) + cycle) % cycle;
+      const t      = zone / cycle;
+      const kickDur = 0.25;
+      if (t < kickDur) {
+        const rampT = t / kickDur;
+        return base - Math.sin(rampT * Math.PI) * 65 * amp + noiseOff;
+      }
+      return base + noiseOff;
+    }
+
+    case 4: // Flat — gentle long-wavelength undulation
+      return base + Math.sin(wx * 0.005 * freq) * 15 * amp + noiseOff;
   }
+  return canvas.height * 0.80;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -280,6 +334,21 @@ let initialized = false;
 let lastTs      = null;
 
 // ════════════════════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+const WHEEL_STEPS = 32;
+
+function calcNaturalWY(worldXOff) {
+  let wy = Infinity;
+  for (let i = 0; i <= WHEEL_STEPS; i++) {
+    const dx        = ((i / WHEEL_STEPS) - 0.5) * 2 * WHEEL_R;
+    const clearance = Math.sqrt(Math.max(0, WHEEL_R * WHEEL_R - dx * dx));
+    wy = Math.min(wy, groundY(worldXOff + dx) - clearance);
+  }
+  return wy;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 //  MAIN DRAW LOOP
 // ════════════════════════════════════════════════════════════════════════════
 function draw(ts) {
@@ -290,23 +359,18 @@ function draw(ts) {
   if (lastTs !== null) dt = Math.min((ts - lastTs) / 1000, 0.04);
   lastTs = ts;
 
-  const pxPerSec   = (P.speed / 3.6) * 30;
-  worldX          += pxPerSec * dt;
+  const dt_s      = dt * P.timeScale;  // scaled time step
+  const pxPerSec  = (P.speed / 3.6) * 30;
+  worldX         += pxPerSec * dt_s;
 
-  const screenWX   = W * 0.38;
+  const screenWX     = W * 0.38;
+  const rearWheelSX  = screenWX - 72;   // rear wheel screen X
 
-  // Find the wheel centre height where the full circle rests on the terrain.
-  // For each horizontal offset dx within the wheel footprint, the minimum
-  // allowed centre Y is groundY(x+dx) - sqrt(R²-dx²).  The wheel rests at
-  // the most restrictive (minimum) of all these constraints.
-  const WHEEL_STEPS = 32;
-  let natural_wy = Infinity;
-  for (let i = 0; i <= WHEEL_STEPS; i++) {
-    const dx        = ((i / WHEEL_STEPS) - 0.5) * 2 * WHEEL_R;
-    const clearance = Math.sqrt(Math.max(0, WHEEL_R * WHEEL_R - dx * dx));
-    natural_wy      = Math.min(natural_wy, groundY(worldX + screenWX + dx) - clearance);
-  }
+  // Wheel–ground contact heights (full circle tangent to terrain)
+  const natural_wy      = calcNaturalWY(worldX + screenWX);
+  const rear_natural_wy = calcNaturalWY(worldX + rearWheelSX);
 
+  // Initialise near static equilibrium
   if (!initialized) {
     wheelY  = natural_wy;
     const K_S_init = P.k * PX_SCALE;
@@ -315,9 +379,13 @@ function draw(ts) {
     initialized = true;
   }
 
-  // ── Physics ───────────────────────────────────────────────────────────
+  // ── Two-mass physics ────────────────────────────────────────────────────
   const M_S      = P.mass + 100;
   const K_S      = P.k * PX_SCALE;
+
+  const crit     = 2 * Math.sqrt(K_S * M_S);
+  const c_comp   = P.dc * crit * 0.35;
+  const c_reb    = P.dr * crit * 0.35;
 
   const disp     = (wheelY - sprungY) - REST_LEN - P.pre;
   const rv       = vWheel - vy;
@@ -333,15 +401,15 @@ function draw(ts) {
   const f_damp    = (rv === 0 ? 0 : Math.sign(rv)) * gain * curveFrac * F_MAX_SIM;
 
   const f_tire   = wheelY > natural_wy ? -K_TIRE * (wheelY - natural_wy) : 0;
-
   const f_susp   = f_spring + f_damp;
-  const a_body   = G_EFF + f_susp  / M_S;
-  const a_wheel  = G_EFF - f_susp  / M_UNSPRUNG + f_tire / M_UNSPRUNG;
 
-  vy      += a_body  * dt;
-  vWheel  += a_wheel * dt;
-  sprungY += vy      * dt;
-  wheelY  += vWheel  * dt;
+  const a_body   = G_EFF + f_susp   / M_S;
+  const a_wheel  = G_EFF - f_susp   / M_UNSPRUNG + f_tire / M_UNSPRUNG;
+
+  vy      += a_body  * dt_s;
+  vWheel  += a_wheel * dt_s;
+  sprungY += vy      * dt_s;
+  wheelY  += vWheel  * dt_s;
 
   // Hard stops
   const travel = wheelY - sprungY;
@@ -353,31 +421,38 @@ function draw(ts) {
   document.getElementById('st-spring').textContent = Math.round(Math.abs(f_spring) / PX_SCALE);
   document.getElementById('st-damp').textContent   = Math.round(Math.abs(f_damp)   / PX_SCALE);
 
-  // ── Draw scene ────────────────────────────────────────────────────────
+  // ── Draw ────────────────────────────────────────────────────────────────
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#0a1628'; ctx.fillRect(0, 0, W, H * 0.78);
+  ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, W, H);
+  // Sky (slight dark-red tint above ground)
+  ctx.fillStyle = '#0a0000'; ctx.fillRect(0, 0, W, H * 0.78);
 
-  // Ground
+  // Ground surface
   ctx.beginPath();
   for (let px = 0; px <= W; px += 3) {
     const y = groundY(worldX + px);
     px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
   }
   ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
-  ctx.fillStyle = '#1a2e1a'; ctx.fill();
-  ctx.strokeStyle = '#2d5a27'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#111111'; ctx.fill();
+  ctx.strokeStyle = '#2d0505'; ctx.lineWidth = 2; ctx.stroke();
 
-  // Travel bar
+  // ── Travel bar ──────────────────────────────────────────────────────────
+  // Fills top-to-bottom; white at mid-travel, red at extremes
   const bx = W - 22, bTop = 20, bH = H * 0.6;
-  ctx.fillStyle = '#1f2937';
+  ctx.fillStyle = '#1a1a1a';
   ctx.beginPath(); ctx.roundRect(bx, bTop, 12, bH, 6); ctx.fill();
+
   const fillFrac = Math.max(0, Math.min(1, (travelMM - MIN_TRAVEL) / (MAX_TRAVEL - MIN_TRAVEL)));
   const fillH    = fillFrac * bH;
-  const barColor = fillFrac < 0.5 ? '#4ade80' : fillFrac < 0.8 ? '#facc15' : '#f87171';
+  const t_ext    = Math.abs(fillFrac - 0.5) * 2;  // 0 = mid, 1 = extreme
+  const cR       = Math.round(0xe2 + (0xe1 - 0xe2) * t_ext);  // 226 → 225
+  const cG       = Math.round(0xe8 * (1 - t_ext) + 0x1d * t_ext);  // 232 → 29
+  const cB       = Math.round(0xf0 * (1 - t_ext) + 0x48 * t_ext);  // 240 → 72
+  const barColor = `rgb(${cR},${cG},${cB})`;
   ctx.fillStyle  = barColor;
-  ctx.beginPath(); ctx.roundRect(bx, bTop + bH - fillH, 12, fillH, 6); ctx.fill();
-  ctx.fillStyle = '#64748b'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.beginPath(); ctx.roundRect(bx, bTop, 12, fillH, 6); ctx.fill();
+  ctx.fillStyle = '#444'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('travel', bx + 6, bTop - 6);
 
   const sx  = screenWX;
@@ -385,46 +460,57 @@ function draw(ts) {
   const wx2 = sx;
   const wy2 = wheelY;
 
-  // Fork tube
-  ctx.strokeStyle = '#334155'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  // ── Rear wheel (visual only — sits on terrain) ──────────────────────────
+  const rwy = rear_natural_wy;
+  ctx.beginPath(); ctx.arc(rearWheelSX, rwy, WHEEL_R, 0, Math.PI * 2);
+  ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 6; ctx.stroke();
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+  for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+    ctx.beginPath(); ctx.arc(rearWheelSX, rwy, WHEEL_R - 2, a, a + 0.2); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(rearWheelSX, rwy, 8, 0, Math.PI * 2);
+  ctx.fillStyle = '#888'; ctx.fill();
+
+  // ── Fork tube (behind spring) ───────────────────────────────────────────
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 9; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(sx, sy + 28); ctx.lineTo(wx2, wy2 - WHEEL_R + 6); ctx.stroke();
 
-  // Spring (zigzag)
-  const segs2 = 18, springAmp = 11;
+  // ── Spring (zigzag) ─────────────────────────────────────────────────────
+  const nSegs = 18, springAmp = 11;
   ctx.strokeStyle = barColor; ctx.lineWidth = 2;
   ctx.beginPath();
-  for (let i = 0; i <= segs2 * 4; i++) {
-    const t2  = i / (segs2 * 4);
+  for (let i = 0; i <= nSegs * 4; i++) {
+    const t2  = i / (nSegs * 4);
     const py  = sy + (wy2 - sy) * t2;
-    const px2 = sx + Math.sin(t2 * Math.PI * 2 * segs2) * springAmp;
+    const px2 = sx + Math.sin(t2 * Math.PI * 2 * nSegs) * springAmp;
     i === 0 ? ctx.moveTo(px2, py) : ctx.lineTo(px2, py);
   }
   ctx.stroke();
 
-  // Wheel
+  // ── Front wheel ─────────────────────────────────────────────────────────
   ctx.beginPath(); ctx.arc(wx2, wy2, WHEEL_R, 0, Math.PI * 2);
-  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6; ctx.stroke();
-  ctx.strokeStyle = '#475569'; ctx.lineWidth = 2;
+  ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 6; ctx.stroke();
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
   for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
     ctx.beginPath(); ctx.arc(wx2, wy2, WHEEL_R - 2, a, a + 0.2); ctx.stroke();
   }
   ctx.beginPath(); ctx.arc(wx2, wy2, 8, 0, Math.PI * 2);
-  ctx.fillStyle = '#cbd5e1'; ctx.fill();
+  ctx.fillStyle = '#d0d0d0'; ctx.fill();
 
-  // Airborne tag
+  // ── Airborne tag ─────────────────────────────────────────────────────────
   if (f_tire === 0) {
-    ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#e11d48'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
     ctx.fillText('AIR', wx2 + WHEEL_R + 5, wy2 + 4);
   }
 
-  // Body
-  ctx.fillStyle = '#1e3a5f'; ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+  // ── Bike body (sprung mass) ──────────────────────────────────────────────
+  ctx.fillStyle = '#1a0000'; ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(sx - 45, sy - 45, 90, 45, 6); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#93c5fd'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#f0f0f0'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('SPRUNG MASS', sx, sy - 22);
 
-  // Travel label
-  ctx.fillStyle = '#64748b'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  // ── Travel label ─────────────────────────────────────────────────────────
+  ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('↕ ' + travelMM + 'mm', sx + 18, (sy + wy2) / 2);
 }
 
@@ -435,7 +521,7 @@ requestAnimationFrame(draw);
 // ════════════════════════════════════════════════════════════════════════════
 const cc   = document.getElementById('curve-canvas');
 const cctx = cc.getContext('2d');
-const GP   = { l: 52, r: 18, t: 14, b: 36 }; // graph margins
+const GP   = { l: 52, r: 18, t: 14, b: 36 };
 
 let curveMode = 'comp';
 
@@ -463,44 +549,42 @@ function drawCurveEditor() {
   const gh = H - GP.t - GP.b;
 
   cctx.clearRect(0, 0, W, H);
-  cctx.fillStyle = '#0d1117'; cctx.fillRect(0, 0, W, H);
-
-  // Plot background
-  cctx.fillStyle = '#0f1923'; cctx.fillRect(GP.l, GP.t, gw, gh);
+  cctx.fillStyle = '#0f0f0f'; cctx.fillRect(0, 0, W, H);
+  cctx.fillStyle = '#111'; cctx.fillRect(GP.l, GP.t, gw, gh);
 
   // Grid
-  cctx.strokeStyle = '#1e2a38'; cctx.lineWidth = 1;
+  cctx.strokeStyle = '#1f1f1f'; cctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
-    cctx.beginPath(); cctx.moveTo(GP.l + (i/4)*gw, GP.t);         cctx.lineTo(GP.l + (i/4)*gw, GP.t + gh); cctx.stroke();
-    cctx.beginPath(); cctx.moveTo(GP.l,             GP.t + (i/4)*gh); cctx.lineTo(GP.l + gw,       GP.t + (i/4)*gh); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(GP.l + (i/4)*gw, GP.t);          cctx.lineTo(GP.l + (i/4)*gw, GP.t + gh); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(GP.l,              GP.t+(i/4)*gh); cctx.lineTo(GP.l + gw,       GP.t+(i/4)*gh); cctx.stroke();
   }
 
-  // X labels (0–4.0 m/s)
-  cctx.fillStyle = '#8b949e'; cctx.font = '10px sans-serif'; cctx.textAlign = 'center';
+  // X axis labels (0–4.0 m/s)
+  cctx.fillStyle = '#555'; cctx.font = '10px sans-serif'; cctx.textAlign = 'center';
   for (let i = 0; i <= 4; i++) {
-    cctx.fillText((i/4 * 4).toFixed(1), GP.l + (i/4)*gw, GP.t + gh + 20);
+    cctx.fillText((i * 1.0).toFixed(1), GP.l + (i/4)*gw, GP.t + gh + 20);
   }
-  cctx.fillStyle = '#64748b'; cctx.fillText('m/s', GP.l + gw/2, GP.t + gh + 32);
+  cctx.fillStyle = '#444'; cctx.fillText('m/s', GP.l + gw/2, GP.t + gh + 32);
 
-  // Y labels (0–4000 N)
+  // Y axis labels (0–4000 N)
   cctx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
-    cctx.fillStyle = '#8b949e';
-    cctx.fillText((i/4*4000).toFixed(0), GP.l - 5, GP.t + (1 - i/4)*gh + 4);
+    cctx.fillStyle = '#555';
+    cctx.fillText((i * 1000).toFixed(0), GP.l - 5, GP.t + (1 - i/4)*gh + 4);
   }
   cctx.save();
   cctx.translate(12, GP.t + gh/2); cctx.rotate(-Math.PI/2);
-  cctx.textAlign = 'center'; cctx.fillStyle = '#64748b';
+  cctx.textAlign = 'center'; cctx.fillStyle = '#444';
   cctx.fillText('N', 0, 0);
   cctx.restore();
 
   // Draw both curves
   [
-    { pts: compPts, lut: compLUT, color: '#3b82f6', mode: 'comp', label: 'Comp' },
-    { pts: rebPts,  lut: rebLUT,  color: '#22c55e', mode: 'reb',  label: 'Reb'  }
+    { pts: compPts, lut: compLUT, color: '#e11d48', mode: 'comp', label: 'Comp' },
+    { pts: rebPts,  lut: rebLUT,  color: '#aaaaaa', mode: 'reb',  label: 'Reb'  }
   ].forEach(({ pts, lut, color, mode, label }) => {
     const active = mode === curveMode;
-    cctx.globalAlpha = active ? 1.0 : 0.22;
+    cctx.globalAlpha = active ? 1.0 : 0.20;
 
     cctx.beginPath();
     lut.forEach((p, i) => {
@@ -509,33 +593,31 @@ function drawCurveEditor() {
     });
     cctx.strokeStyle = color; cctx.lineWidth = active ? 2.5 : 1.5; cctx.stroke();
 
-    // Label at curve end
     if (lut.length) {
       const last = ptToScreen(lut[lut.length-1].x, lut[lut.length-1].y);
       cctx.fillStyle = color; cctx.font = 'bold 10px sans-serif'; cctx.textAlign = 'left';
       cctx.fillText(label, last.sx + 4, last.sy + 4);
     }
 
-    // Control point handles (active curve only)
     if (active) {
       pts.forEach((p, i) => {
         const s = ptToScreen(p.x, p.y);
         cctx.beginPath(); cctx.arc(s.sx, s.sy, 7, 0, Math.PI * 2);
-        cctx.fillStyle = i === 0 ? '#334155' : color;
+        cctx.fillStyle   = i === 0 ? '#222' : color;
         cctx.fill();
-        cctx.strokeStyle = '#e2e8f0'; cctx.lineWidth = 1.5; cctx.stroke();
+        cctx.strokeStyle = '#f0f0f0'; cctx.lineWidth = 1.5; cctx.stroke();
       });
     }
 
     cctx.globalAlpha = 1.0;
   });
 
-  // Plot border
-  cctx.strokeStyle = '#30363d'; cctx.lineWidth = 1;
+  // Border
+  cctx.strokeStyle = '#1f1f1f'; cctx.lineWidth = 1;
   cctx.strokeRect(GP.l, GP.t, gw, gh);
 }
 
-// ── Drag ─────────────────────────────────────────────────────────────────────
+// ── Drag & click ──────────────────────────────────────────────────────────────
 let dragIdx = -1;
 
 function getPos(e) {
@@ -550,11 +632,16 @@ function getPos(e) {
 
 function findHit(sx, sy) {
   const pts = curveMode === 'comp' ? compPts : rebPts;
-  for (let i = 1; i < pts.length; i++) {  // skip p0 (origin, fully fixed)
+  for (let i = 1; i < pts.length; i++) {  // skip p0 (origin, fixed)
     const s = ptToScreen(pts[i].x, pts[i].y);
     if (Math.hypot(s.sx - sx, s.sy - sy) < 15) return i;
   }
   return -1;
+}
+
+function rebuildLUT() {
+  if (curveMode === 'comp') compLUT = buildCurveLUT(compPts);
+  else                       rebLUT  = buildCurveLUT(rebPts);
 }
 
 function doDrag(sx, sy) {
@@ -567,20 +654,50 @@ function doDrag(sx, sy) {
   if (i > 0 && i < pts.length - 1) {
     newX = Math.max(pts[i-1].x + 0.02, Math.min(pts[i+1].x - 0.02, nx));
   }
-  // Last point: x=1 fixed, only y moves
   const newY = (i === 0) ? 0 : Math.max(0, Math.min(1, ny));
   pts[i] = { x: newX, y: newY };
 
-  if (curveMode === 'comp') compLUT = buildCurveLUT(compPts);
-  else                       rebLUT  = buildCurveLUT(rebPts);
-
+  rebuildLUT();
   drawCurveEditor();
 }
 
-cc.addEventListener('mousedown',  e => { const p = getPos(e); dragIdx = findHit(p.sx, p.sy); });
+cc.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const p   = getPos(e);
+  const hit = findHit(p.sx, p.sy);
+  if (hit >= 0) {
+    dragIdx = hit;
+  } else {
+    // Add new point if inside plot area and not too close to existing points
+    const pts      = curveMode === 'comp' ? compPts : rebPts;
+    const { nx, ny } = screenToPt(p.sx, p.sy);
+    if (nx > 0.02 && nx < 0.98 && ny >= 0 && ny <= 1.02) {
+      const tooClose = pts.some(pt => Math.abs(pt.x - nx) < 0.05);
+      if (!tooClose) {
+        pts.push({ x: Math.max(0.02, Math.min(0.98, nx)), y: Math.max(0, Math.min(1, ny)) });
+        pts.sort((a, b) => a.x - b.x);
+        rebuildLUT();
+        drawCurveEditor();
+      }
+    }
+  }
+});
 cc.addEventListener('mousemove',  e => { const p = getPos(e); doDrag(p.sx, p.sy); });
 cc.addEventListener('mouseup',    ()  => { dragIdx = -1; });
 cc.addEventListener('mouseleave', ()  => { dragIdx = -1; });
+
+cc.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const p   = getPos(e);
+  const pts = curveMode === 'comp' ? compPts : rebPts;
+  if (pts.length <= 3) return;  // keep at least 3 points
+  const hit = findHit(p.sx, p.sy);
+  if (hit !== -1 && hit < pts.length - 1) {  // interior points only
+    pts.splice(hit, 1);
+    rebuildLUT();
+    drawCurveEditor();
+  }
+});
 
 cc.addEventListener('touchstart',  e => { e.preventDefault(); const p = getPos(e); dragIdx = findHit(p.sx, p.sy); }, { passive: false });
 cc.addEventListener('touchmove',   e => { e.preventDefault(); const p = getPos(e); doDrag(p.sx, p.sy); }, { passive: false });
@@ -601,7 +718,6 @@ function applyPreset(name) {
   drawCurveEditor();
 }
 
-// Initial canvas size after layout
 requestAnimationFrame(resizeCurveCanvas);
 </script>
 </body>
