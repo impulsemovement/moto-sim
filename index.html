@@ -129,7 +129,7 @@ const ctx    = canvas.getContext('2d');
 
 function resize() {
   canvas.width  = window.innerWidth - 20;
-  canvas.height = 300;
+  canvas.height = 340;
 }
 resize();
 window.addEventListener('resize', resize);
@@ -164,10 +164,11 @@ bind('duty',      'lduty',      v => { P.duty        = v / 100;  return v + '%';
 // ════════════════════════════════════════════════════════════════════════════
 //  PHYSICS CONSTANTS
 // ════════════════════════════════════════════════════════════════════════════
-const WHEEL_R    = 36;       // px  wheel radius
-const REST_LEN   = 130;      // px  suspension natural length
-const MAX_TRAVEL = 200;      // px  full extension limit
-const MIN_TRAVEL = 15;       // px  full compression limit
+const WHEEL_R       = 60;    // px  wheel radius (~17" MT-07 wheel at sim scale)
+const WHEELBASE_PX  = 290;   // px  front-to-rear axle distance (~MT-07 1400 mm)
+const REST_LEN      = 165;   // px  suspension natural length (longer to keep fork visible with bigger wheel)
+const MAX_TRAVEL    = 220;   // px  full extension limit
+const MIN_TRAVEL    = 15;    // px  full compression limit
 
 const G_EFF      = 800;      // px/s²  effective gravity (positive = downward)
 const PX_SCALE   = 80;       // N/mm → display force units
@@ -264,7 +265,7 @@ let rebLUT  = buildCurveLUT(rebPts);
 //  TERRAIN
 // ════════════════════════════════════════════════════════════════════════════
 function groundY(wx) {
-  const base     = canvas.height * 0.80;
+  const base     = canvas.height * 0.82;
   const amp      = P.amp;
   const freq     = P.freq;
   const noiseOff = P.rough > 0 ? valueNoise(wx) * 30 * P.rough : 0;
@@ -363,8 +364,8 @@ function draw(ts) {
   const pxPerSec  = (P.speed / 3.6) * 30;
   worldX         += pxPerSec * dt_s;
 
-  const screenWX     = W * 0.38;
-  const rearWheelSX  = screenWX - 72;   // rear wheel screen X
+  const screenWX     = W * 0.48;          // front wheel — pushed right to give rear wheel room
+  const rearWheelSX  = screenWX - WHEELBASE_PX;  // rear wheel — MT-07 ~1400 mm wheelbase
 
   // Wheel–ground contact heights (full circle tangent to terrain)
   const natural_wy      = calcNaturalWY(worldX + screenWX);
@@ -425,7 +426,7 @@ function draw(ts) {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, W, H);
   // Sky (slight dark-red tint above ground)
-  ctx.fillStyle = '#0a0000'; ctx.fillRect(0, 0, W, H * 0.78);
+  ctx.fillStyle = '#0a0000'; ctx.fillRect(0, 0, W, H * 0.80);
 
   // Ground surface
   ctx.beginPath();
@@ -462,56 +463,96 @@ function draw(ts) {
 
   // ── Rear wheel (visual only — sits on terrain) ──────────────────────────
   const rwy = rear_natural_wy;
-  ctx.beginPath(); ctx.arc(rearWheelSX, rwy, WHEEL_R, 0, Math.PI * 2);
-  ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 6; ctx.stroke();
-  ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
-  for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-    ctx.beginPath(); ctx.arc(rearWheelSX, rwy, WHEEL_R - 2, a, a + 0.2); ctx.stroke();
-  }
-  ctx.beginPath(); ctx.arc(rearWheelSX, rwy, 8, 0, Math.PI * 2);
-  ctx.fillStyle = '#888'; ctx.fill();
+  drawWheel(rearWheelSX, rwy, WHEEL_R);
+
+  // ── Swingarm (rear body pivot → rear axle) ───────────────────────────────
+  // Pivot is at the rear-bottom of the body; axle is the rear wheel centre.
+  const swingarmPivotX = sx - 80;   // ~rear quarter of frame
+  const swingarmPivotY = sy + 20;
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(swingarmPivotX, swingarmPivotY);
+  ctx.lineTo(rearWheelSX, rwy);
+  ctx.stroke();
+  // Swingarm highlight
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(swingarmPivotX, swingarmPivotY);
+  ctx.lineTo(rearWheelSX, rwy);
+  ctx.stroke();
 
   // ── Fork tube (behind spring) ───────────────────────────────────────────
-  ctx.strokeStyle = '#222'; ctx.lineWidth = 9; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(sx, sy + 28); ctx.lineTo(wx2, wy2 - WHEEL_R + 6); ctx.stroke();
+  const forkTopY    = sy + 20;          // fork exits body bottom
+  const forkBotY    = wy2 - WHEEL_R + 4;
+  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 14; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(sx, forkTopY); ctx.lineTo(wx2, forkBotY); ctx.stroke();
+  // Stanchion highlight (lighter inner)
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(sx, forkTopY); ctx.lineTo(wx2, forkBotY); ctx.stroke();
 
   // ── Spring (zigzag) ─────────────────────────────────────────────────────
-  const nSegs = 18, springAmp = 11;
+  const nSegs = 18, springAmp = 10;
   ctx.strokeStyle = barColor; ctx.lineWidth = 2;
   ctx.beginPath();
   for (let i = 0; i <= nSegs * 4; i++) {
     const t2  = i / (nSegs * 4);
-    const py  = sy + (wy2 - sy) * t2;
+    const py  = forkTopY + (forkBotY - forkTopY) * t2;
     const px2 = sx + Math.sin(t2 * Math.PI * 2 * nSegs) * springAmp;
     i === 0 ? ctx.moveTo(px2, py) : ctx.lineTo(px2, py);
   }
   ctx.stroke();
 
+  // ── Bike body (sprung mass) ──────────────────────────────────────────────
+  // Body spans from roughly above rear-wheel to above front fork
+  const bodyW = 180, bodyH = 48;
+  const bodyX = sx - 130;   // rear edge of body (above swingarm pivot region)
+  const bodyY = sy - bodyH;
+  ctx.fillStyle = '#1a0000'; ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(bodyX, bodyY, bodyW, bodyH, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#f0f0f0'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('SPRUNG MASS', bodyX + bodyW / 2, bodyY + bodyH / 2 + 4);
+
   // ── Front wheel ─────────────────────────────────────────────────────────
-  ctx.beginPath(); ctx.arc(wx2, wy2, WHEEL_R, 0, Math.PI * 2);
-  ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 6; ctx.stroke();
-  ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
-  for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-    ctx.beginPath(); ctx.arc(wx2, wy2, WHEEL_R - 2, a, a + 0.2); ctx.stroke();
-  }
-  ctx.beginPath(); ctx.arc(wx2, wy2, 8, 0, Math.PI * 2);
-  ctx.fillStyle = '#d0d0d0'; ctx.fill();
+  drawWheel(wx2, wy2, WHEEL_R);
 
   // ── Airborne tag ─────────────────────────────────────────────────────────
   if (f_tire === 0) {
     ctx.fillStyle = '#e11d48'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('AIR', wx2 + WHEEL_R + 5, wy2 + 4);
+    ctx.fillText('AIR', wx2 + WHEEL_R + 6, wy2 + 4);
   }
-
-  // ── Bike body (sprung mass) ──────────────────────────────────────────────
-  ctx.fillStyle = '#1a0000'; ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(sx - 45, sy - 45, 90, 45, 6); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#f0f0f0'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('SPRUNG MASS', sx, sy - 22);
 
   // ── Travel label ─────────────────────────────────────────────────────────
   ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText('↕ ' + travelMM + 'mm', sx + 18, (sy + wy2) / 2);
+  const midForkY = (forkTopY + forkBotY) / 2;
+  ctx.fillText('↕ ' + travelMM + 'mm', sx + 18, midForkY);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  WHEEL DRAWING HELPER
+// ════════════════════════════════════════════════════════════════════════════
+function drawWheel(cx, cy, r) {
+  // Tyre
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = '#c8c8c8'; ctx.lineWidth = 9; ctx.stroke();
+  // Rim
+  const rimR = r - 13;
+  ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#666'; ctx.lineWidth = 3; ctx.stroke();
+  // Spokes (8)
+  const nSpokes = 8;
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
+  for (let i = 0; i < nSpokes; i++) {
+    const a = (i / nSpokes) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * 5,    cy + Math.sin(a) * 5);
+    ctx.lineTo(cx + Math.cos(a) * rimR, cy + Math.sin(a) * rimR);
+    ctx.stroke();
+  }
+  // Hub
+  ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#888'; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#ccc'; ctx.fill();
 }
 
 requestAnimationFrame(draw);
