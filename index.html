@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -9,12 +10,57 @@ body { background: #080808; color: #f0f0f0; font-family: sans-serif; padding: 10
 canvas { display: block; background: #080808; }
 #c { border: 1px solid #1f1f1f; border-radius: 8px; }
 
+#sim-wrap { position: relative; display: inline-block; width: 100%; }
+.ride-btn {
+  position: absolute; bottom: 16px;
+  width: 80px; height: 44px;
+  border: none; border-radius: 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  transition: filter 0.1s, transform 0.1s;
+}
+.ride-btn:active, .ride-btn.held { filter: brightness(1.35); transform: scale(0.96); }
+#btn-brake {
+  left: 20px;
+  background: rgba(220,38,38,0.18); color: #ef4444;
+  border: 1px solid rgba(220,38,38,0.4);
+}
+#btn-gas {
+  right: 20px;
+  background: rgba(34,197,94,0.18); color: #22c55e;
+  border: 1px solid rgba(34,197,94,0.4);
+}
+
 .stats { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin: 8px 0; }
 .stat { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 6px; padding: 6px 4px; text-align: center; }
 .stat-n { font-size: 17px; font-weight: 700; color: #f0f0f0; }
 .stat-l { font-size: 9px; color: #777; margin-top: 2px; }
 
-.ui { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; }
+/* Desktop: 2-column grid, cards in order */
+.ui {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: auto;
+  gap: 8px;
+}
+/* Named grid areas — explicit placement so mobile reorder works */
+.card-susp   { grid-area: susp; }
+.card-curve  { grid-area: curve; }
+.card-terrain{ grid-area: terrain; }
+.card-fhist  { grid-area: fhist; }
+.ui { grid-template-areas: "susp curve" "terrain fhist"; }
+
+/* Mobile: single column, curve + fhist drop below terrain */
+@media (max-width: 640px) {
+  body { padding: 2px; }
+  .ui {
+    grid-template-columns: 1fr;
+    grid-template-areas: "susp" "terrain" "curve" "fhist";
+  }
+  .stats { grid-template-columns: repeat(3,1fr); }
+  .stat-n { font-size: 14px; }
+}
+
 .card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; }
 label { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-bottom: 3px; }
 label span { color: #f0f0f0; font-weight: 600; }
@@ -42,7 +88,11 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 </head>
 <body>
 
-<canvas id="c"></canvas>
+<div id="sim-wrap">
+  <canvas id="c"></canvas>
+  <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
+  <button class="ride-btn" id="btn-gas">GAS ⬛</button>
+</div>
 
 <div class="stats">
   <div class="stat"><div class="stat-n" id="st-ft">0</div><div class="stat-l">F.Travel mm</div></div>
@@ -56,7 +106,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 <div class="ui">
 
   <!-- TOP-LEFT: Suspension card -->
-  <div class="card">
+  <div class="card card-susp">
     <div class="toggle-group">
       <button class="toggle-btn active" id="btn-front" onclick="setWheelMode('front')">FRONT</button>
       <button class="toggle-btn"        id="btn-rear"  onclick="setWheelMode('rear')">REAR</button>
@@ -99,7 +149,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   </div>
 
   <!-- TOP-RIGHT: Damping curve card -->
-  <div class="card" id="curve-card">
+  <div class="card card-curve" id="curve-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="toggle-group" style="margin-bottom:0">
@@ -120,7 +170,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   </div>
 
   <!-- BOTTOM-LEFT: Terrain card -->
-  <div class="card">
+  <div class="card card-terrain">
     <label>Terrain <span id="lterrain">Bumps</span></label>
     <input type="range" id="terrain" min="0" max="4" value="0" step="1">
     <div style="display:flex;gap:2px;font-size:9px;color:#444;margin-top:-5px;margin-bottom:8px">
@@ -152,10 +202,21 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <input type="range" id="speed" min="5" max="160" value="30">
     <label>Time scale <span id="ltimescale">1.00×</span></label>
     <input type="range" id="timescale" min="10" max="300" value="100">
+    <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
+      <div>
+        <label>Gas rate <span id="lgasrate">6 m/s²</span></label>
+        <input type="range" id="gasrate" min="1" max="20" value="6" step="0.5">
+      </div>
+      <div>
+        <label>Brake rate <span id="lbrakerate">12 m/s²</span></label>
+        <input type="range" id="brakerate" min="1" max="25" value="12" step="0.5">
+      </div>
+    </div>
   </div>
 
   <!-- BOTTOM-RIGHT: Force history graph -->
-  <div class="card">
+  <div class="card card-fhist">
     <div class="card-header" style="margin-bottom:6px">FORCE HISTORY (5 s)</div>
     <canvas id="fgraph" height="170" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
@@ -173,7 +234,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 // ═══════════════════════════════════════════════════════════
 //  CONSTANTS  (SI units throughout)
 // ═══════════════════════════════════════════════════════════
-const PM         = 200;          // pixels per meter
+let PM           = 200;          // pixels per meter — updated by resizeMain()
 const g          = 9.81;         // m/s²
 const RAKE_RAD   = 24.83 * Math.PI / 180;
 
@@ -215,8 +276,11 @@ const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
 function resizeMain() {
-  canvas.width  = window.innerWidth - 20;
-  canvas.height = 320;
+  const mobile  = window.innerWidth < 641;
+  const pad     = mobile ? 4 : 20;                 // 2px each side mobile, 10px desktop
+  canvas.width  = window.innerWidth - pad;
+  canvas.height = Math.round(mobile ? 260 : 416); // 320 * 1.30
+  PM            = mobile ? 100 : 200;              // 50% zoom on mobile so bike fits screen
 }
 resizeMain();
 window.addEventListener('resize', resizeMain);
@@ -242,6 +306,10 @@ let P = {
   timeScale:1.0, speed:30
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
+
+// Gas / brake rates — declared here so bind() callbacks (called immediately) can access them
+let GAS_ACCEL   = 6;    // m/s²
+let BRAKE_DECEL = 12;   // m/s²
 
 function bind(id, lblId, fn) {
   const el  = document.getElementById(id);
@@ -270,6 +338,8 @@ bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
 bind('speed',     'lspeed',     v => { P.speed   = v; document.getElementById('st-speed').textContent=v; return v+' km/h'; });
 bind('timescale', 'ltimescale', v => { P.timeScale = v/100; return (v/100).toFixed(2)+'×'; });
+bind('gasrate',   'lgasrate',   v => { GAS_ACCEL   = +v; return v + ' m/s²'; });
+bind('brakerate', 'lbrakerate', v => { BRAKE_DECEL = +v; return v + ' m/s²'; });
 bind('terrain',   'lterrain',   v => { P.terrain = +v;      return TERRAINS[+v]; });
 bind('amp',       'lamp',       v => { P.amp     = v/100;   return (v/100).toFixed(2)+'×'; });
 bind('freq',      'lfreq',      v => { P.freq    = v/100;   return (v/100).toFixed(2)+'×'; });
@@ -458,6 +528,12 @@ let worldX_m      = 0;
 let lastTs        = null;
 let initialized   = false;
 
+// Longitudinal acceleration (gas / brake input), m/s²  positive = forward
+let a_long        = 0;
+let gasPressed    = false;
+let brakePressed  = false;
+const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 class)
+
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
 let wheelAngle_f  = 0;
 let wheelAngle_r  = 0;
@@ -567,6 +643,32 @@ function _physicsStep(dt_s) {
   const K_F = P.k_f * 1000;  // N/m
   const K_R = P.k_r * 1000;
 
+  // ── Gas / brake: derive a_long from ACTUAL speed change (clamped at 0/160) ─
+  // This means pitch moment drops to zero once the bike can't accelerate further.
+  {
+    const speedBefore = P.speed;
+    const requested   = gasPressed ? GAS_ACCEL : brakePressed ? -BRAKE_DECEL : 0;
+    if (gasPressed || brakePressed) {
+      P.speed = Math.max(0, Math.min(160, P.speed + requested * dt_s * 3.6));
+      const sl = document.getElementById('speed');
+      if (sl) sl.value = Math.round(P.speed);
+      const st = document.getElementById('lspeed');
+      if (st) st.textContent = Math.round(P.speed) + ' km/h';
+      const stStat = document.getElementById('st-speed');
+      if (stStat) stStat.textContent = Math.round(P.speed);
+    }
+    // a_long = actual Δv/Δt in m/s² — zero when speed is pegged at min/max
+    a_long = (P.speed - speedBefore) / dt_s / 3.6;
+  }
+
+  // ── Advance world X BEFORE computing wheel positions ─────────────────────
+  // This keeps worldX_m and frontWheelX_m/rearWheelX_m on the same frame,
+  // so w2sx() gives the correct screen X regardless of speed.
+  const v_ground = P.speed / 3.6;
+  worldX_m     += v_ground * dt_s;
+  wheelAngle_f += (v_ground / WHEEL_R_F) * dt_s;
+  wheelAngle_r += (v_ground / WHEEL_R_R) * dt_s;
+
   // ── Fork geometry: axis locked to chassis ─────────────────────────────────
   // Fork axis = RAKE_RAD - pitchAngle from world vertical, always.
   // Proper 2D rotation: chassis-frame fork vector (sin RAKE, cos RAKE) rotated by pitchAngle
@@ -619,16 +721,28 @@ function _physicsStep(dt_s) {
   const nat_f = calcNaturalWY_m(frontWheelX_m, WHEEL_R_F);
   const nat_r = calcNaturalWY_m(rearWheelX_m,  WHEEL_R_R);
 
-  f_tire_F = frontWheelY_m > nat_f ? -P.k_tire_f * (frontWheelY_m - nat_f) : 0;
-  f_tire_R = rearWheelY_m  > nat_r ? -P.k_tire_r * (rearWheelY_m  - nat_r) : 0;
+  // Clamp tire penetration to 25 mm max — prevents runaway energy accumulation
+  // when the suspension is simultaneously at its travel limit (trampoline fix).
+  const MAX_TIRE_PEN = 0.025;
+  const pen_f = Math.min(Math.max(0, frontWheelY_m - nat_f), MAX_TIRE_PEN);
+  const pen_r = Math.min(Math.max(0, rearWheelY_m  - nat_r), MAX_TIRE_PEN);
+  f_tire_F = pen_f > 0 ? -P.k_tire_f * pen_f : 0;
+  f_tire_R = pen_r > 0 ? -P.k_tire_r * pen_r : 0;
 
   // ── Chassis EOM ───────────────────────────────────────────────────────────
   // Fork force on chassis: the fork is tilted, so only the Y component of the
   // suspension force acts on chassis heave; the X component is absorbed by the
   // frame/steering geometry (chassis X isn't a free DOF in this sim).
   const fsusp_f_y  = fsusp_f * cosφ;            // Y component of fork force on chassis
+
+  // Longitudinal acceleration input (gas / brake)
+  // a_long > 0 = forward acceleration → inertia pushes CoM rearward → nose lifts (neg pitch)
+  // a_long < 0 = braking            → inertia pushes CoM forward  → nose dives (pos pitch)
+  const M_total    = 184 + P.mass;              // total vehicle mass (sprung + unsprung)
+  const tau_long   = -M_total * a_long * H_COM; // pitch moment from long. accel (N·m)
+
   const a_chassis   = g + (fsusp_f_y + fsusp_r) / Ms;
-  const alpha_pitch = (A_FRONT_M * fsusp_f_y - B_REAR_M * fsusp_r) / I_YY;
+  const alpha_pitch = (A_FRONT_M * fsusp_f_y - B_REAR_M * fsusp_r + tau_long) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
@@ -663,7 +777,14 @@ function _physicsStep(dt_s) {
     if (vForkSlide_f > 0) vForkSlide_f = 0;
   } else if (forkSlide_f < -TRAVEL_MAX) {
     forkSlide_f = -TRAVEL_MAX;
-    if (vForkSlide_f < 0) vForkSlide_f = 0;
+    if (vForkSlide_f < 0) {
+      // Bottom-out: transfer Y-axis momentum from wheel to chassis before zeroing
+      // relative velocity (prevents chassis continuing to compress into the stop).
+      // Δv_chassis = m_uf / (Ms + m_uf) * (vForkSlide_f · cosφ)
+      // vForkSlide_f < 0 and cosφ > 0, so Δv is upward (negative Y) — correct.
+      vChassis += P.m_unsprung_f * vForkSlide_f * cosφ / (Ms + P.m_unsprung_f);
+      vForkSlide_f = 0;
+    }
   }
 
   // ── Rear wheel positional travel-limit correction ─────────────────────────
@@ -676,7 +797,13 @@ function _physicsStep(dt_s) {
       if (vRearWheel - raV2 > 0) vRearWheel = raV2;
     } else if (dr2 < -TRAVEL_MAX) {
       rearWheelY_m -= (dr2 + TRAVEL_MAX);
-      if (vRearWheel - raV2 < 0) vRearWheel = raV2;
+      if (vRearWheel - raV2 < 0) {
+        // Bottom-out: merge wheel & chassis-attach velocities using mass ratio
+        // so the chassis gets an upward kick rather than just stopping the wheel.
+        const v_merged = (Ms * raV2 + P.m_unsprung_r * vRearWheel) / (Ms + P.m_unsprung_r);
+        vChassis    += (v_merged - raV2);   // impulse transferred to chassis heave
+        vRearWheel   = v_merged;
+      }
     }
   }
 
@@ -706,12 +833,7 @@ function _physicsStep(dt_s) {
     rearWheelX_m = _pivX - _swDX;
   }
 
-  // Advance terrain scroll
-  const v_ground = P.speed / 3.6;   // m/s
-  worldX_m     += v_ground * dt_s;
-  // Rolling wheel angles: ω = v / r, clockwise = positive (matches canvas Y-down)
-  wheelAngle_f += (v_ground / WHEEL_R_F) * dt_s;
-  wheelAngle_r += (v_ground / WHEEL_R_R) * dt_s;
+  // Gas / brake: update speed and resolve a_long
 }
 
 function simStep(dt_s) {
@@ -862,15 +984,18 @@ function draw(ts) {
   const comX    = comSX;                   // CoM is always at fixed screen X
   const comY    = screenY(chassisY_m);
 
+  // Scale factor so chassis vertices (sized for PM=200) render correctly at any PM
+  const sc = PM / 200;
+
   // ── Rear wheel (behind swingarm and chassis) ─────────────
   drawWheel(rwX_px, rwY_px, Math.round(WHEEL_R_R*PM), wheelAngle_r);
 
   // ── Swingarm (in front of rear wheel) ────────────────────
-  ctx.strokeStyle='#111'; ctx.lineWidth=11; ctx.lineCap='round';
+  ctx.strokeStyle='#111'; ctx.lineWidth=11*sc; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(swPivotX, swPivotY); ctx.lineTo(rwX_px, rwY_px); ctx.stroke();
-  ctx.strokeStyle='#484848'; ctx.lineWidth=7;
+  ctx.strokeStyle='#484848'; ctx.lineWidth=7*sc;
   ctx.beginPath(); ctx.moveTo(swPivotX, swPivotY); ctx.lineTo(rwX_px, rwY_px); ctx.stroke();
-  ctx.strokeStyle='#5a5a5a'; ctx.lineWidth=3;
+  ctx.strokeStyle='#5a5a5a'; ctx.lineWidth=3*sc;
   ctx.beginPath(); ctx.moveTo(swPivotX, swPivotY); ctx.lineTo(rwX_px, rwY_px); ctx.stroke();
 
   // ── Front wheel (behind fork so fork travel is visible) ───
@@ -880,6 +1005,7 @@ function draw(ts) {
   ctx.save();
   ctx.translate(comX, comY);
   ctx.rotate(angle);
+  ctx.scale(sc, sc);   // chassis vertices are in PM=200 local-px; scale to current PM
 
   // Frame vertices in chassis-local px (CoM=0,0, +x=forward/right, +y=down).
   // Derived from user SVG (viewBox 0 0 2194 1256).
@@ -983,26 +1109,26 @@ function draw(ts) {
 
   // ── Upper stanchion (shiny chrome tube above triple clamp) ───────────
   // Outer shadow
-  ctx.strokeStyle = '#111'; ctx.lineWidth = 16;
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 16*sc;
   ctx.beginPath(); ctx.moveTo(ufTopX, ufTopY); ctx.lineTo(steerX, steerY_px); ctx.stroke();
   // Main chrome tube
-  ctx.strokeStyle = '#888'; ctx.lineWidth = 10;
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 10*sc;
   ctx.beginPath(); ctx.moveTo(ufTopX, ufTopY); ctx.lineTo(steerX, steerY_px); ctx.stroke();
   // Highlight stripe
-  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 3*sc;
   ctx.beginPath(); ctx.moveTo(ufTopX, ufTopY); ctx.lineTo(steerX, steerY_px); ctx.stroke();
 
   // ── Lower slider tube (darker alloy, from triple clamp to axle) ──────
-  ctx.strokeStyle = '#111'; ctx.lineWidth = 16;
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 16*sc;
   ctx.beginPath(); ctx.moveTo(steerX, steerY_px); ctx.lineTo(fwX_px, fwY_px); ctx.stroke();
-  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 10;
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 10*sc;
   ctx.beginPath(); ctx.moveTo(steerX, steerY_px); ctx.lineTo(fwX_px, fwY_px); ctx.stroke();
   // Slider highlight
-  ctx.strokeStyle = '#525252'; ctx.lineWidth = 4;
+  ctx.strokeStyle = '#525252'; ctx.lineWidth = 4*sc;
   ctx.beginPath(); ctx.moveTo(steerX, steerY_px); ctx.lineTo(fwX_px, fwY_px); ctx.stroke();
 
   // ── Fork spring zigzag (on slider section, shows travel) ─────────────
-  const nSegs = 14, sAmp = 6;
+  const nSegs = 14, sAmp = 6*sc;
   const sliderMidX = steerX + forkDX * 0.50;
   const sliderMidY = steerY_px + forkDY * 0.50;
   const travelFrac_F = Math.max(0, Math.min(1, (-disp_f + TRAVEL_MAX * 0.5) / TRAVEL_MAX));
@@ -1317,6 +1443,44 @@ function applyPreset(name) {
   rebuildActiveLUT();
   drawCurveEditor();
 }
+
+// ═══════════════════════════════════════════════════════════
+//  GAS / BRAKE BUTTONS
+// ═══════════════════════════════════════════════════════════
+(function() {
+  function setGas(on) {
+    gasPressed = on;
+    document.getElementById('btn-gas').classList.toggle('held', on);
+  }
+  function setBrake(on) {
+    brakePressed = on;
+    document.getElementById('btn-brake').classList.toggle('held', on);
+  }
+
+  const gasBtn   = document.getElementById('btn-gas');
+  const brakeBtn = document.getElementById('btn-brake');
+
+  // Mouse
+  gasBtn.addEventListener('mousedown',  () => setGas(true));
+  brakeBtn.addEventListener('mousedown',() => setBrake(true));
+  window.addEventListener('mouseup',    () => { setGas(false); setBrake(false); });
+
+  // Touch (prevent scroll while holding)
+  gasBtn.addEventListener('touchstart',   e => { e.preventDefault(); setGas(true); },   {passive:false});
+  gasBtn.addEventListener('touchend',     e => { e.preventDefault(); setGas(false); },  {passive:false});
+  brakeBtn.addEventListener('touchstart', e => { e.preventDefault(); setBrake(true); }, {passive:false});
+  brakeBtn.addEventListener('touchend',   e => { e.preventDefault(); setBrake(false); },{passive:false});
+
+  // Keyboard shortcuts: G / ArrowRight = gas,  B / ArrowLeft = brake
+  window.addEventListener('keydown', e => {
+    if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') { e.preventDefault(); setGas(true); }
+    if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  { e.preventDefault(); setBrake(true); }
+  });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') setGas(false);
+    if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  setBrake(false);
+  });
+})();
 
 // ═══════════════════════════════════════════════════════════
 //  STARTUP
