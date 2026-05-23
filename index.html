@@ -2,36 +2,42 @@
 <html>
 <head>
 <meta charset="utf-8">
+<title>MT-07 Suspension Simulator</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #080808; color: #f0f0f0; font-family: sans-serif; padding: 10px; }
-canvas { display: block; background: #080808; border: 1px solid #1f1f1f; border-radius: 8px; }
-.ui { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-.card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; }
-label { font-size: 12px; color: #777; display: flex; justify-content: space-between; margin-bottom: 4px; }
-label span { color: #f0f0f0; font-weight: 600; }
-input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #e11d48; }
-.stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: 10px; }
-.stat { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 6px; padding: 8px; text-align: center; }
-.stat-n { font-size: 20px; font-weight: 700; color: #f0f0f0; }
-.stat-l { font-size: 10px; color: #777; margin-top: 2px; }
+canvas { display: block; background: #080808; }
+#c { border: 1px solid #1f1f1f; border-radius: 8px; }
 
-.toggle-group { display:flex; border:1px solid #1f1f1f; border-radius:6px; overflow:hidden; }
+.stats { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin: 8px 0; }
+.stat { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 6px; padding: 6px 4px; text-align: center; }
+.stat-n { font-size: 17px; font-weight: 700; color: #f0f0f0; }
+.stat-l { font-size: 9px; color: #777; margin-top: 2px; }
+
+.ui { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; }
+.card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; }
+label { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-bottom: 3px; }
+label span { color: #f0f0f0; font-weight: 600; }
+input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
+
+.toggle-group { display:flex; border:1px solid #1f1f1f; border-radius:6px; overflow:hidden; margin-bottom:10px; }
 .toggle-btn {
   background:#0f0f0f; color:#777; border:none; padding:5px 14px;
-  font-size:12px; cursor:pointer; transition:background 0.15s, color 0.15s;
+  font-size:11px; cursor:pointer; flex:1; transition:background 0.15s,color 0.15s;
 }
 .toggle-btn:not(:last-child) { border-right:1px solid #1f1f1f; }
-.toggle-btn.active { background:#1a0000; color:#e11d48; font-weight:600; }
-.toggle-btn:hover:not(.active) { background:#1a1a1a; }
+.toggle-btn.active { background:#1a0000; color:#e11d48; font-weight:700; }
+.toggle-btn:hover:not(.active) { background:#1a1a1a; color:#ccc; }
 
 .preset-btn {
   background:#0f0f0f; color:#777; border:1px solid #1f1f1f; border-radius:4px;
-  padding:4px 8px; font-size:11px; cursor:pointer; transition:background 0.15s, color 0.15s;
+  padding:3px 7px; font-size:10px; cursor:pointer; transition:background 0.15s,color 0.15s;
 }
 .preset-btn:hover { background:#1f1f1f; color:#f0f0f0; }
 
-#curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; }
+.card-header { font-size:11px; color:#555; margin-bottom:8px; font-weight:600; letter-spacing:0.05em; }
+#curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; flex:1; min-height:0; }
+#curve-card   { display:flex; flex-direction:column; }
 </style>
 </head>
 <body>
@@ -39,50 +45,95 @@ input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #e11d48; }
 <canvas id="c"></canvas>
 
 <div class="stats">
-  <div class="stat"><div class="stat-n" id="st-travel">0</div><div class="stat-l">Travel (mm)</div></div>
-  <div class="stat"><div class="stat-n" id="st-spring">0</div><div class="stat-l">Spring F (N)</div></div>
-  <div class="stat"><div class="stat-n" id="st-damp">0</div><div class="stat-l">Damper F (N)</div></div>
-  <div class="stat"><div class="stat-n" id="st-speed">30</div><div class="stat-l">Speed (km/h)</div></div>
+  <div class="stat"><div class="stat-n" id="st-ft">0</div><div class="stat-l">F.Travel mm</div></div>
+  <div class="stat"><div class="stat-n" id="st-rt">0</div><div class="stat-l">R.Travel mm</div></div>
+  <div class="stat"><div class="stat-n" id="st-pitch">0.0</div><div class="stat-l">Pitch °</div></div>
+  <div class="stat"><div class="stat-n" id="st-speed">30</div><div class="stat-l">Speed km/h</div></div>
+  <div class="stat"><div class="stat-n" id="st-fspring">0</div><div class="stat-l">F.Spring N</div></div>
+  <div class="stat"><div class="stat-n" id="st-fdamp">0</div><div class="stat-l">F.Damp N</div></div>
 </div>
 
 <div class="ui">
-  <!-- ── Spring / mass card ─────────────────────────────────────────────── -->
+
+  <!-- TOP-LEFT: Suspension card -->
   <div class="card">
-    <label>Spring rate <span id="lk">85 N/mm</span></label>
-    <input type="range" id="k" min="20" max="200" value="85">
-    <label>Preload <span id="lpre">0 mm</span></label>
-    <input type="range" id="pre" min="-20" max="20" value="0">
+    <div class="toggle-group">
+      <button class="toggle-btn active" id="btn-front" onclick="setWheelMode('front')">FRONT</button>
+      <button class="toggle-btn"        id="btn-rear"  onclick="setWheelMode('rear')">REAR</button>
+    </div>
+
+    <!-- Front sliders (shown when FRONT active) -->
+    <div id="susp-front">
+      <label>Spring rate <span id="lk_f">35 N/mm</span></label>
+      <input type="range" id="k_f" min="5" max="100" value="35" step="0.5">
+      <label>Preload <span id="lpre_f">0 mm</span></label>
+      <input type="range" id="pre_f" min="-20" max="20" value="0">
+      <label>Comp gain <span id="ldc_f">0.50×</span></label>
+      <input type="range" id="dc_f" min="0" max="200" value="50">
+      <label>Reb gain <span id="ldr_f">0.50×</span></label>
+      <input type="range" id="dr_f" min="0" max="200" value="50">
+      <label>Tire pressure <span id="lktire_f">36 psi</span></label>
+      <input type="range" id="ktire_f" min="28" max="52" value="36" step="1">
+      <label>Wheel mass <span id="lmunsp_f">13 kg</span></label>
+      <input type="range" id="munsp_f" min="5" max="25" value="13" step="0.5">
+    </div>
+
+    <!-- Rear sliders (shown when REAR active) -->
+    <div id="susp-rear" style="display:none">
+      <label>Spring rate <span id="lk_r">35 N/mm</span></label>
+      <input type="range" id="k_r" min="5" max="100" value="35" step="0.5">
+      <label>Preload <span id="lpre_r">0 mm</span></label>
+      <input type="range" id="pre_r" min="-20" max="20" value="0">
+      <label>Comp gain <span id="ldc_r">0.50×</span></label>
+      <input type="range" id="dc_r" min="0" max="200" value="50">
+      <label>Reb gain <span id="ldr_r">0.50×</span></label>
+      <input type="range" id="dr_r" min="0" max="200" value="50">
+      <label>Tire pressure <span id="lktire_r">36 psi</span></label>
+      <input type="range" id="ktire_r" min="28" max="52" value="36" step="1">
+      <label>Wheel mass <span id="lmunsp_r">17 kg</span></label>
+      <input type="range" id="munsp_r" min="5" max="25" value="17" step="0.5">
+    </div>
+
     <label>Rider mass <span id="lmass">75 kg</span></label>
     <input type="range" id="mass" min="40" max="140" value="75">
   </div>
 
-  <!-- ── Damping / speed card ──────────────────────────────────────────── -->
-  <div class="card">
-    <label>Comp gain <span id="ldc">0.40×</span></label>
-    <input type="range" id="dc" min="0" max="200" value="40">
-    <label>Reb gain <span id="ldr">0.40×</span></label>
-    <input type="range" id="dr" min="0" max="200" value="40">
-    <label>Speed <span id="lspeed">30 km/h</span></label>
-    <input type="range" id="speed" min="5" max="100" value="30">
-    <label>Time scale <span id="ltimescale">1.00×</span></label>
-    <input type="range" id="timescale" min="10" max="300" value="100">
+  <!-- TOP-RIGHT: Damping curve card -->
+  <div class="card" id="curve-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="toggle-group" style="margin-bottom:0">
+          <button class="toggle-btn active" id="btn-comp" onclick="setCurveMode('comp')">COMP</button>
+          <button class="toggle-btn"        id="btn-reb"  onclick="setCurveMode('reb')">REB</button>
+        </div>
+        <span id="curve-label" style="font-size:10px;color:#e11d48;font-weight:700">FRONT</span>
+        <span style="font-size:10px;color:#333">click=add · right-click=remove</span>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="preset-btn" onclick="applyPreset('linear')">Linear</button>
+        <button class="preset-btn" onclick="applyPreset('progressive')">Prog</button>
+        <button class="preset-btn" onclick="applyPreset('digressive')">Dig</button>
+        <button class="preset-btn" onclick="applyPreset('quadratic')">Quad</button>
+      </div>
+    </div>
+    <canvas id="curve-canvas" height="170"></canvas>
   </div>
 
-  <!-- ── Terrain card ───────────────────────────────────────────────────── -->
+  <!-- BOTTOM-LEFT: Terrain card -->
   <div class="card">
     <label>Terrain <span id="lterrain">Bumps</span></label>
     <input type="range" id="terrain" min="0" max="4" value="0" step="1">
-    <div style="display:flex;gap:2px;font-size:10px;color:#555;margin-top:-6px;margin-bottom:10px">
+    <div style="display:flex;gap:2px;font-size:9px;color:#444;margin-top:-5px;margin-bottom:8px">
       <span style="flex:1;text-align:left">Bumps</span>
       <span style="flex:1;text-align:center">Whoops</span>
       <span style="flex:1;text-align:center">Step</span>
       <span style="flex:1;text-align:center">Kicker</span>
       <span style="flex:1;text-align:right">Flat</span>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
       <div>
-        <label>Amplitude <span id="lamp">1.00×</span></label>
-        <input type="range" id="amp" min="-300" max="300" value="100">
+        <label>Amplitude <span id="lamp">0.40×</span></label>
+        <input type="range" id="amp" min="-300" max="300" value="40">
       </div>
       <div>
         <label>Frequency <span id="lfreq">1.00×</span></label>
@@ -97,158 +148,207 @@ input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #e11d48; }
         <input type="range" id="duty" min="5" max="60" value="30">
       </div>
     </div>
+    <label>Speed <span id="lspeed">30 km/h</span></label>
+    <input type="range" id="speed" min="5" max="160" value="30">
+    <label>Time scale <span id="ltimescale">1.00×</span></label>
+    <input type="range" id="timescale" min="10" max="300" value="100">
   </div>
 
-  <!-- ── Damping curve editor ──────────────────────────────────────────── -->
-  <div class="card" id="curve-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="toggle-group">
-          <button class="toggle-btn active" id="btn-comp" onclick="setCurveMode('comp')">Comp</button>
-          <button class="toggle-btn"        id="btn-reb"  onclick="setCurveMode('reb')">Reb</button>
-        </div>
-        <span style="font-size:10px;color:#444">click=add &middot; right-click=remove</span>
-      </div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="preset-btn" onclick="applyPreset('linear')">Linear</button>
-        <button class="preset-btn" onclick="applyPreset('progressive')">Prog</button>
-        <button class="preset-btn" onclick="applyPreset('digressive')">Dig</button>
-        <button class="preset-btn" onclick="applyPreset('quadratic')">Quad</button>
-      </div>
+  <!-- BOTTOM-RIGHT: Force history graph -->
+  <div class="card">
+    <div class="card-header" style="margin-bottom:6px">FORCE HISTORY (5 s)</div>
+    <canvas id="fgraph" height="170" style="display:block;width:100%;border-radius:4px;"></canvas>
+    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
+      <span style="font-size:10px;color:#e11d48">— F.Spring</span>
+      <span style="font-size:10px;color:#ff8800">— F.Damp</span>
+      <span style="font-size:10px;color:#3b82f6">— R.Spring</span>
+      <span style="font-size:10px;color:#22c55e">— R.Damp</span>
     </div>
-    <canvas id="curve-canvas" height="190"></canvas>
   </div>
-</div>
+
+</div><!-- .ui -->
 
 <script>
-// ════════════════════════════════════════════════════════════════════════════
-//  SIMULATION CANVAS
-// ════════════════════════════════════════════════════════════════════════════
+'use strict';
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS  (SI units throughout)
+// ═══════════════════════════════════════════════════════════
+const PM         = 200;          // pixels per meter
+const g          = 9.81;         // m/s²
+const RAKE_RAD   = 24.83 * Math.PI / 180;
+
+// Swingarm geometry (all in meters, chassis-frame offsets from CoM)
+// Pivot is behind and below CoM; SWINGARM_L chosen so rear axle lands at B_REAR_M behind CoM
+const SW_PIV_X_FROM_COM = -0.207;   // m behind CoM — MT-07 class pivot position
+const SW_PIV_Y_FROM_COM = +0.262;   // m below CoM  — gives ~12° swingarm angle from horizontal
+const SWINGARM_L        =  0.490;   // m
+
+const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
+const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
+const WHEELBASE  = 1.400;        // m  → 280 px
+
+const A_FRONT_M  = 0.714;        // m  CoM from front axle (49/51 split)
+const B_REAR_M   = 0.686;        // m  CoM from rear  axle
+
+const I_YY       = 90;           // kg·m²  pitch inertia
+
+// Unsprung masses and tire spring rates are runtime parameters (P.m_unsprung_f etc.)
+// Default values live in the P object below.
+
+const REST_F_M   = 0.45;         // m  front fork natural length
+const REST_R_M   = 0.30;         // m  rear shock natural length
+
+const V_MAX_SIM  = 3.0;          // m/s  maps to right edge of curve graph
+const F_MAX_F    = 3000;         // N    maps to top of front curve graph
+const F_MAX_R    = 6000;         // N    maps to top of rear  curve graph
+
+const TRAVEL_MAX = 0.130;        // m  max travel
+const TRAVEL_EXT = 0.010;        // m  extension limit
+
+// Screen geometry — chassis CoM at fixed screen X; all wheel/ground positions derive from it
+const COM_SX = () => canvas.width * 0.40;       // chassis CoM screen X
+
+// ═══════════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════════
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
-function resize() {
+function resizeMain() {
   canvas.width  = window.innerWidth - 20;
-  canvas.height = 340;
+  canvas.height = 320;
 }
-resize();
-window.addEventListener('resize', resize);
+resizeMain();
+window.addEventListener('resize', resizeMain);
 
-// ════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 //  PARAMETERS
-// ════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// Tire pressure → tire spring rate mapping: slider in psi, physics in N/m
+// [28, 52] psi → [200 000, 500 000] N/m (36 psi = 300 000 N/m = original K_TIRE)
+const PSI_MIN = 28, PSI_MAX = 52;
+const KTIRE_MIN = 200000, KTIRE_MAX = 500000;
+function psiToKtire(psi) {
+  return KTIRE_MIN + (psi - PSI_MIN) / (PSI_MAX - PSI_MIN) * (KTIRE_MAX - KTIRE_MIN);
+}
+
 let P = {
-  k:85, pre:0, dc:0.4, dr:0.4, mass:75, speed:30,
-  terrain:0, amp:1.0, freq:1.0, rough:0, duty:0.30, timeScale:1.0
+  k_f:35, pre_f:0, dc_f:0.5, dr_f:0.5,
+  k_tire_f: psiToKtire(36), m_unsprung_f: 13,   // front tire / wheel
+  k_r:35, pre_r:0, dc_r:0.5, dr_r:0.5,
+  k_tire_r: psiToKtire(36), m_unsprung_r: 17,   // rear  tire / wheel
+  mass:75,
+  terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
+  timeScale:1.0, speed:30
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
 
 function bind(id, lblId, fn) {
   const el  = document.getElementById(id);
   const lbl = document.getElementById(lblId);
-  el.addEventListener('input', () => { lbl.textContent = fn(+el.value); });
+  if (!el || !lbl) return;
+  const update = () => { lbl.textContent = fn(+el.value); };
+  el.addEventListener('input', update);
+  update();
 }
-bind('k',         'lk',         v => { P.k         = v;        return v + ' N/mm'; });
-bind('pre',       'lpre',       v => { P.pre        = v;        return v + ' mm'; });
-bind('dc',        'ldc',        v => { P.dc         = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('dr',        'ldr',        v => { P.dr         = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('mass',      'lmass',      v => { P.mass        = v;        return v + ' kg'; });
-bind('speed',     'lspeed',     v => { P.speed       = v; document.getElementById('st-speed').textContent = v; return v + ' km/h'; });
-bind('timescale', 'ltimescale', v => { P.timeScale   = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('terrain',   'lterrain',   v => { P.terrain     = +v;       return TERRAINS[+v]; });
-bind('amp',       'lamp',       v => { P.amp         = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('freq',      'lfreq',      v => { P.freq        = v / 100;  return (v/100).toFixed(2) + '\xd7'; });
-bind('rough',     'lrough',     v => { P.rough       = v / 100;  return v + '%'; });
-bind('duty',      'lduty',      v => { P.duty        = v / 100;  return v + '%'; });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  PHYSICS CONSTANTS
-// ════════════════════════════════════════════════════════════════════════════
-const WHEEL_R       = 60;    // px  wheel radius (~17" MT-07 wheel at sim scale)
-const WHEELBASE_PX  = 290;   // px  front-to-rear axle distance (~MT-07 1400 mm)
-const REST_LEN      = 165;   // px  suspension natural length (longer to keep fork visible with bigger wheel)
-const MAX_TRAVEL    = 220;   // px  full extension limit
-const MIN_TRAVEL    = 15;    // px  full compression limit
+bind('k_f',       'lk_f',       v => { P.k_f    = v;       return v + ' N/mm'; });
+bind('pre_f',     'lpre_f',     v => { P.pre_f   = v/1000;  return v + ' mm'; });
+bind('dc_f',      'ldc_f',      v => { P.dc_f    = v/100;   return (v/100).toFixed(2)+'×'; });
+bind('dr_f',      'ldr_f',      v => { P.dr_f    = v/100;   return (v/100).toFixed(2)+'×'; });
 
-const G_EFF      = 800;      // px/s²  effective gravity (positive = downward)
-const PX_SCALE   = 80;       // N/mm → display force units
-const M_UNSPRUNG = 15;       // kg  unsprung mass
-const K_TIRE     = 160000;   // display units  stiff tire spring
+bind('k_r',       'lk_r',       v => { P.k_r    = v;       return v + ' N/mm'; });
+bind('pre_r',     'lpre_r',     v => { P.pre_r   = v/1000;  return v + ' mm'; });
+bind('dc_r',      'ldc_r',      v => { P.dc_r    = v/100;   return (v/100).toFixed(2)+'×'; });
+bind('dr_r',      'ldr_r',      v => { P.dr_r    = v/100;   return (v/100).toFixed(2)+'×'; });
 
-const V_MAX_SIM  = 1000;             // px/s = 4.0 m/s on graph
-const F_MAX_SIM  = PX_SCALE * 4000;  // display units = 4000 N on graph
+bind('ktire_f',   'lktire_f',   v => { P.k_tire_f = psiToKtire(+v); return v + ' psi'; });
+bind('munsp_f',   'lmunsp_f',   v => { P.m_unsprung_f = +v;          return v + ' kg'; });
+bind('ktire_r',   'lktire_r',   v => { P.k_tire_r = psiToKtire(+v); return v + ' psi'; });
+bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + ' kg'; });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  VALUE NOISE (deterministic 1D smooth noise, keyed to world position)
-// ════════════════════════════════════════════════════════════════════════════
+bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
+bind('speed',     'lspeed',     v => { P.speed   = v; document.getElementById('st-speed').textContent=v; return v+' km/h'; });
+bind('timescale', 'ltimescale', v => { P.timeScale = v/100; return (v/100).toFixed(2)+'×'; });
+bind('terrain',   'lterrain',   v => { P.terrain = +v;      return TERRAINS[+v]; });
+bind('amp',       'lamp',       v => { P.amp     = v/100;   return (v/100).toFixed(2)+'×'; });
+bind('freq',      'lfreq',      v => { P.freq    = v/100;   return (v/100).toFixed(2)+'×'; });
+bind('rough',     'lrough',     v => { P.rough   = v/100;   return v+'%'; });
+bind('duty',      'lduty',      v => { P.duty    = v/100;   return v+'%'; });
+
+// Wheel toggle
+let wheelMode = 'front';
+function setWheelMode(m) {
+  wheelMode = m;
+  document.getElementById('btn-front').classList.toggle('active', m==='front');
+  document.getElementById('btn-rear').classList.toggle('active',  m==='rear');
+  document.getElementById('susp-front').style.display = m==='front' ? '' : 'none';
+  document.getElementById('susp-rear').style.display  = m==='rear'  ? '' : 'none';
+  document.getElementById('curve-label').textContent = m.toUpperCase();
+  drawCurveEditor();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  VALUE NOISE
+// ═══════════════════════════════════════════════════════════
 function valueNoise(x) {
-  const s  = x / 70.0;
-  const i  = Math.floor(s);
-  const f  = s - i;
-  const u  = f * f * (3.0 - 2.0 * f);
-  const h0 = Math.sin(i       * 127.1 + 311.7) * 43758.5453123;
-  const h1 = Math.sin((i + 1) * 127.1 + 311.7) * 43758.5453123;
-  const v0 = h0 - Math.floor(h0);
-  const v1 = h1 - Math.floor(h1);
-  return (v0 + (v1 - v0) * u) * 2.0 - 1.0;  // [-1, 1]
+  const i  = Math.floor(x);
+  const f  = x - i;
+  const u  = f*f*(3-2*f);
+  const h0 = Math.sin(i     *127.1+311.7)*43758.5453;
+  const h1 = Math.sin((i+1) *127.1+311.7)*43758.5453;
+  return (h0-Math.floor(h0) + ((h1-Math.floor(h1))-(h0-Math.floor(h0)))*u)*2-1;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-//  CATMULL-ROM SPLINE (generic N-point)
-// ════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+//  CATMULL-ROM LUT
+// ═══════════════════════════════════════════════════════════
 const CURVE_SAMPLES = 256;
 
 function buildCurveLUT(pts) {
   const n    = pts.length;
   const segs = n - 1;
-  const stepsPerSeg = Math.ceil(CURVE_SAMPLES / segs);
-
-  // Phantom endpoints so curve passes exactly through first and last control point
-  const ext = [
-    { x: 2*pts[0].x   - pts[1].x,     y: 2*pts[0].y   - pts[1].y },
+  const sps  = Math.ceil(CURVE_SAMPLES / segs);
+  const ext  = [
+    { x:2*pts[0].x-pts[1].x,     y:2*pts[0].y-pts[1].y },
     ...pts,
-    { x: 2*pts[n-1].x - pts[n-2].x,   y: 2*pts[n-1].y - pts[n-2].y }
+    { x:2*pts[n-1].x-pts[n-2].x, y:2*pts[n-1].y-pts[n-2].y }
   ];
-
-  const lut = [];
-  for (let s = 0; s < segs; s++) {
-    const p0 = ext[s], p1 = ext[s+1], p2 = ext[s+2], p3 = ext[s+3];
-    const endI = (s === segs - 1) ? stepsPerSeg : stepsPerSeg - 1;
-    for (let i = 0; i <= endI; i++) {
-      const t  = i / stepsPerSeg;
-      const t2 = t * t, t3 = t2 * t;
-      const c0 = -0.5*t3 +       t2 - 0.5*t;
-      const c1 =  1.5*t3 - 2.5*t2          + 1.0;
-      const c2 = -1.5*t3 + 2.0*t2 + 0.5*t;
-      const c3 =  0.5*t3 - 0.5*t2;
+  const lut  = [];
+  for (let s=0; s<segs; s++) {
+    const p0=ext[s], p1=ext[s+1], p2=ext[s+2], p3=ext[s+3];
+    const endI = (s===segs-1) ? sps : sps-1;
+    for (let i=0; i<=endI; i++) {
+      const t=i/sps, t2=t*t, t3=t2*t;
+      const c0=-0.5*t3+    t2-0.5*t;
+      const c1= 1.5*t3-2.5*t2     +1;
+      const c2=-1.5*t3+2.0*t2+0.5*t;
+      const c3= 0.5*t3-0.5*t2;
       lut.push({
-        x: Math.max(0, Math.min(1,   c0*p0.x + c1*p1.x + c2*p2.x + c3*p3.x)),
-        y: Math.max(0, Math.min(1.5, c0*p0.y + c1*p1.y + c2*p2.y + c3*p3.y))
+        x: Math.max(0, Math.min(1,   c0*p0.x+c1*p1.x+c2*p2.x+c3*p3.x)),
+        y: Math.max(0, Math.min(1.5, c0*p0.y+c1*p1.y+c2*p2.y+c3*p3.y))
       });
     }
   }
-  lut.sort((a, b) => a.x - b.x);
-  lut[0]              = { x: pts[0].x,     y: pts[0].y };
-  lut[lut.length - 1] = { x: pts[n-1].x,   y: pts[n-1].y };
+  lut.sort((a,b)=>a.x-b.x);
+  lut[0]            = {x:pts[0].x,     y:pts[0].y};
+  lut[lut.length-1] = {x:pts[n-1].x,   y:pts[n-1].y};
   return lut;
 }
 
 function evalCurveLUT(lut, x) {
   x = Math.max(0, Math.min(1, x));
-  if (x <= lut[0].x)            return lut[0].y;
-  if (x >= lut[lut.length-1].x) return lut[lut.length-1].y;
-  let lo = 0, hi = lut.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (lut[mid].x <= x) lo = mid; else hi = mid;
-  }
-  const t = (x - lut[lo].x) / (lut[hi].x - lut[lo].x);
-  return lut[lo].y + t * (lut[hi].y - lut[lo].y);
+  if (x<=lut[0].x)            return lut[0].y;
+  if (x>=lut[lut.length-1].x) return lut[lut.length-1].y;
+  let lo=0, hi=lut.length-1;
+  while (hi-lo>1) { const m=(lo+hi)>>1; if (lut[m].x<=x) lo=m; else hi=m; }
+  const t=(x-lut[lo].x)/(lut[hi].x-lut[lo].x);
+  return lut[lo].y+t*(lut[hi].y-lut[lo].y);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-//  DAMPING CURVE STATE & PRESETS
-// ════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+//  DAMPING CURVE PRESETS & STATE  (4 LUT sets)
+// ═══════════════════════════════════════════════════════════
 const PRESETS = {
   linear:      [{x:0,y:0},{x:0.33,y:0.33},{x:0.67,y:0.67},{x:1,y:1}],
   progressive: [{x:0,y:0},{x:0.33,y:0.12},{x:0.67,y:0.52},{x:1,y:1}],
@@ -256,510 +356,976 @@ const PRESETS = {
   quadratic:   [{x:0,y:0},{x:0.33,y:0.11},{x:0.67,y:0.44},{x:1,y:1}]
 };
 
-let compPts = PRESETS.linear.map(p => ({...p}));
-let rebPts  = PRESETS.linear.map(p => ({...p}));
-let compLUT = buildCurveLUT(compPts);
-let rebLUT  = buildCurveLUT(rebPts);
+let compPts_F = PRESETS.linear.map(p=>({...p}));
+let rebPts_F  = PRESETS.linear.map(p=>({...p}));
+let compPts_R = PRESETS.linear.map(p=>({...p}));
+let rebPts_R  = PRESETS.linear.map(p=>({...p}));
 
-// ════════════════════════════════════════════════════════════════════════════
-//  TERRAIN
-// ════════════════════════════════════════════════════════════════════════════
-function groundY(wx) {
-  const base     = canvas.height * 0.82;
-  const amp      = P.amp;
-  const freq     = P.freq;
-  const noiseOff = P.rough > 0 ? valueNoise(wx) * 30 * P.rough : 0;
+let compLUT_F = buildCurveLUT(compPts_F);
+let rebLUT_F  = buildCurveLUT(rebPts_F);
+let compLUT_R = buildCurveLUT(compPts_R);
+let rebLUT_R  = buildCurveLUT(rebPts_R);
 
+// ═══════════════════════════════════════════════════════════
+//  TERRAIN  (SI — returns meters, positive Y = down)
+// ═══════════════════════════════════════════════════════════
+function groundY_m(wx_m) {
+  const amp  = P.amp;
+  const freq = P.freq;
+  const noise = P.rough>0 ? valueNoise(wx_m*5)*0.015*P.rough : 0;
   switch (P.terrain) {
     case 0: // Bumps
-      return base + Math.sin(wx * 0.045 * freq) * 35 * amp
-                  + Math.sin(wx * 0.09  * freq) * 16 * amp
-                  + noiseOff;
-
+      return Math.sin(wx_m*Math.PI*freq)*0.08*amp
+           + Math.sin(wx_m*Math.PI*2*freq)*0.03*amp + noise;
     case 1: { // Whoops
-      const wl    = 55 / freq;
-      const phase = (((wx % wl) + wl) % wl) / wl;
-      return base + (phase < 0.5 ? Math.sin(phase * Math.PI * 2) * 45 * amp : 0) + noiseOff;
+      const wl = 1.5/freq;
+      const ph = (((wx_m%wl)+wl)%wl)/wl;
+      return (ph<0.5 ? Math.sin(ph*Math.PI*2)*0.18*amp : 0) + noise;
     }
-
     case 2: { // Step drop with duty cycle
-      const cycle      = 600;
-      const dropH      = 61 * amp;
-      const edgeW      = Math.max(8, 40 / freq);
-      const zone       = ((wx % cycle) + cycle) % cycle;
-      const dropStart  = 200;
-      const dropEnd    = dropStart + edgeW;
-      const downLen    = P.duty * (cycle - dropEnd);
-      const riseStart  = dropEnd + downLen;
-      const riseEnd    = riseStart + edgeW;
-      let t = 0;
-      if (zone >= dropStart && zone < dropEnd) {
-        t = (zone - dropStart) / edgeW;
-        t = (1 - Math.cos(t * Math.PI)) / 2;
-      } else if (zone >= dropEnd && zone < riseStart) {
-        t = 1;
-      } else if (zone >= riseStart && zone < riseEnd) {
-        t = (zone - riseStart) / edgeW;
-        t = (1 + Math.cos(t * Math.PI)) / 2;
-      }
-      return base + t * dropH + noiseOff;
+      const cycle   = 6.0;          // m
+      const dropH   = 0.15*amp;
+      const edgeW   = Math.max(0.05, 0.3/freq);
+      const zone    = (((wx_m%cycle)+cycle)%cycle);
+      const dStart  = 2.0;
+      const dEnd    = dStart+edgeW;
+      const downLen = P.duty*(cycle-dEnd);
+      const rStart  = dEnd+downLen;
+      const rEnd    = rStart+edgeW;
+      let t=0;
+      if (zone>=dStart && zone<dEnd)       { t=(zone-dStart)/edgeW; t=(1-Math.cos(t*Math.PI))/2; }
+      else if (zone>=dEnd && zone<rStart)   { t=1; }
+      else if (zone>=rStart && zone<rEnd)   { t=(zone-rStart)/edgeW; t=(1+Math.cos(t*Math.PI))/2; }
+      return t*dropH + noise;
     }
-
-    case 3: { // Kicker — smooth sine hump (jump face)
-      const cycle  = 500 / freq;
-      const zone   = ((wx % cycle) + cycle) % cycle;
-      const t      = zone / cycle;
-      const kickDur = 0.25;
-      if (t < kickDur) {
-        const rampT = t / kickDur;
-        return base - Math.sin(rampT * Math.PI) * 65 * amp + noiseOff;
-      }
-      return base + noiseOff;
+    case 3: { // Kicker — smooth hump
+      const cycle = 5.0/freq;
+      const zone  = (((wx_m%cycle)+cycle)%cycle)/cycle;
+      const dur   = 0.22;
+      if (zone<dur) { const rt=zone/dur; return -Math.sin(rt*Math.PI)*0.12*amp + noise; }
+      return noise;
     }
-
-    case 4: // Flat — gentle long-wavelength undulation
-      return base + Math.sin(wx * 0.005 * freq) * 15 * amp + noiseOff;
+    case 4: // Flat — gentle long-wavelength
+      return Math.sin(wx_m*0.5*freq)*0.025*amp + noise;
   }
-  return canvas.height * 0.80;
+  return 0;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-//  TWO-MASS PHYSICS STATE
-// ════════════════════════════════════════════════════════════════════════════
-let worldX      = 0;
-let sprungY     = 0;
-let vy          = 0;
-let wheelY      = 0;
-let vWheel      = 0;
-let initialized = false;
-let lastTs      = null;
+// ═══════════════════════════════════════════════════════════
+//  WHEEL GROUND CONTACT  (world position in meters)
+// ═══════════════════════════════════════════════════════════
+const WHEEL_STEPS = 24;
 
-// ════════════════════════════════════════════════════════════════════════════
-//  HELPERS
-// ════════════════════════════════════════════════════════════════════════════
-const WHEEL_STEPS = 32;
-
-function calcNaturalWY(worldXOff) {
+function calcNaturalWY_m(wx_m, r_m) {
+  // Find the highest wheel-centre Y (most restrictive = smallest Y value in Y-down coords)
+  // such that the wheel circle is tangent to or above the terrain at every point.
+  // For each horizontal sample dx, the wheel centre must satisfy:
+  //   centre_Y ≤ groundY(wx+dx) - sqrt(r²-dx²)
+  // The minimum of all these upper bounds is the equilibrium centre height.
   let wy = Infinity;
-  for (let i = 0; i <= WHEEL_STEPS; i++) {
-    const dx        = ((i / WHEEL_STEPS) - 0.5) * 2 * WHEEL_R;
-    const clearance = Math.sqrt(Math.max(0, WHEEL_R * WHEEL_R - dx * dx));
-    wy = Math.min(wy, groundY(worldXOff + dx) - clearance);
+  for (let i=0; i<=WHEEL_STEPS; i++) {
+    const dx  = ((i/WHEEL_STEPS)-0.5)*2*r_m;
+    const cl  = Math.sqrt(Math.max(0, r_m*r_m - dx*dx));
+    const gnd = groundY_m(wx_m+dx);
+    wy = Math.min(wy, gnd - cl);
   }
   return wy;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-//  MAIN DRAW LOOP
-// ════════════════════════════════════════════════════════════════════════════
-function draw(ts) {
-  requestAnimationFrame(draw);
+// ═══════════════════════════════════════════════════════════
+//  PHYSICS STATE  (SI units, positive Y down)
+// ═══════════════════════════════════════════════════════════
+let chassisY_m    = 0;
+let vChassis      = 0;
+let pitchAngle    = 0;   // rad, positive = nose down
+let pitchRate     = 0;
 
-  const W = canvas.width, H = canvas.height;
-  let dt = 0;
-  if (lastTs !== null) dt = Math.min((ts - lastTs) / 1000, 0.04);
-  lastTs = ts;
+// Front fork: primary DOF is slide distance along the fork axis (chassis-relative).
+// The fork axis direction is always RAKE_RAD - pitchAngle from world vertical — locked to chassis.
+// frontWheelY_m / frontWheelX_m are DERIVED each step from forkSlide_f + chassis pose.
+let forkSlide_f   = 0;   // m, fork displacement from natural length: negative = compressed
+let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = extending/rebound)
 
-  const dt_s      = dt * P.timeScale;  // scaled time step
-  const pxPerSec  = (P.speed / 3.6) * 30;
-  worldX         += pxPerSec * dt_s;
+// Derived wheel world positions (recomputed every physics step, NOT integrated)
+let frontWheelX_m = 0;
+let frontWheelY_m = 0;
 
-  const screenWX     = W * 0.48;          // front wheel — pushed right to give rear wheel room
-  const rearWheelSX  = screenWX - WHEELBASE_PX;  // rear wheel — MT-07 ~1400 mm wheelbase
+let rearWheelY_m  = 0;
+let vRearWheel    = 0;
+let rearWheelX_m  = 0;
 
-  // Wheel–ground contact heights (full circle tangent to terrain)
-  const natural_wy      = calcNaturalWY(worldX + screenWX);
-  const rear_natural_wy = calcNaturalWY(worldX + rearWheelSX);
+let worldX_m      = 0;
+let lastTs        = null;
+let initialized   = false;
 
-  // Initialise near static equilibrium
-  if (!initialized) {
-    wheelY  = natural_wy;
-    const K_S_init = P.k * PX_SCALE;
-    const disp_eq  = -G_EFF * (P.mass + 100) / K_S_init;
-    sprungY = wheelY - REST_LEN - disp_eq;
-    initialized = true;
-  }
+// Wheel rotation angles (radians, positive = clockwise = forward rolling)
+let wheelAngle_f  = 0;
+let wheelAngle_r  = 0;
 
-  // ── Two-mass physics ────────────────────────────────────────────────────
-  const M_S      = P.mass + 100;
-  const K_S      = P.k * PX_SCALE;
+// Cached forces for display
+let f_spring_F=0, f_damp_F=0, f_spring_R=0, f_damp_R=0;
+let f_tire_F=0, f_tire_R=0;
+let disp_f=0, disp_r=0;
 
-  const crit     = 2 * Math.sqrt(K_S * M_S);
-  const c_comp   = P.dc * crit * 0.35;
-  const c_reb    = P.dr * crit * 0.35;
+// ═══════════════════════════════════════════════════════════
+//  FORCE HISTORY  (300 samples = ~5 s at 60fps)
+// ═══════════════════════════════════════════════════════════
+const HIST_MAX = 300;
+const hist = { fs:[], fd:[], rs:[], rd:[] };
+['fs','fd','rs','rd'].forEach(k => { for(let i=0;i<HIST_MAX;i++) hist[k].push(0); });
 
-  const disp     = (wheelY - sprungY) - REST_LEN - P.pre;
-  const rv       = vWheel - vy;
-
-  const f_spring = K_S * disp;
-
-  // F-v curve damping
-  const normV     = Math.min(1, Math.abs(rv) / V_MAX_SIM);
-  const isComp    = rv < 0;
-  const gain      = isComp ? P.dc : P.dr;
-  const activeLUT = isComp ? compLUT : rebLUT;
-  const curveFrac = evalCurveLUT(activeLUT, normV);
-  const f_damp    = (rv === 0 ? 0 : Math.sign(rv)) * gain * curveFrac * F_MAX_SIM;
-
-  const f_tire   = wheelY > natural_wy ? -K_TIRE * (wheelY - natural_wy) : 0;
-  const f_susp   = f_spring + f_damp;
-
-  const a_body   = G_EFF + f_susp   / M_S;
-  const a_wheel  = G_EFF - f_susp   / M_UNSPRUNG + f_tire / M_UNSPRUNG;
-
-  vy      += a_body  * dt_s;
-  vWheel  += a_wheel * dt_s;
-  sprungY += vy      * dt_s;
-  wheelY  += vWheel  * dt_s;
-
-  // Hard stops
-  const travel = wheelY - sprungY;
-  if (travel > MAX_TRAVEL) { wheelY = sprungY + MAX_TRAVEL; vWheel = vy - Math.abs(vWheel - vy) * 0.2; }
-  if (travel < MIN_TRAVEL) { wheelY = sprungY + MIN_TRAVEL; vWheel = vy + Math.abs(vWheel - vy) * 0.2; }
-
-  const travelMM = Math.round(wheelY - sprungY);
-  document.getElementById('st-travel').textContent = travelMM;
-  document.getElementById('st-spring').textContent = Math.round(Math.abs(f_spring) / PX_SCALE);
-  document.getElementById('st-damp').textContent   = Math.round(Math.abs(f_damp)   / PX_SCALE);
-
-  // ── Draw ────────────────────────────────────────────────────────────────
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, W, H);
-  // Sky (slight dark-red tint above ground)
-  ctx.fillStyle = '#0a0000'; ctx.fillRect(0, 0, W, H * 0.80);
-
-  // Ground surface
-  ctx.beginPath();
-  for (let px = 0; px <= W; px += 3) {
-    const y = groundY(worldX + px);
-    px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
-  }
-  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
-  ctx.fillStyle = '#111111'; ctx.fill();
-  ctx.strokeStyle = '#2d0505'; ctx.lineWidth = 2; ctx.stroke();
-
-  // ── Travel bar ──────────────────────────────────────────────────────────
-  // Fills top-to-bottom; white at mid-travel, red at extremes
-  const bx = W - 22, bTop = 20, bH = H * 0.6;
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath(); ctx.roundRect(bx, bTop, 12, bH, 6); ctx.fill();
-
-  const fillFrac = Math.max(0, Math.min(1, (travelMM - MIN_TRAVEL) / (MAX_TRAVEL - MIN_TRAVEL)));
-  const fillH    = fillFrac * bH;
-  const t_ext    = Math.abs(fillFrac - 0.5) * 2;  // 0 = mid, 1 = extreme
-  const cR       = Math.round(0xe2 + (0xe1 - 0xe2) * t_ext);  // 226 → 225
-  const cG       = Math.round(0xe8 * (1 - t_ext) + 0x1d * t_ext);  // 232 → 29
-  const cB       = Math.round(0xf0 * (1 - t_ext) + 0x48 * t_ext);  // 240 → 72
-  const barColor = `rgb(${cR},${cG},${cB})`;
-  ctx.fillStyle  = barColor;
-  ctx.beginPath(); ctx.roundRect(bx, bTop, 12, fillH, 6); ctx.fill();
-  ctx.fillStyle = '#444'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('travel', bx + 6, bTop - 6);
-
-  const sx  = screenWX;
-  const sy  = sprungY;
-  const wx2 = sx;
-  const wy2 = wheelY;
-
-  // ── Rear wheel (visual only — sits on terrain) ──────────────────────────
-  const rwy = rear_natural_wy;
-  drawWheel(rearWheelSX, rwy, WHEEL_R);
-
-  // ── Swingarm (rear body pivot → rear axle) ───────────────────────────────
-  // Pivot is at the rear-bottom of the body; axle is the rear wheel centre.
-  const swingarmPivotX = sx - 80;   // ~rear quarter of frame
-  const swingarmPivotY = sy + 20;
-  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(swingarmPivotX, swingarmPivotY);
-  ctx.lineTo(rearWheelSX, rwy);
-  ctx.stroke();
-  // Swingarm highlight
-  ctx.strokeStyle = '#444'; ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(swingarmPivotX, swingarmPivotY);
-  ctx.lineTo(rearWheelSX, rwy);
-  ctx.stroke();
-
-  // ── Fork tube (behind spring) ───────────────────────────────────────────
-  const forkTopY    = sy + 20;          // fork exits body bottom
-  const forkBotY    = wy2 - WHEEL_R + 4;
-  ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 14; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(sx, forkTopY); ctx.lineTo(wx2, forkBotY); ctx.stroke();
-  // Stanchion highlight (lighter inner)
-  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 7;
-  ctx.beginPath(); ctx.moveTo(sx, forkTopY); ctx.lineTo(wx2, forkBotY); ctx.stroke();
-
-  // ── Spring (zigzag) ─────────────────────────────────────────────────────
-  const nSegs = 18, springAmp = 10;
-  ctx.strokeStyle = barColor; ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let i = 0; i <= nSegs * 4; i++) {
-    const t2  = i / (nSegs * 4);
-    const py  = forkTopY + (forkBotY - forkTopY) * t2;
-    const px2 = sx + Math.sin(t2 * Math.PI * 2 * nSegs) * springAmp;
-    i === 0 ? ctx.moveTo(px2, py) : ctx.lineTo(px2, py);
-  }
-  ctx.stroke();
-
-  // ── Bike body (sprung mass) ──────────────────────────────────────────────
-  // Body spans from roughly above rear-wheel to above front fork
-  const bodyW = 180, bodyH = 48;
-  const bodyX = sx - 130;   // rear edge of body (above swingarm pivot region)
-  const bodyY = sy - bodyH;
-  ctx.fillStyle = '#1a0000'; ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(bodyX, bodyY, bodyW, bodyH, 7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#f0f0f0'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('SPRUNG MASS', bodyX + bodyW / 2, bodyY + bodyH / 2 + 4);
-
-  // ── Front wheel ─────────────────────────────────────────────────────────
-  drawWheel(wx2, wy2, WHEEL_R);
-
-  // ── Airborne tag ─────────────────────────────────────────────────────────
-  if (f_tire === 0) {
-    ctx.fillStyle = '#e11d48'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('AIR', wx2 + WHEEL_R + 6, wy2 + 4);
-  }
-
-  // ── Travel label ─────────────────────────────────────────────────────────
-  ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
-  const midForkY = (forkTopY + forkBotY) / 2;
-  ctx.fillText('↕ ' + travelMM + 'mm', sx + 18, midForkY);
+// ═══════════════════════════════════════════════════════════
+//  STATIC EQUILIBRIUM INIT
+// ═══════════════════════════════════════════════════════════
+function getMsprung() {
+  return (184 + P.mass) - P.m_unsprung_f - P.m_unsprung_r;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-//  WHEEL DRAWING HELPER
-// ════════════════════════════════════════════════════════════════════════════
-function drawWheel(cx, cy, r) {
-  // Tyre
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = '#c8c8c8'; ctx.lineWidth = 9; ctx.stroke();
-  // Rim
-  const rimR = r - 13;
+function initPhysics() {
+  const K_F = P.k_f * 1000;
+  const K_R = P.k_r * 1000;
+  const Ms  = getMsprung();
+  const W   = Ms * g;   // total sprung weight
+
+  // Static spring compressions at equilibrium (clamped to 95% of max travel)
+  const sagF = Math.min(W * 0.49 / K_F, TRAVEL_MAX * 0.95);
+  const sagR = Math.min(W * 0.51 / K_R, TRAVEL_MAX * 0.95);
+
+  // Wheel ground contact (natural position = wheel just touching terrain)
+  const nat_f = calcNaturalWY_m(worldX_m,            WHEEL_R_F);
+  const nat_r = calcNaturalWY_m(worldX_m - WHEELBASE, WHEEL_R_R);
+
+  // At equilibrium each wheel penetrates the tire spring by exactly enough to
+  // support its share of the unsprung + suspended load.
+  const pen_f = (K_F * sagF + P.m_unsprung_f * g) / P.k_tire_f;
+  const pen_r = (K_R * sagR + P.m_unsprung_r * g) / P.k_tire_r;
+
+  // Front fork: set compression DOF directly (negative = compressed)
+  forkSlide_f  = -sagF;
+  vForkSlide_f = 0;
+
+  // Rear wheel Y (world, same as before)
+  rearWheelY_m = nat_r + pen_r;
+  rearWheelX_m = worldX_m - WHEELBASE;   // approximate, updated by physics after settle
+
+  // Solve 2-eq system for equilibrium pitch and chassis CoM height.
+  // Front: steerHead_Y = frontWheelY - s_f * cos(RAKE) = nat_f + pen_f - (REST_F_M - sagF)*cos(RAKE)
+  //        steerHead_Y = chassisY + pitch * A_FRONT
+  // Rear:  rear_attach_Y = rearWheelY - REST_R + sagR
+  //        rear_attach_Y = chassisY - pitch * B_REAR
+  const cosRake = Math.cos(RAKE_RAD);
+  const eq_f = (nat_f + pen_f) - (REST_F_M - sagF) * cosRake;  // steerHead_Y at equilibrium
+  const eq_r = rearWheelY_m - REST_R_M + sagR;                  // rear_attach_Y at equilibrium
+  pitchAngle = (eq_f - eq_r) / (A_FRONT_M + B_REAR_M);
+  chassisY_m = eq_f - pitchAngle * A_FRONT_M;
+
+  // Seed derived front wheel world position from initial chassis pose
+  {
+    const φ0 = RAKE_RAD - pitchAngle;
+    const steerY0 = chassisY_m + A_FRONT_M * pitchAngle;
+    frontWheelX_m = worldX_m + (REST_F_M + forkSlide_f) * Math.sin(φ0);
+    frontWheelY_m = steerY0   + (REST_F_M + forkSlide_f) * Math.cos(φ0);
+  }
+
+  vChassis = 0; pitchRate = 0; vForkSlide_f = 0; vRearWheel = 0;
+
+  // Settle with terrain FROZEN (speed=0) so bumps don't create transients
+  // that overwhelm the initial equilibrium estimate.
+  const savedSpeed = P.speed;
+  P.speed = 0;
+  for (let i = 0; i < 500; i++) simStep(0.005);
+  P.speed = savedSpeed;
+  vChassis = 0; vForkSlide_f = 0; vRearWheel = 0; pitchRate = 0;
+  initialized = true;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DAMPING FORCE  (using per-wheel LUTs)
+// ═══════════════════════════════════════════════════════════
+function dampForce(rv, isComp, isRear) {
+  const gain    = isComp
+    ? (isRear ? P.dc_r : P.dc_f)
+    : (isRear ? P.dr_r : P.dr_f);
+  const lut     = isComp
+    ? (isRear ? compLUT_R : compLUT_F)
+    : (isRear ? rebLUT_R  : rebLUT_F);
+  const F_MAX   = isRear ? F_MAX_R : F_MAX_F;
+  const normV   = Math.abs(rv) / V_MAX_SIM;
+  const frac    = evalCurveLUT(lut, normV);
+  return gain * frac * F_MAX;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SIMULATION STEP  (sub-stepped for numerical stability)
+// ═══════════════════════════════════════════════════════════
+// Default tire spring ~300000 N/m, unsprung ~13kg → ω≈152 rad/s → Euler stable for dt<0.013s.
+// Cap each sub-step at 0.005s → safe 2.6× margin.
+const MAX_SUBSTEP = 0.005;  // seconds
+
+function _physicsStep(dt_s) {
+  const Ms  = getMsprung();
+  const K_F = P.k_f * 1000;  // N/m
+  const K_R = P.k_r * 1000;
+
+  // ── Fork geometry: axis locked to chassis ─────────────────────────────────
+  // Fork axis = RAKE_RAD - pitchAngle from world vertical, always.
+  // Proper 2D rotation: chassis-frame fork vector (sin RAKE, cos RAKE) rotated by pitchAngle
+  // gives world direction (sin(RAKE-pitch), cos(RAKE-pitch)).
+  const φ_f  = RAKE_RAD - pitchAngle;
+  const cosφ = Math.cos(φ_f);
+  const sinφ = Math.sin(φ_f);
+  const s_f  = REST_F_M + forkSlide_f;          // current fork length along axis
+
+  // Steer head: full 2D rotation of chassis axis from CoM
+  const cosP   = Math.cos(pitchAngle), sinP = Math.sin(pitchAngle);
+  const comX_m = worldX_m - A_FRONT_M;
+  const steerX = comX_m + A_FRONT_M * cosP;     // full cos for X
+  const steerY = chassisY_m + A_FRONT_M * sinP; // full sin for Y
+  frontWheelX_m = steerX + s_f * sinφ;          // wheel world X (derived, not integrated)
+  frontWheelY_m = steerY + s_f * cosφ;          // wheel world Y (derived, not integrated)
+
+  // ── Rear chassis attachment ───────────────────────────────────────────────
+  const rear_attach_Y = chassisY_m - pitchAngle * B_REAR_M;
+  const v_rear_attach = vChassis   - pitchRate  * B_REAR_M;
+
+  // ── Front fork spring & damper (along fork axis) ──────────────────────────
+  // forkSlide_f < 0 → compressed → spring pushes wheel out (extends fork)
+  let df   = forkSlide_f - P.pre_f;             // effective spring displacement
+  let rv_f = vForkSlide_f;                       // relative velocity along fork axis
+
+  if (df > TRAVEL_EXT)  { df = TRAVEL_EXT;  if (rv_f > 0) rv_f = 0; }
+  if (df < -TRAVEL_MAX) { df = -TRAVEL_MAX; if (rv_f < 0) rv_f = 0; }
+
+  f_spring_F = K_F * df;
+  const comp_f   = rv_f < 0;
+  const fd_mag_f = rv_f !== 0 ? dampForce(rv_f, comp_f, false) : 0;
+  f_damp_F = Math.sign(rv_f) * fd_mag_f;
+  const fsusp_f  = f_spring_F + f_damp_F;        // force along fork axis (neg = compressed)
+
+  // ── Rear suspension spring & damper (vertical) ────────────────────────────
+  let dr   = (rearWheelY_m - rear_attach_Y) - REST_R_M - P.pre_r;
+  let rv_r = vRearWheel - v_rear_attach;
+
+  if (dr > TRAVEL_EXT)  { dr = TRAVEL_EXT;  if (rv_r > 0) rv_r = 0; }
+  if (dr < -TRAVEL_MAX) { dr = -TRAVEL_MAX; if (rv_r < 0) rv_r = 0; }
+
+  f_spring_R = K_R * dr;
+  const comp_r   = rv_r < 0;
+  const fd_mag_r = rv_r !== 0 ? dampForce(rv_r, comp_r, true) : 0;
+  f_damp_R = Math.sign(rv_r) * fd_mag_r;
+  const fsusp_r  = f_spring_R + f_damp_R;
+
+  // ── Tire springs ──────────────────────────────────────────────────────────
+  const nat_f = calcNaturalWY_m(frontWheelX_m, WHEEL_R_F);
+  const nat_r = calcNaturalWY_m(rearWheelX_m,  WHEEL_R_R);
+
+  f_tire_F = frontWheelY_m > nat_f ? -P.k_tire_f * (frontWheelY_m - nat_f) : 0;
+  f_tire_R = rearWheelY_m  > nat_r ? -P.k_tire_r * (rearWheelY_m  - nat_r) : 0;
+
+  // ── Chassis EOM ───────────────────────────────────────────────────────────
+  // Fork force on chassis: the fork is tilted, so only the Y component of the
+  // suspension force acts on chassis heave; the X component is absorbed by the
+  // frame/steering geometry (chassis X isn't a free DOF in this sim).
+  const fsusp_f_y  = fsusp_f * cosφ;            // Y component of fork force on chassis
+  const a_chassis   = g + (fsusp_f_y + fsusp_r) / Ms;
+  const alpha_pitch = (A_FRONT_M * fsusp_f_y - B_REAR_M * fsusp_r) / I_YY;
+
+  // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
+  // Forces along fork axis on the unsprung wheel mass:
+  //   gravity component: M_UNSPRUNG_F * g * cosφ  (extends fork)
+  //   spring+damper:    -fsusp_f                   (compressed → pushes wheel out)
+  //   tire projection:   f_tire_F * cosφ           (upward tire force, projected)
+  // Fork EOM: unsprung wheel mass along fork axis (chassis-relative DOF).
+  // Use simple uncoupled form — the chassis inertial coupling term caused the
+  // fork to appear to rotate opposite the chassis during pitch events.
+  const a_fork = g * cosφ
+               - fsusp_f / P.m_unsprung_f
+               + f_tire_F * cosφ / P.m_unsprung_f;
+
+  // ── Rear wheel EOM (vertical) ─────────────────────────────────────────────
+  const a_rw = g - fsusp_r / P.m_unsprung_r + f_tire_R / P.m_unsprung_r;
+
+  // ── Integrate (explicit Euler) ────────────────────────────────────────────
+  vChassis     += a_chassis   * dt_s;
+  pitchRate    += alpha_pitch * dt_s;
+  chassisY_m   += vChassis    * dt_s;
+  pitchAngle   += pitchRate   * dt_s;
+
+  vForkSlide_f += a_fork      * dt_s;
+  forkSlide_f  += vForkSlide_f * dt_s;
+
+  vRearWheel   += a_rw        * dt_s;
+  rearWheelY_m += vRearWheel  * dt_s;
+
+  // ── Fork travel limits (direct DOF clamp — no positional correction needed) ─
+  if (forkSlide_f > TRAVEL_EXT) {
+    forkSlide_f = TRAVEL_EXT;
+    if (vForkSlide_f > 0) vForkSlide_f = 0;
+  } else if (forkSlide_f < -TRAVEL_MAX) {
+    forkSlide_f = -TRAVEL_MAX;
+    if (vForkSlide_f < 0) vForkSlide_f = 0;
+  }
+
+  // ── Rear wheel positional travel-limit correction ─────────────────────────
+  {
+    const ra2  = chassisY_m - pitchAngle * B_REAR_M;
+    const raV2 = vChassis   - pitchRate  * B_REAR_M;
+    const dr2  = (rearWheelY_m - ra2) - REST_R_M - P.pre_r;
+    if (dr2 > TRAVEL_EXT) {
+      rearWheelY_m -= (dr2 - TRAVEL_EXT);
+      if (vRearWheel - raV2 > 0) vRearWheel = raV2;
+    } else if (dr2 < -TRAVEL_MAX) {
+      rearWheelY_m -= (dr2 + TRAVEL_MAX);
+      if (vRearWheel - raV2 < 0) vRearWheel = raV2;
+    }
+  }
+
+  // Save display forces (disp_f negative = compressed = travel used)
+  disp_f = df;
+  disp_r = dr;
+
+  // ── Recompute derived front wheel world position after all corrections ─────
+  {
+    const φ2   = RAKE_RAD - pitchAngle;
+    const cP2  = Math.cos(pitchAngle), sP2 = Math.sin(pitchAngle);
+    const stX2 = (worldX_m - A_FRONT_M) + A_FRONT_M * cP2;   // steer head X (full rotation)
+    const stY2 = chassisY_m + A_FRONT_M * sP2;                // steer head Y (full rotation)
+    frontWheelX_m = stX2 + (REST_F_M + forkSlide_f) * Math.sin(φ2);
+    frontWheelY_m = stY2 + (REST_F_M + forkSlide_f) * Math.cos(φ2);
+  }
+
+  // ── Rear wheel kinematic X from swingarm arc ──────────────────────────────
+  {
+    const _comX = worldX_m - A_FRONT_M;
+    // Pivot is body-fixed: rotate chassis-frame offset (SW_PIV_X_FROM_COM, SW_PIV_Y_FROM_COM)
+    // by pitchAngle into world frame.  cosP/sinP already computed above.
+    const _pivX = _comX + SW_PIV_X_FROM_COM * cosP - SW_PIV_Y_FROM_COM * sinP;
+    const _pivY = chassisY_m + SW_PIV_X_FROM_COM * sinP + SW_PIV_Y_FROM_COM * cosP;
+    const _swDY = rearWheelY_m - _pivY;
+    const _swDX = Math.sqrt(Math.max(0, SWINGARM_L * SWINGARM_L - _swDY * _swDY));
+    rearWheelX_m = _pivX - _swDX;
+  }
+
+  // Advance terrain scroll
+  const v_ground = P.speed / 3.6;   // m/s
+  worldX_m     += v_ground * dt_s;
+  // Rolling wheel angles: ω = v / r, clockwise = positive (matches canvas Y-down)
+  wheelAngle_f += (v_ground / WHEEL_R_F) * dt_s;
+  wheelAngle_r += (v_ground / WHEEL_R_R) * dt_s;
+}
+
+function simStep(dt_s) {
+  // Split frame dt into sub-steps small enough for Euler stability
+  const n   = Math.max(1, Math.ceil(dt_s / MAX_SUBSTEP));
+  const sub = dt_s / n;
+  for (let i = 0; i < n; i++) _physicsStep(sub);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  WHEEL DRAWING
+// ═══════════════════════════════════════════════════════════
+function drawWheel(cx, cy, r_px, rotAngle) {
+  // Tire section width ≈ 27% of total radius (realistic for 120/70 & 180/55 R17)
+  const rimR = r_px - Math.round(r_px * 0.27);
+
+  // Solid tire donut — outer contact edge is clearly the full radius r_px
+  ctx.beginPath();
+  ctx.arc(cx, cy, r_px, 0, Math.PI * 2, false);   // outer circle CW
+  ctx.arc(cx, cy, rimR, 0, Math.PI * 2, true);     // inner cutout CCW → creates donut
+  ctx.fillStyle = '#1c1c1c';
+  ctx.fill();
+  // Tire sidewall highlight ring
+  ctx.beginPath(); ctx.arc(cx, cy, r_px, 0, Math.PI * 2);
+  ctx.strokeStyle = '#b8b8b8'; ctx.lineWidth = 1.5; ctx.stroke();
+  // Inner tire edge
   ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
-  ctx.strokeStyle = '#666'; ctx.lineWidth = 3; ctx.stroke();
-  // Spokes (8)
-  const nSpokes = 8;
-  ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
-  for (let i = 0; i < nSpokes; i++) {
-    const a = (i / nSpokes) * Math.PI * 2;
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Rim face (filled silver-grey)
+  ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
+  ctx.fillStyle = '#4e4e4e'; ctx.fill();
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Spokes — rotated by rolling angle
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotAngle || 0);
+  ctx.strokeStyle = '#606060'; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * 5,    cy + Math.sin(a) * 5);
-    ctx.lineTo(cx + Math.cos(a) * rimR, cy + Math.sin(a) * rimR);
+    ctx.moveTo(Math.cos(a) * 5, Math.sin(a) * 5);
+    ctx.lineTo(Math.cos(a) * rimR, Math.sin(a) * rimR);
     ctx.stroke();
   }
-  // Hub
+  ctx.restore();
+
+  // Hub (drawn after restore so it's always centered, not rotated)
   ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2);
   ctx.fillStyle = '#888'; ctx.fill();
   ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
   ctx.fillStyle = '#ccc'; ctx.fill();
 }
 
-requestAnimationFrame(draw);
+// ═══════════════════════════════════════════════════════════
+//  SCREEN COORDINATE HELPERS
+// ═══════════════════════════════════════════════════════════
+function screenY(y_m) {
+  return (y_m - chassisY_m) * PM + canvas.height * 0.5;
+}
+function screenLen(d_m) { return d_m * PM; }
 
-// ════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+//  MAIN DRAW LOOP
+// ═══════════════════════════════════════════════════════════
+function draw(ts) {
+  requestAnimationFrame(draw);
+
+  const W = canvas.width, H = canvas.height;
+  let dt = 0;
+  if (lastTs !== null) dt = Math.min((ts-lastTs)/1000, 0.025);
+  lastTs = ts;
+
+  if (!initialized) { initPhysics(); }
+
+  if (dt > 0) {
+    const dt_s = dt * P.timeScale;
+    simStep(dt_s);
+
+    // Force history
+    hist.fs.push(f_spring_F); hist.fs.shift();
+    hist.fd.push(f_damp_F);   hist.fd.shift();
+    hist.rs.push(f_spring_R); hist.rs.shift();
+    hist.rd.push(f_damp_R);   hist.rd.shift();
+  }
+
+  // ── Stats ─────────────────────────────────────────────────
+  // Travel used = compression amount (negative disp = compressed, show as positive mm)
+  const travF_mm = Math.round(-disp_f * 1000);
+  const travR_mm = Math.round(-disp_r * 1000);
+  document.getElementById('st-ft').textContent    = travF_mm;
+  document.getElementById('st-rt').textContent    = travR_mm;
+  document.getElementById('st-pitch').textContent = (pitchAngle*180/Math.PI).toFixed(1);
+  document.getElementById('st-fspring').textContent = Math.round(Math.abs(f_spring_F));
+  document.getElementById('st-fdamp').textContent   = Math.round(Math.abs(f_damp_F));
+
+  // ── Clear & sky ───────────────────────────────────────────
+  ctx.fillStyle='#d0d0d0'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#c0c8d4'; ctx.fillRect(0,0,W,H*0.5);
+
+  // ── Screen coordinate helpers ─────────────────────────────
+  // Chassis CoM is at a fixed screen X; everything is rendered relative to it.
+  const comSX    = COM_SX();                        // CoM fixed screen X
+  const comX_m_d = worldX_m - A_FRONT_M;           // CoM world X
+
+  // World-X → screen-X (CoM-relative)
+  const w2sx = wx => comSX + (wx - comX_m_d) * PM;
+
+  // ── Ground ────────────────────────────────────────────────
+  ctx.beginPath();
+  for (let px = 0; px <= W; px += 3) {
+    const wx_m  = comX_m_d + (px - comSX) / PM;    // world X for this screen pixel
+    const gy_m  = groundY_m(wx_m);
+    const sy_px = screenY(gy_m);
+    px === 0 ? ctx.moveTo(px, sy_px) : ctx.lineTo(px, sy_px);
+  }
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+  ctx.fillStyle='#4a4a4a'; ctx.fill();
+  ctx.strokeStyle='#e11d48'; ctx.lineWidth=10; ctx.stroke();
+
+  // ── Kinematic screen positions (chassis-relative) ─────────
+  // These use the X positions computed in the physics step from fork/swingarm geometry.
+
+  // Chassis rotation (for all body-fixed point positions)
+  const cosP_d = Math.cos(pitchAngle), sinP_d = Math.sin(pitchAngle);
+
+  // Steering head: full 2D rotation of A_FRONT_M along chassis axis from CoM
+  const steerX    = comSX + A_FRONT_M * cosP_d * PM;
+  const steerY_px = H/2   + A_FRONT_M * sinP_d * PM;
+
+  // Front wheel screen position (frontWheelX/Y already use full rotation from physics)
+  const fwX_px = w2sx(frontWheelX_m);
+  const fwY_px = screenY(frontWheelY_m);
+
+  // Swingarm pivot: full 2D rotation of chassis-frame offset (SW_PIV_X, SW_PIV_Y) from CoM
+  const swPivotX = comSX + (SW_PIV_X_FROM_COM * cosP_d - SW_PIV_Y_FROM_COM * sinP_d) * PM;
+  const swPivotY = H/2   + (SW_PIV_X_FROM_COM * sinP_d + SW_PIV_Y_FROM_COM * cosP_d) * PM;
+
+  // Rear wheel screen position (from kinematic rearWheelX_m)
+  const rwX_px = w2sx(rearWheelX_m);
+  const rwY_px = screenY(rearWheelY_m);
+
+  // Chassis body
+  const angle   = pitchAngle;
+  const bodyLen = 1.2;   // m visual length
+  const bodyH_m = 0.20;  // m visual height
+  const comX    = comSX;                   // CoM is always at fixed screen X
+  const comY    = screenY(chassisY_m);
+
+  // ── Rear wheel (behind swingarm and chassis) ─────────────
+  drawWheel(rwX_px, rwY_px, Math.round(WHEEL_R_R*PM), wheelAngle_r);
+
+  // ── Swingarm (in front of rear wheel) ────────────────────
+  ctx.strokeStyle='#111'; ctx.lineWidth=11; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(swPivotX, swPivotY); ctx.lineTo(rwX_px, rwY_px); ctx.stroke();
+  ctx.strokeStyle='#484848'; ctx.lineWidth=7;
+  ctx.beginPath(); ctx.moveTo(swPivotX, swPivotY); ctx.lineTo(rwX_px, rwY_px); ctx.stroke();
+  ctx.strokeStyle='#5a5a5a'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(swPivotX, swPivotY); ctx.lineTo(rwX_px, rwY_px); ctx.stroke();
+
+  // ── Front wheel (behind fork so fork travel is visible) ───
+  drawWheel(fwX_px, fwY_px, Math.round(WHEEL_R_F*PM), wheelAngle_f);
+
+  // ── Chassis (motorcycle frame) pitched ───────────────────
+  ctx.save();
+  ctx.translate(comX, comY);
+  ctx.rotate(angle);
+
+  // Frame vertices in chassis-local px (CoM=0,0, +x=forward/right, +y=down).
+  // Derived from user SVG (viewBox 0 0 2194 1256).
+  // Uniform scale 0.179. Mapping: SVG(179,218)→chassis(-137,-86), SVG(1745,474)→chassis(143,-40).
+  // offset_x = svg_x*0.179 - chassis_x → 179*0.179+137 = 169.0
+  // offset_y = svg_y*0.179 - chassis_y → 218*0.179+86 = 125.0
+  // chassis_x = svg_x*0.179 - 169,  chassis_y = svg_y*0.179 - 125
+  // Frame bottom (y=57) sits ~300 mm above tire contact.
+  const fv = [
+    [-137, -86],  // A: (179,218)   rear tail upper
+    [ -78, -85],  // B: (508,225)   rear upper spar
+    [ -57, -66],  // C: (626,331)   seat saddle / lower spar junction
+    [   5, -71],  // D: (975,302)   mid-frame
+    [  45, -99],  // E: (1199,144)  upper spar peak
+    [  92,-104],  // F: (1456,115)  head tube top-left
+    [ 119, -90],  // G: (1610,195)  head tube right
+    [ 143, -40],  // H: (1745,474)  fork crown / steer-head lower (aligns with SHx)
+    [  95,  57],  // I: (1474,1017) gearbox bottom right
+    [   9,  57],  // J: (1001,1017) gearbox bottom left
+    [   9,  27],  // K: (1001, 849) vertical section top
+    [ -18,  -7],  // L: ( 849, 655) diagonal ↔ vertical transition
+  ];
+
+  // ── Frame body (filled polygon) ──────────────────────────────────────
+  const fg = ctx.createLinearGradient(0, -104, 0, 57);
+  fg.addColorStop(0,   '#404040');
+  fg.addColorStop(0.4, '#2e2e2e');
+  fg.addColorStop(1,   '#1a1a1a');
+
+  ctx.beginPath();
+  fv.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+  ctx.closePath();
+  ctx.fillStyle = fg;
+  ctx.fill();
+
+  // Outer edge stroke
+  ctx.strokeStyle = '#585858'; ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // ── Engine block (sits inside the frame polygon) ─────────────────────
+  const eL = -18, eR = 70, eT = -55, eB = 15;
+  ctx.fillStyle = '#0d0d1f'; ctx.strokeStyle = '#1e1e3a'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(eL, eT, eR-eL, eB-eT, 4); ctx.fill(); ctx.stroke();
+  // Cylinder fins
+  ctx.strokeStyle = '#181832'; ctx.lineWidth = 1.5;
+  for (let fy = eT+9; fy < eB-2; fy += 8) {
+    ctx.beginPath(); ctx.moveTo(eL+3, fy); ctx.lineTo(eR-3, fy); ctx.stroke();
+  }
+  // Cylinder head face (right/front side)
+  ctx.fillStyle = '#12122a';
+  ctx.beginPath(); ctx.roundRect(eR-16, eT, 16, eB-eT, [0,4,4,0]); ctx.fill();
+
+  // ── Edge highlights for depth ─────────────────────────────────────────
+  ctx.lineCap = 'round';
+
+  // Upper spar: rear tail → seat saddle → mid-frame → upper peak → head tube top
+  ctx.strokeStyle = '#606060'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-137,-86); ctx.lineTo(-78,-85);
+  ctx.lineTo(-57,-66);  ctx.lineTo(5,-71);
+  ctx.lineTo(45,-99);   ctx.lineTo(92,-104);
+  ctx.stroke();
+
+  // Right face highlight: head tube top → head tube right → fork crown
+  ctx.strokeStyle = '#4e4e4e'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(92,-104); ctx.lineTo(119,-90); ctx.lineTo(143,-40); ctx.stroke();
+
+  // Lower surface: fork crown → gearbox bottom right → bottom left → vertical up → diagonal
+  ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(143,-40); ctx.lineTo(95,57);
+  ctx.lineTo(9,57);    ctx.lineTo(9,27); ctx.lineTo(-18,-7);
+  ctx.stroke();
+
+  // ── Head tube highlight (fork connects here) ──────────────────────────
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(92,-104); ctx.lineTo(119,-90); ctx.stroke();
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(92,-104); ctx.lineTo(119,-90); ctx.stroke();
+  ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(92,-104); ctx.lineTo(119,-90); ctx.stroke();
+
+  // ── MT-07 label ───────────────────────────────────────────────────────
+  ctx.fillStyle = '#e11d48'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('MT-07', -40, -40);
+
+  ctx.restore();
+
+  // ── Fork tube (×2 length — stanchion extends above steer head) ──────
+  // Fork direction from steer head toward wheel (screen coords)
+  const forkDX  = fwX_px - steerX;
+  const forkDY  = fwY_px - steerY_px;
+  // Fixed-length stanchion above steer head (does not change with travel)
+  const forkLen  = Math.sqrt(forkDX*forkDX + forkDY*forkDY);
+  const fNX = forkDX/forkLen, fNY = forkDY/forkLen;   // unit vector along fork axis
+  const stanchPx = Math.round(REST_F_M * PM);          // 90 px — constant
+  const ufTopX   = steerX    - fNX * stanchPx;
+  const ufTopY   = steerY_px - fNY * stanchPx;
+
+  ctx.lineCap = 'round';
+
+  // ── Upper stanchion (shiny chrome tube above triple clamp) ───────────
+  // Outer shadow
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 16;
+  ctx.beginPath(); ctx.moveTo(ufTopX, ufTopY); ctx.lineTo(steerX, steerY_px); ctx.stroke();
+  // Main chrome tube
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(ufTopX, ufTopY); ctx.lineTo(steerX, steerY_px); ctx.stroke();
+  // Highlight stripe
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(ufTopX, ufTopY); ctx.lineTo(steerX, steerY_px); ctx.stroke();
+
+  // ── Lower slider tube (darker alloy, from triple clamp to axle) ──────
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 16;
+  ctx.beginPath(); ctx.moveTo(steerX, steerY_px); ctx.lineTo(fwX_px, fwY_px); ctx.stroke();
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(steerX, steerY_px); ctx.lineTo(fwX_px, fwY_px); ctx.stroke();
+  // Slider highlight
+  ctx.strokeStyle = '#525252'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(steerX, steerY_px); ctx.lineTo(fwX_px, fwY_px); ctx.stroke();
+
+  // ── Fork spring zigzag (on slider section, shows travel) ─────────────
+  const nSegs = 14, sAmp = 6;
+  const sliderMidX = steerX + forkDX * 0.50;
+  const sliderMidY = steerY_px + forkDY * 0.50;
+  const travelFrac_F = Math.max(0, Math.min(1, (-disp_f + TRAVEL_MAX * 0.5) / TRAVEL_MAX));
+  const springColor  = `hsl(${350 - travelFrac_F*20},${60+travelFrac_F*40}%,${30+travelFrac_F*20}%)`;
+  ctx.strokeStyle = springColor; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= nSegs*4; i++) {
+    const tt  = i / (nSegs*4);
+    const py  = steerY_px + forkDY * tt;
+    const px2 = steerX    + forkDX * tt + Math.sin(tt * Math.PI*2*nSegs) * sAmp;
+    i === 0 ? ctx.moveTo(px2, py) : ctx.lineTo(px2, py);
+  }
+  ctx.stroke();
+
+  // (Front wheel drawn before fork — see above)
+
+  // ── AIR indicators ────────────────────────────────────────
+  ctx.font='bold 10px sans-serif';
+  if (f_tire_F===0) {
+    ctx.fillStyle='#e11d48'; ctx.textAlign='left';
+    ctx.fillText('AIR', fwX_px+Math.round(WHEEL_R_F*PM)+5, fwY_px+4);
+  }
+  if (f_tire_R===0) {
+    ctx.fillStyle='#e11d48'; ctx.textAlign='right';
+    ctx.fillText('AIR', rwX_px-Math.round(WHEEL_R_R*PM)-5, rwY_px+4);
+  }
+
+  // ── Travel bar (right edge) ───────────────────────────────
+  const bx   = W-22, bTop=16, bHt=H*0.55;
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath(); ctx.roundRect(bx, bTop, 12, bHt, 6); ctx.fill();
+
+  // Travel bars — fill fraction 0=extended, 1=fully compressed
+  // Color: white at midtravel, red at extremes
+  function travelBarColor(frac) {
+    const ext = Math.abs(frac - 0.5) * 2;  // 0=mid, 1=extreme
+    const r = Math.round(255);
+    const g = Math.round(255 * (1 - ext));
+    const b = Math.round(255 * (1 - ext));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Front travel bar
+  const fFrac = Math.max(0, Math.min(1, (-disp_f+TRAVEL_EXT)/(TRAVEL_MAX+TRAVEL_EXT)));
+  ctx.fillStyle = travelBarColor(fFrac);
+  ctx.beginPath(); ctx.roundRect(bx, bTop, 12, fFrac*bHt, 6); ctx.fill();
+  ctx.fillStyle='#444'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('F', bx+6, bTop-5);
+
+  // Rear travel bar
+  const bx2   = W-38;
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath(); ctx.roundRect(bx2, bTop, 12, bHt, 6); ctx.fill();
+  const rFrac = Math.max(0, Math.min(1, (-disp_r+TRAVEL_EXT)/(TRAVEL_MAX+TRAVEL_EXT)));
+  ctx.fillStyle = travelBarColor(rFrac);
+  ctx.beginPath(); ctx.roundRect(bx2, bTop, 12, rFrac*bHt, 6); ctx.fill();
+  ctx.fillStyle='#444'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('R', bx2+6, bTop-5);
+
+  drawForceGraph();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FORCE HISTORY GRAPH
+// ═══════════════════════════════════════════════════════════
+const fg    = document.getElementById('fgraph');
+const fgctx = fg.getContext('2d');
+
+function resizeFG() { fg.width = fg.clientWidth; }
+window.addEventListener('resize', resizeFG);
+
+function drawForceGraph() {
+  const W=fg.width, H=fg.height;
+  if (!W||!H) return;
+  const YF_MAX=8000;  // N axis range ±8000
+
+  fgctx.fillStyle='#0a0a0a'; fgctx.fillRect(0,0,W,H);
+
+  // Grid
+  fgctx.strokeStyle='#1a1a1a'; fgctx.lineWidth=1;
+  for (let i=0; i<=4; i++) {
+    const y=H*i/4;
+    fgctx.beginPath(); fgctx.moveTo(0,y); fgctx.lineTo(W,y); fgctx.stroke();
+  }
+  // Zero line
+  const zy=H*0.5;
+  fgctx.strokeStyle='#2a2a2a'; fgctx.lineWidth=1;
+  fgctx.beginPath(); fgctx.moveTo(0,zy); fgctx.lineTo(W,zy); fgctx.stroke();
+
+  // Y axis labels
+  fgctx.fillStyle='#333'; fgctx.font='9px sans-serif'; fgctx.textAlign='left';
+  fgctx.fillText('+8kN',2,10);
+  fgctx.fillText('0',2,zy-2);
+  fgctx.fillText('-8kN',2,H-3);
+
+  // Plot lines
+  const lines = [
+    { data: hist.fs, color: '#e11d48' },
+    { data: hist.fd, color: '#ff8800' },
+    { data: hist.rs, color: '#3b82f6' },
+    { data: hist.rd, color: '#22c55e' }
+  ];
+
+  lines.forEach(({ data, color }) => {
+    fgctx.beginPath();
+    fgctx.strokeStyle=color; fgctx.lineWidth=1.5;
+    data.forEach((v,i) => {
+      const x = i/(HIST_MAX-1)*W;
+      const y = zy - (v/YF_MAX)*(H*0.5);
+      i===0 ? fgctx.moveTo(x,y) : fgctx.lineTo(x,y);
+    });
+    fgctx.stroke();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
 //  CURVE EDITOR
-// ════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 const cc   = document.getElementById('curve-canvas');
 const cctx = cc.getContext('2d');
-const GP   = { l: 52, r: 18, t: 14, b: 36 };
+const GP   = { l:48, r:16, t:12, b:34 };
 
 let curveMode = 'comp';
 
 function resizeCurveCanvas() {
-  cc.width = cc.clientWidth;
+  cc.width  = cc.clientWidth;
+  cc.height = cc.clientHeight || 220;
   drawCurveEditor();
 }
 window.addEventListener('resize', resizeCurveCanvas);
 
 function ptToScreen(nx, ny) {
-  const gw = cc.width  - GP.l - GP.r;
-  const gh = cc.height - GP.t - GP.b;
-  return { sx: GP.l + nx * gw,  sy: GP.t + (1 - ny) * gh };
+  const gw=cc.width-GP.l-GP.r, gh=cc.height-GP.t-GP.b;
+  return { sx: GP.l+nx*gw, sy: GP.t+(1-ny)*gh };
+}
+function screenToPt(sx, sy) {
+  const gw=cc.width-GP.l-GP.r, gh=cc.height-GP.t-GP.b;
+  return { nx:(sx-GP.l)/gw, ny:1-(sy-GP.t)/gh };
 }
 
-function screenToPt(sx, sy) {
-  const gw = cc.width  - GP.l - GP.r;
-  const gh = cc.height - GP.t - GP.b;
-  return { nx: (sx - GP.l) / gw,  ny: 1 - (sy - GP.t) / gh };
+function getActivePts() {
+  if (wheelMode==='front') return curveMode==='comp' ? compPts_F : rebPts_F;
+  return curveMode==='comp' ? compPts_R : rebPts_R;
+}
+function getActiveLUT() {
+  if (wheelMode==='front') return curveMode==='comp' ? compLUT_F : rebLUT_F;
+  return curveMode==='comp' ? compLUT_R : rebLUT_R;
+}
+function rebuildActiveLUT() {
+  const pts = getActivePts();
+  const lut = buildCurveLUT(pts);
+  if (wheelMode==='front') {
+    if (curveMode==='comp') compLUT_F=lut; else rebLUT_F=lut;
+  } else {
+    if (curveMode==='comp') compLUT_R=lut; else rebLUT_R=lut;
+  }
 }
 
 function drawCurveEditor() {
-  const W  = cc.width, H = cc.height;
-  const gw = W - GP.l - GP.r;
-  const gh = H - GP.t - GP.b;
+  const W=cc.width, H=cc.height;
+  if (!W||!H) return;
+  const gw=W-GP.l-GP.r, gh=H-GP.t-GP.b;
 
-  cctx.clearRect(0, 0, W, H);
-  cctx.fillStyle = '#0f0f0f'; cctx.fillRect(0, 0, W, H);
-  cctx.fillStyle = '#111'; cctx.fillRect(GP.l, GP.t, gw, gh);
+  cctx.clearRect(0,0,W,H);
+  cctx.fillStyle='#0f0f0f'; cctx.fillRect(0,0,W,H);
+  cctx.fillStyle='#0a0a0a'; cctx.fillRect(GP.l,GP.t,gw,gh);
 
   // Grid
-  cctx.strokeStyle = '#1f1f1f'; cctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    cctx.beginPath(); cctx.moveTo(GP.l + (i/4)*gw, GP.t);          cctx.lineTo(GP.l + (i/4)*gw, GP.t + gh); cctx.stroke();
-    cctx.beginPath(); cctx.moveTo(GP.l,              GP.t+(i/4)*gh); cctx.lineTo(GP.l + gw,       GP.t+(i/4)*gh); cctx.stroke();
+  cctx.strokeStyle='#1f1f1f'; cctx.lineWidth=1;
+  for (let i=0; i<=4; i++) {
+    cctx.beginPath(); cctx.moveTo(GP.l+(i/4)*gw, GP.t); cctx.lineTo(GP.l+(i/4)*gw, GP.t+gh); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(GP.l, GP.t+(i/4)*gh); cctx.lineTo(GP.l+gw, GP.t+(i/4)*gh); cctx.stroke();
   }
 
-  // X axis labels (0–4.0 m/s)
-  cctx.fillStyle = '#555'; cctx.font = '10px sans-serif'; cctx.textAlign = 'center';
-  for (let i = 0; i <= 4; i++) {
-    cctx.fillText((i * 1.0).toFixed(1), GP.l + (i/4)*gw, GP.t + gh + 20);
+  // X axis labels (0–3 m/s)
+  cctx.fillStyle='#555'; cctx.font='10px sans-serif'; cctx.textAlign='center';
+  for (let i=0; i<=4; i++) {
+    cctx.fillText((i*V_MAX_SIM/4).toFixed(1), GP.l+(i/4)*gw, GP.t+gh+20);
   }
-  cctx.fillStyle = '#444'; cctx.fillText('m/s', GP.l + gw/2, GP.t + gh + 32);
+  cctx.fillStyle='#444'; cctx.fillText('m/s', GP.l+gw/2, GP.t+gh+30);
 
-  // Y axis labels (0–4000 N)
-  cctx.textAlign = 'right';
-  for (let i = 0; i <= 4; i++) {
-    cctx.fillStyle = '#555';
-    cctx.fillText((i * 1000).toFixed(0), GP.l - 5, GP.t + (1 - i/4)*gh + 4);
+  // Y axis labels
+  const F_MAX_LABEL = wheelMode==='front' ? F_MAX_F : F_MAX_R;
+  cctx.textAlign='right';
+  for (let i=0; i<=4; i++) {
+    cctx.fillStyle='#555';
+    cctx.fillText(Math.round(i*F_MAX_LABEL/4)+'N', GP.l-4, GP.t+(1-i/4)*gh+4);
   }
   cctx.save();
-  cctx.translate(12, GP.t + gh/2); cctx.rotate(-Math.PI/2);
-  cctx.textAlign = 'center'; cctx.fillStyle = '#444';
+  cctx.translate(10, GP.t+gh/2); cctx.rotate(-Math.PI/2);
+  cctx.textAlign='center'; cctx.fillStyle='#444'; cctx.font='10px sans-serif';
   cctx.fillText('N', 0, 0);
   cctx.restore();
 
-  // Draw both curves
-  [
-    { pts: compPts, lut: compLUT, color: '#e11d48', mode: 'comp', label: 'Comp' },
-    { pts: rebPts,  lut: rebLUT,  color: '#aaaaaa', mode: 'reb',  label: 'Reb'  }
-  ].forEach(({ pts, lut, color, mode, label }) => {
-    const active = mode === curveMode;
+  // Draw both comp/reb curves for current wheel
+  const pairs = [
+    { ptsKey: wheelMode==='front'?'compPts_F':'compPts_R', mode:'comp', color:'#e11d48', label:'Comp' },
+    { ptsKey: wheelMode==='front'?'rebPts_F':'rebPts_R',  mode:'reb',  color:'#aaaaaa', label:'Reb' }
+  ];
+  const ptsMap = { compPts_F, rebPts_F, compPts_R, rebPts_R };
+  const lutMap = { compPts_F:compLUT_F, rebPts_F:rebLUT_F, compPts_R:compLUT_R, rebPts_R:rebLUT_R };
+
+  pairs.forEach(({ ptsKey, mode, color, label }) => {
+    const pts    = ptsMap[ptsKey];
+    const lut    = lutMap[ptsKey];
+    const active = mode===curveMode;
     cctx.globalAlpha = active ? 1.0 : 0.20;
 
     cctx.beginPath();
-    lut.forEach((p, i) => {
-      const s = ptToScreen(p.x, p.y);
-      i === 0 ? cctx.moveTo(s.sx, s.sy) : cctx.lineTo(s.sx, s.sy);
+    lut.forEach((p,i) => {
+      const s=ptToScreen(p.x,p.y);
+      i===0 ? cctx.moveTo(s.sx,s.sy) : cctx.lineTo(s.sx,s.sy);
     });
-    cctx.strokeStyle = color; cctx.lineWidth = active ? 2.5 : 1.5; cctx.stroke();
+    cctx.strokeStyle=color; cctx.lineWidth=active?2.5:1.5; cctx.stroke();
 
     if (lut.length) {
-      const last = ptToScreen(lut[lut.length-1].x, lut[lut.length-1].y);
-      cctx.fillStyle = color; cctx.font = 'bold 10px sans-serif'; cctx.textAlign = 'left';
-      cctx.fillText(label, last.sx + 4, last.sy + 4);
+      const last=ptToScreen(lut[lut.length-1].x, lut[lut.length-1].y);
+      cctx.fillStyle=color; cctx.font='bold 9px sans-serif'; cctx.textAlign='left';
+      cctx.fillText(label, last.sx+4, last.sy+4);
     }
-
     if (active) {
-      pts.forEach((p, i) => {
-        const s = ptToScreen(p.x, p.y);
-        cctx.beginPath(); cctx.arc(s.sx, s.sy, 7, 0, Math.PI * 2);
-        cctx.fillStyle   = i === 0 ? '#222' : color;
-        cctx.fill();
-        cctx.strokeStyle = '#f0f0f0'; cctx.lineWidth = 1.5; cctx.stroke();
+      pts.forEach((p,i) => {
+        const s=ptToScreen(p.x,p.y);
+        cctx.beginPath(); cctx.arc(s.sx,s.sy,7,0,Math.PI*2);
+        cctx.fillStyle=i===0?'#222':color; cctx.fill();
+        cctx.strokeStyle='#f0f0f0'; cctx.lineWidth=1.5; cctx.stroke();
       });
     }
-
-    cctx.globalAlpha = 1.0;
+    cctx.globalAlpha=1.0;
   });
 
   // Border
-  cctx.strokeStyle = '#1f1f1f'; cctx.lineWidth = 1;
+  cctx.strokeStyle='#1f1f1f'; cctx.lineWidth=1;
   cctx.strokeRect(GP.l, GP.t, gw, gh);
 }
 
-// ── Drag & click ──────────────────────────────────────────────────────────────
-let dragIdx = -1;
+// Drag & click
+let dragIdx=-1;
 
 function getPos(e) {
-  const r  = cc.getBoundingClientRect();
-  const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  return {
-    sx: (cx - r.left) * (cc.width  / r.width),
-    sy: (cy - r.top)  * (cc.height / r.height)
-  };
+  const r=cc.getBoundingClientRect();
+  const cx=e.touches?e.touches[0].clientX:e.clientX;
+  const cy=e.touches?e.touches[0].clientY:e.clientY;
+  return { sx:(cx-r.left)*(cc.width/r.width), sy:(cy-r.top)*(cc.height/r.height) };
 }
 
 function findHit(sx, sy) {
-  const pts = curveMode === 'comp' ? compPts : rebPts;
-  for (let i = 1; i < pts.length; i++) {  // skip p0 (origin, fixed)
-    const s = ptToScreen(pts[i].x, pts[i].y);
-    if (Math.hypot(s.sx - sx, s.sy - sy) < 15) return i;
+  const pts=getActivePts();
+  for (let i=1; i<pts.length; i++) {
+    const s=ptToScreen(pts[i].x, pts[i].y);
+    if (Math.hypot(s.sx-sx, s.sy-sy)<15) return i;
   }
   return -1;
 }
 
-function rebuildLUT() {
-  if (curveMode === 'comp') compLUT = buildCurveLUT(compPts);
-  else                       rebLUT  = buildCurveLUT(rebPts);
-}
-
 function doDrag(sx, sy) {
-  if (dragIdx < 0) return;
-  const pts = curveMode === 'comp' ? compPts : rebPts;
-  const { nx, ny } = screenToPt(sx, sy);
-  const i = dragIdx;
-
-  let newX = pts[i].x;
-  if (i > 0 && i < pts.length - 1) {
-    newX = Math.max(pts[i-1].x + 0.02, Math.min(pts[i+1].x - 0.02, nx));
-  }
-  const newY = (i === 0) ? 0 : Math.max(0, Math.min(1, ny));
-  pts[i] = { x: newX, y: newY };
-
-  rebuildLUT();
+  if (dragIdx<0) return;
+  const pts=getActivePts();
+  const {nx,ny}=screenToPt(sx,sy);
+  const i=dragIdx;
+  let newX=pts[i].x;
+  if (i>0 && i<pts.length-1) newX=Math.max(pts[i-1].x+0.02, Math.min(pts[i+1].x-0.02, nx));
+  const newY=(i===0)?0:Math.max(0,Math.min(1,ny));
+  pts[i]={x:newX, y:newY};
+  rebuildActiveLUT();
   drawCurveEditor();
 }
 
 cc.addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
-  const p   = getPos(e);
-  const hit = findHit(p.sx, p.sy);
-  if (hit >= 0) {
-    dragIdx = hit;
-  } else {
-    // Add new point if inside plot area and not too close to existing points
-    const pts      = curveMode === 'comp' ? compPts : rebPts;
-    const { nx, ny } = screenToPt(p.sx, p.sy);
-    if (nx > 0.02 && nx < 0.98 && ny >= 0 && ny <= 1.02) {
-      const tooClose = pts.some(pt => Math.abs(pt.x - nx) < 0.05);
-      if (!tooClose) {
-        pts.push({ x: Math.max(0.02, Math.min(0.98, nx)), y: Math.max(0, Math.min(1, ny)) });
-        pts.sort((a, b) => a.x - b.x);
-        rebuildLUT();
-        drawCurveEditor();
-      }
+  if (e.button!==0) return;
+  const p=getPos(e);
+  const hit=findHit(p.sx,p.sy);
+  if (hit>=0) { dragIdx=hit; return; }
+  const pts=getActivePts();
+  const {nx,ny}=screenToPt(p.sx,p.sy);
+  if (nx>0.02&&nx<0.98&&ny>=0&&ny<=1.02) {
+    if (!pts.some(pt=>Math.abs(pt.x-nx)<0.05)) {
+      pts.push({x:Math.max(0.02,Math.min(0.98,nx)), y:Math.max(0,Math.min(1,ny))});
+      pts.sort((a,b)=>a.x-b.x);
+      rebuildActiveLUT();
+      drawCurveEditor();
     }
   }
 });
-cc.addEventListener('mousemove',  e => { const p = getPos(e); doDrag(p.sx, p.sy); });
-cc.addEventListener('mouseup',    ()  => { dragIdx = -1; });
-cc.addEventListener('mouseleave', ()  => { dragIdx = -1; });
-
-cc.addEventListener('contextmenu', e => {
+cc.addEventListener('mousemove',  e=>{ const p=getPos(e); doDrag(p.sx,p.sy); });
+cc.addEventListener('mouseup',    ()=>{ dragIdx=-1; });
+cc.addEventListener('mouseleave', ()=>{ dragIdx=-1; });
+cc.addEventListener('contextmenu', e=>{
   e.preventDefault();
-  const p   = getPos(e);
-  const pts = curveMode === 'comp' ? compPts : rebPts;
-  if (pts.length <= 3) return;  // keep at least 3 points
-  const hit = findHit(p.sx, p.sy);
-  if (hit !== -1 && hit < pts.length - 1) {  // interior points only
-    pts.splice(hit, 1);
-    rebuildLUT();
-    drawCurveEditor();
-  }
+  const p=getPos(e);
+  const pts=getActivePts();
+  if (pts.length<=3) return;
+  const hit=findHit(p.sx,p.sy);
+  if (hit>0 && hit<pts.length-1) { pts.splice(hit,1); rebuildActiveLUT(); drawCurveEditor(); }
 });
+cc.addEventListener('touchstart', e=>{ e.preventDefault(); const p=getPos(e); dragIdx=findHit(p.sx,p.sy); },{passive:false});
+cc.addEventListener('touchmove',  e=>{ e.preventDefault(); const p=getPos(e); doDrag(p.sx,p.sy); },{passive:false});
+cc.addEventListener('touchend',   ()=>{ dragIdx=-1; });
 
-cc.addEventListener('touchstart',  e => { e.preventDefault(); const p = getPos(e); dragIdx = findHit(p.sx, p.sy); }, { passive: false });
-cc.addEventListener('touchmove',   e => { e.preventDefault(); const p = getPos(e); doDrag(p.sx, p.sy); }, { passive: false });
-cc.addEventListener('touchend',    ()  => { dragIdx = -1; });
-
-// ── Toggle & Presets ─────────────────────────────────────────────────────────
 function setCurveMode(mode) {
-  curveMode = mode;
-  document.getElementById('btn-comp').classList.toggle('active', mode === 'comp');
-  document.getElementById('btn-reb').classList.toggle('active',  mode === 'reb');
+  curveMode=mode;
+  document.getElementById('btn-comp').classList.toggle('active', mode==='comp');
+  document.getElementById('btn-reb').classList.toggle('active',  mode==='reb');
   drawCurveEditor();
 }
 
 function applyPreset(name) {
-  const src = PRESETS[name];
-  if (curveMode === 'comp') { compPts = src.map(p => ({...p})); compLUT = buildCurveLUT(compPts); }
-  else                       { rebPts  = src.map(p => ({...p})); rebLUT  = buildCurveLUT(rebPts);  }
+  const src=PRESETS[name];
+  const pts=getActivePts();
+  pts.length=0;
+  src.forEach(p=>pts.push({...p}));
+  rebuildActiveLUT();
   drawCurveEditor();
 }
 
+// ═══════════════════════════════════════════════════════════
+//  STARTUP
+// ═══════════════════════════════════════════════════════════
 requestAnimationFrame(resizeCurveCanvas);
+requestAnimationFrame(resizeFG);
+requestAnimationFrame(draw);
+// Re-run after layout fully settles so flex heights are computed
+setTimeout(() => { resizeCurveCanvas(); resizeFG(); }, 100);
 </script>
 </body>
 </html>
