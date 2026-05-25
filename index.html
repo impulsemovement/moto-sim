@@ -273,6 +273,24 @@ const RAKE_RAD   = 24.83 * Math.PI / 180;
 const SW_PIV_X_FROM_COM = -0.207;   // m behind CoM — MT-07 class pivot position
 const SW_PIV_Y_FROM_COM = +0.262;   // m below CoM  — gives ~12° swingarm angle from horizontal
 const SWINGARM_L        =  0.490;   // m
+// Swingarm angle convention: phi = angle of the (pivot→axle) vector below the chassis
+//   x-axis, measured in the chassis frame (rad). Axle in chassis frame:
+//     axle_x = SW_PIV_X − L·cos(phi)   (rearward = −x)
+//     axle_y = SW_PIV_Y + L·sin(phi)   (downward = +y)
+//   Larger phi ⇒ wheel lower ⇒ suspension MORE EXTENDED.
+//   Smaller phi ⇒ wheel higher ⇒ suspension COMPRESSED.
+
+// ── Rear DIRECT SHOCK geometry (Phase 1; Phase 2 inserts a rocker linkage) ──
+// Both mounts are expressed in the chassis frame (m from CoM). The lower mount
+// rides on the swingarm at distance SW_SHOCK_D from the pivot (along the arm),
+// the upper mount is fixed on the frame/subframe. Because both ends sit on
+// chassis-attached bodies whose only relative motion is the swingarm rotation,
+// the shock LENGTH is a pure function of phi (independent of chassis pose) — so
+// shockLen(phi) and its derivative fully drive the spring/damper via virtual work.
+const SW_SHOCK_D     = 0.235;        // m  lower mount distance from pivot along swingarm
+const SHOCK_UP_X     = -0.300;       // m  upper mount X (behind CoM, on subframe)
+const SHOCK_UP_Y     = -0.120;       // m  upper mount Y (above CoM)
+const I_SWINGARM     = 0.6;          // kg·m²  swingarm's own rotational inertia about pivot
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
 const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
@@ -295,6 +313,36 @@ const F_MAX_R    = 6000;         // N    maps to top of rear  curve graph
 
 const TRAVEL_MAX = 0.130;        // m  max travel
 const TRAVEL_EXT = 0.010;        // m  extension limit
+
+// ── Derived rear-swingarm constants (depend on B_REAR_M / TRAVEL_* above) ───
+// Nominal static-sag swingarm angle: chosen so the axle lands B_REAR_M behind CoM.
+const SW_PHI_SAG = Math.acos((B_REAR_M + SW_PIV_X_FROM_COM) / SWINGARM_L); // ≈0.212 rad
+// Swingarm-angle travel limits (mechanical stops) and rest reference, derived from
+// the wheel-travel figures via the arc relation wheelΔy = L·Δ(sinφ), anchored at the
+// nominal 33 mm sag. FIXED geometry; the actual settle angle is solved in initPhysics.
+const _SAG_NOM       = 0.033;                                                       // m  nominal sag
+const PHI_REST       = Math.asin(Math.sin(SW_PHI_SAG) + _SAG_NOM / SWINGARM_L);             // unloaded
+const PHI_FULL_DROOP = Math.asin(Math.sin(SW_PHI_SAG) + (_SAG_NOM + TRAVEL_EXT) / SWINGARM_L); // topped
+const PHI_FULL_BUMP  = Math.asin(Math.sin(SW_PHI_SAG) - (TRAVEL_MAX - _SAG_NOM) / SWINGARM_L); // bottomed
+// Shock natural (unloaded) length: zero spring force at PHI_REST.
+const SHOCK_REST_LEN = (() => {
+  const s = { x: SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(PHI_REST),
+              y: SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(PHI_REST) };
+  return Math.hypot(s.x - SHOCK_UP_X, s.y - SHOCK_UP_Y);
+})();
+// Motion ratio at sag = wheel-travel / shock-travel = (L·cosφ) / (d shockLen/dφ).
+// Calibrates the shock spring rate so the WHEEL rate at sag equals the P.k_r slider,
+// and converts wheel-mm preload to shock-mm. Geometry-only constant.
+const SW_MR_SAG = (() => {
+  const h = 1e-4;
+  const sl = (phi) => {
+    const sx = SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(phi);
+    const sy = SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(phi);
+    return Math.hypot(sx - SHOCK_UP_X, sy - SHOCK_UP_Y);
+  };
+  const dShock = (sl(SW_PHI_SAG + h) - sl(SW_PHI_SAG - h)) / (2 * h);
+  return (SWINGARM_L * Math.cos(SW_PHI_SAG)) / dShock;
+})();
 
 // Screen geometry — chassis CoM at fixed screen X; all wheel/ground positions derive from it
 const COM_SX = () => canvas.width * 0.40;       // chassis CoM screen X
@@ -553,10 +601,18 @@ let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = exten
 let frontWheelX_m = 0;
 let frontWheelY_m = 0;
 
-let rearWheelY_m     = 0;   // derived each sub-step from chassis + rearSuspTravel_r
+// Rear suspension: primary DOF is the SWINGARM ANGLE (chassis-relative rotation).
+// The wheel is a point mass at the swingarm tip; it follows an arc about the pivot.
+// rearWheelX_m / rearWheelY_m are DERIVED each step from swingAngle + chassis pose.
+let rearWheelY_m     = 0;   // derived each sub-step from swingAngle + chassis pose
 let rearWheelX_m     = 0;
-let rearSuspTravel_r = 0;   // chassis-relative suspension travel (negative = compressed)
-let vSuspR           = 0;   // rate of rearSuspTravel_r — directly used as damper velocity
+let swingAngle       = 0;   // rad, swingarm angle below chassis x-axis (larger = extended)
+let swingRate        = 0;   // rad/s, d(swingAngle)/dt (positive = extending/rebound)
+// Cached rear-suspension scalars for display/history (set each sub-step)
+let shockLen_cur     = 0;   // m, current shock length
+let shockTravel_r    = 0;   // m, shock compression from rest (positive = compressed)
+let wheelTravel_r    = 0;   // m, wheel vertical travel from topped-out (positive = compressed)
+let rearSuspVel      = 0;   // m/s, wheel-vertical suspension velocity (graph/history; old vSuspR)
 
 let worldX_m      = 0;
 let lastTs        = null;
@@ -618,22 +674,23 @@ function initPhysics() {
   forkSlide_f  = -sagF;
   vForkSlide_f = 0;
 
-  // Rear suspension: start at static equilibrium compression
-  rearSuspTravel_r = -sagR;
-  vSuspR = 0;
-  // Seed rearWheelY_m for the eq_r geometry solve below (overwritten every sub-step)
-  rearWheelY_m = nat_r + pen_r;
+  // Rear suspension: seed the swingarm at the nominal sag angle. The 500-step
+  // settle loop below relaxes it to the true equilibrium for the current spring.
+  swingAngle = SW_PHI_SAG;
+  swingRate  = 0;
+  rearWheelY_m = nat_r + pen_r;          // seed: rear wheel on terrain
   rearWheelX_m = worldX_m - WHEELBASE;   // approximate, updated by physics after settle
 
   // Solve 2-eq system for equilibrium pitch and chassis CoM height.
-  // Front: steerHead_Y = frontWheelY - s_f * cos(RAKE) = nat_f + pen_f - (REST_F_M - sagF)*cos(RAKE)
-  //        steerHead_Y = chassisY + pitch * A_FRONT
-  // Rear:  rear_attach_Y = rearWheelY - REST_R + sagR
-  //        rear_attach_Y = chassisY - pitch * B_REAR
+  // Front: steerHead_Y = chassisY + A_FRONT·pitch = nat_f + pen_f − (REST_F − sagF)·cosRake
+  // Rear:  rear axle world Y = chassisY + ax_c·pitch + ay_c = nat_r + pen_r   (small-angle)
+  //        where (ax_c, ay_c) is the axle position in the chassis frame at the sag angle.
   const cosRake = Math.cos(RAKE_RAD);
-  const eq_f = (nat_f + pen_f) - (REST_F_M - sagF) * cosRake;  // steerHead_Y at equilibrium
-  const eq_r = rearWheelY_m - REST_R_M + sagR;                  // rear_attach_Y at equilibrium
-  pitchAngle = (eq_f - eq_r) / (A_FRONT_M + B_REAR_M);
+  const ax_c  = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);  // chassis-frame axle X
+  const ay_c  = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);  // chassis-frame axle Y
+  const eq_f  = (nat_f + pen_f) - (REST_F_M - sagF) * cosRake;          // steerHead_Y
+  const eq_r2 = (nat_r + pen_r) - ay_c;                                  // chassisY + ax_c·pitch target
+  pitchAngle = (eq_f - eq_r2) / (A_FRONT_M - ax_c);                      // A_FRONT − ax_c ≈ wheelbase
   chassisY_m = eq_f - pitchAngle * A_FRONT_M;
 
   // Seed derived front wheel world position from initial chassis pose
@@ -644,7 +701,7 @@ function initPhysics() {
     frontWheelY_m = steerY0   + (REST_F_M + forkSlide_f) * Math.cos(φ0);
   }
 
-  vChassis = 0; pitchRate = 0; vForkSlide_f = 0; vSuspR = 0;
+  vChassis = 0; pitchRate = 0; vForkSlide_f = 0; swingRate = 0;
   rearContact = false;
 
   // Settle with terrain FROZEN (speed=0) so bumps don't create transients
@@ -653,7 +710,7 @@ function initPhysics() {
   P.speed = 0;
   for (let i = 0; i < 500; i++) simStep(0.005);
   P.speed = savedSpeed;
-  vChassis = 0; vForkSlide_f = 0; vSuspR = 0; pitchRate = 0;
+  vChassis = 0; vForkSlide_f = 0; swingRate = 0; pitchRate = 0;
   rearContact = false;
   initialized = true;
 }
@@ -675,6 +732,52 @@ function dampForce(rv, isComp, isRear) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  REAR SWINGARM KINEMATICS  (chassis frame)
+// ═══════════════════════════════════════════════════════════
+// All positions here are in the chassis frame (m, relative to CoM, +x fwd, +y down).
+// The swingarm rotates about the pivot by `phi`; the chassis pose is applied later
+// only when converting to world/screen coordinates.
+
+// Axle position (chassis frame) for a given swingarm angle.
+function swAxleChassis(phi) {
+  return {
+    x: SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(phi),
+    y: SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(phi),
+  };
+}
+
+// Lower shock mount (chassis frame): a point on the swingarm SW_SHOCK_D from the pivot.
+function swShockLowChassis(phi) {
+  return {
+    x: SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(phi),
+    y: SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(phi),
+  };
+}
+
+// Shock length for a given swingarm angle (Phase 1: direct shock between the
+// fixed upper mount and the swingarm-borne lower mount).
+// Phase 2 will replace the body of this function with a rocker-linkage solve;
+// nothing else in the physics needs to change because the EOM consumes only
+// shockLen(phi) and its derivative.
+function shockLength(phi) {
+  const s = swShockLowChassis(phi);
+  const dx = s.x - SHOCK_UP_X;
+  const dy = s.y - SHOCK_UP_Y;
+  return Math.hypot(dx, dy);
+}
+
+// d(shockLength)/d(phi), central finite difference (rad).
+function dShockLength(phi) {
+  const h = 1e-4;
+  return (shockLength(phi + h) - shockLength(phi - h)) / (2 * h);
+}
+
+// d(axle_y in CHASSIS frame)/d(phi) = L·cos(phi)  — chassis-frame vertical wheel rate.
+function dAxleYchassis(phi) {
+  return SWINGARM_L * Math.cos(phi);
+}
+
+// ═══════════════════════════════════════════════════════════
 //  SIMULATION STEP  (sub-stepped for numerical stability)
 // ═══════════════════════════════════════════════════════════
 // Default tire spring ~300000 N/m, unsprung ~13kg → ω≈152 rad/s → Euler stable for dt<0.013s.
@@ -685,6 +788,9 @@ function _physicsStep(dt_s) {
   const Ms  = getMsprung();
   const K_F = P.k_f * 1000;  // N/m
   const K_R = P.k_r * 1000;
+  // Shock spring rate (N/m) calibrated so the WHEEL rate at sag equals K_R:
+  //   wheel_rate = K_SHOCK / MR_sag²  ⇒  K_SHOCK = K_R · MR_sag².
+  const K_SHOCK = K_R * SW_MR_SAG * SW_MR_SAG;
 
   // ── Gas / brake: ramp inputs then derive a_long from ACTUAL speed change ────
   // gasInput / brakeInput ramp 0→1 in 1.5 s when held, 1→0 in 0.5 s when released.
@@ -753,17 +859,13 @@ function _physicsStep(dt_s) {
   frontWheelX_m = steerX + s_f * sinφ;          // wheel world X (derived, not integrated)
   frontWheelY_m = steerY + s_f * cosφ;          // wheel world Y (derived, not integrated)
 
-  // ── Rear chassis attachment ───────────────────────────────────────────────
-  // Full 2-D rotation (not small-angle approx) so rear suspension is correct at wheelie angles.
-  // Rear axle sits at chassis-frame offset (-B_REAR_M, 0) from CoM:
-  //   world Y = chassisY + (-B_REAR_M)·sinP + 0·cosP = chassisY - B_REAR_M·sinP
-  //   world Vy = vChassis - pitchRate·B_REAR_M·cosP
-  const rear_attach_Y = chassisY_m - B_REAR_M * sinP;
-  const v_rear_attach = vChassis   - pitchRate * B_REAR_M * cosP;
-
-  // Pre-integration derived rear wheel Y (uses previous-step rearSuspTravel_r,
-  // one sub-step lag — acceptable; needed for tire spring force calculation below).
-  rearWheelY_m = rear_attach_Y + REST_R_M + rearSuspTravel_r;
+  // ── Rear swingarm: wheel position from swingAngle (chassis-frame arc) ──────
+  // The wheel is a point mass at the swingarm tip, rotating about the pivot.
+  // Axle in chassis frame, then full 2-D rotation by pitch into world coords.
+  const axle_xc = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);  // chassis-frame X
+  const axle_yc = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);  // chassis-frame Y
+  rearWheelX_m = comX_m     + axle_xc * cosP - axle_yc * sinP;
+  rearWheelY_m = chassisY_m + axle_xc * sinP + axle_yc * cosP;
 
   // ── Front fork spring & damper (along fork axis) ──────────────────────────
   // forkSlide_f < 0 → compressed → spring pushes wheel out (extends fork)
@@ -779,21 +881,41 @@ function _physicsStep(dt_s) {
   f_damp_F = Math.sign(rv_f) * fd_mag_f;
   const fsusp_f  = f_spring_F + f_damp_F;        // force along fork axis (neg = compressed)
 
-  // ── Rear suspension spring & damper (chassis-relative DOF) ──────────────
-  // rv_r = vSuspR is directly integrated — mirrors vForkSlide_f on the front.
-  // No longer derived as (vRearWheel - v_rear_attach), which injected pitchRate
-  // noise and caused momentum-transfer spikes at travel limits.
-  let dr   = rearSuspTravel_r - P.pre_r;   // spring displacement (neg = compressed)
-  let rv_r = vSuspR;                         // damper velocity (direct DOF rate)
+  // ── Rear shock spring & damper (swingarm rotational DOF) ────────────────
+  // The shock connects a fixed chassis mount to a swingarm-borne mount; its
+  // length is a pure function of swingAngle, so spring/damper are driven via
+  // virtual work. We compute the SPRING through the shock geometry (giving the
+  // linkage's rising rate) and the DAMPER from the wheel-vertical rate (so the
+  // user-tuned damper curves keep their wheel-referenced feel).
+  //
+  // Shock kinematics:
+  shockLen_cur        = shockLength(swingAngle);
+  const dShock        = dShockLength(swingAngle);          // m/rad, >0 (compression shortens shock)
+  const wheelLeverY   = dAxleYchassis(swingAngle);         // = L·cosφ, chassis-frame wheel-vertical lever
+  // Shock spring: K_shock is calibrated (initPhysics) so wheel rate at sag = P.k_r.
+  // Preload P.pre_r is a wheel-mm offset; convert to an effective shock-length offset.
+  const MR_sag        = SW_MR_SAG;                          // wheel-travel / shock-travel at sag
+  const preShockLen   = (P.pre_r / 1000) / MR_sag;          // m of extra shock compression from preload
+  shockTravel_r       = (SHOCK_REST_LEN - shockLen_cur) + preShockLen;  // + = compressed
+  const F_shock_sprg  = K_SHOCK * shockTravel_r;            // N along shock, + = compressed (pushes out)
+  // Spring force referred to the wheel (chassis +y = down): compressed pushes wheel DOWN.
+  const F_spring_wheel = F_shock_sprg * dShock / wheelLeverY;   // N, + = pushes wheel down (extends)
 
-  if (dr > TRAVEL_EXT)  { dr = TRAVEL_EXT;  if (rv_r > 0) rv_r = 0; }
-  if (dr < -TRAVEL_MAX) { dr = -TRAVEL_MAX; if (rv_r < 0) rv_r = 0; }
+  // Damper: wheel-vertical rate (chassis-relative). +y down ⇒ + = extension.
+  const wheelVertRate = wheelLeverY * swingRate;            // m/s, = old vSuspR equivalent
+  rearSuspVel         = wheelVertRate;                       // expose for the velocity graph
+  const comp_r        = wheelVertRate < 0;                  // compressing = wheel moving up
+  const fd_mag_r      = wheelVertRate !== 0 ? dampForce(wheelVertRate, comp_r, true) : 0;
+  // Damper force on the wheel (+y down) opposes wheel motion: -sign(vw)*|F|.
+  const F_damp_wheel  = -Math.sign(wheelVertRate) * fd_mag_r;
 
-  f_spring_R = K_R * dr;
-  const comp_r   = rv_r < 0;
-  const fd_mag_r = rv_r !== 0 ? dampForce(rv_r, comp_r, true) : 0;
-  f_damp_R = Math.sign(rv_r) * fd_mag_r;
-  const fsusp_r  = f_spring_R + f_damp_R;
+  // Net suspension force on the WHEEL (+y down); chassis feels the opposite.
+  const F_wheel_susp  = F_spring_wheel + F_damp_wheel;
+  // fsusp_r matches the OLD chassis convention (negative when compressed → supports chassis).
+  const fsusp_r       = -F_wheel_susp;
+  // Display copies (wheel-rate, same sign convention as before: negative = compressed/supporting).
+  f_spring_R = -F_spring_wheel;
+  f_damp_R   = -F_damp_wheel;
 
   // ── Tire springs ──────────────────────────────────────────────────────────
   const nat_f = calcNaturalWY_m(frontWheelX_m, WHEEL_R_F);
@@ -863,33 +985,26 @@ function _physicsStep(dt_s) {
                - fsusp_f / P.m_unsprung_f
                + f_tire_F * cosφ / P.m_unsprung_f;
 
-  // ── Rear suspension travel EOM (chassis-relative DOF) ───────────────────
-  // Mirrors front fork EOM: gravity extends, spring+damper and tire spring oppose.
-  // f_tire_R < 0 (upward) counters the compressed-spring extension bias, allowing
-  // the system to reach static equilibrium at the correct sag without fighting the
-  // hard-floor constraint.
-  // Rear suspension travel EOM — contact-state-dependent form.
+  // ── Rear swingarm rotational EOM (about the pivot) ──────────────────────
+  // The wheel is a point mass at the swingarm tip. We sum generalized forces
+  // (torques) about the pivot for the swingAngle DOF:
+  //   I_sw·α = Q_grav_eff + Q_tire + Q_susp
+  // Each vertical force on the wheel maps to a torque via the wheel lever
+  // (L·cosφ = dAxleY/dφ in the chassis frame).
   //
-  // ON GROUND (rearContact from previous sub-step):
-  //   World-frame: a = g - fsusp_r/m_u + f_tire/m_u
-  //   Gravity extends the spring; tire force opposes. Correct for the on-ground case.
-  //
-  // AIRBORNE (rearContact = false):
-  //   Reduced-mass form: a = -fsusp_r × (1/m_u + 1/Ms)
-  //   Both masses fall at g identically → gravity cancels in the relative frame.
-  //   Only the spring acts on the relative DOF: a_rel = (g - fsusp_r/m_u) - (g - fsusp_r/Ms)
-  //                                                   = -fsusp_r × (1/m_u + 1/Ms)
-  //   When spring is near rest (fsusp_r ≈ 0): a_susp_r ≈ 0 → vSuspR stays roughly constant.
-  //   This prevents the g-driven extension buildup that previously accumulated vSuspR to
-  //   ~0.5+ m/s extension during airborne phases, causing a large spike at landing contact.
-  // EOM uses rearContact from previous sub-step.
-  // On ground: world-frame form (gravity + spring + tire spring).
-  // Airborne: reduced-mass form — gravity cancels exactly in the relative frame
-  //   (both masses fall at g together), so only the spring acts on relative motion.
-  //   a_susp_r ≈ 0 when spring is near rest → vSuspR stays small → no g-driven buildup.
-  const a_susp_r = rearContact
-    ? g - fsusp_r / P.m_unsprung_r + f_tire_R / P.m_unsprung_r   // on ground
-    : -fsusp_r * (1.0 / P.m_unsprung_r + 1.0 / Ms);              // airborne: reduced-mass
+  // EFFECTIVE GRAVITY (g − a_chassis): the pivot accelerates with the chassis,
+  // so in the chassis (non-inertial) frame the wheel feels gravity reduced by the
+  // chassis vertical acceleration. Airborne, a_chassis ≈ g ⇒ effective gravity ≈ 0
+  // ⇒ the swingarm does NOT droop in free-fall (both masses fall together). On the
+  // ground, a_chassis ≈ 0 ⇒ full gravity. This physically replaces the old
+  // "airborne reduced-mass" hack and prevents the g-driven velocity buildup that
+  // caused the landing spike. a_chassis is already computed above (feed-forward,
+  // no circular dependency since it depends on fsusp_r, not on α_sw).
+  const I_sw   = P.m_unsprung_r * SWINGARM_L * SWINGARM_L + I_SWINGARM;
+  const Q_grav = P.m_unsprung_r * (g - a_chassis) * wheelLeverY; // + = droop (extend)
+  const Q_tire = f_tire_R * wheelLeverY;                          // f_tire_R<0 (up) ⇒ compress
+  const Q_susp = F_wheel_susp * wheelLeverY;                      // + = extend (compressed shock)
+  const alpha_sw = (Q_grav + Q_tire + Q_susp) / I_sw;             // rad/s²
 
   // ── Integrate (explicit Euler) ────────────────────────────────────────────
   vChassis     += a_chassis   * dt_s;
@@ -901,8 +1016,15 @@ function _physicsStep(dt_s) {
   vForkSlide_f += a_fork      * dt_s;
   forkSlide_f  += vForkSlide_f * dt_s;
 
-  vSuspR           += a_susp_r   * dt_s;
-  rearSuspTravel_r += vSuspR     * dt_s;
+  // Integrate the swingarm EOM only when AIRBORNE. On the ground the wheel is slaved
+  // to the terrain (position snap + kinematic swingRate in the contact block below),
+  // so integrating the EOM there would just inject the large unbalanced suspension
+  // torque that the ground reaction is meant to cancel — the source of the blow-up.
+  // `rearContact` here is the previous sub-step's state (set at the end of this fn).
+  if (!rearContact) {
+    swingRate  += alpha_sw * dt_s;
+    swingAngle += swingRate * dt_s;
+  }
 
   // ── Fork travel limits (direct DOF clamp — no positional correction needed) ─
   if (forkSlide_f > TRAVEL_EXT) {
@@ -920,32 +1042,29 @@ function _physicsStep(dt_s) {
     }
   }
 
-  // ── Rear suspension travel limits (direct DOF clamp) ────────────────────
-  if (rearSuspTravel_r > TRAVEL_EXT) {
-    rearSuspTravel_r = TRAVEL_EXT;
-    // DO NOT zero vSuspR here. The old `vSuspR = 0` caused the liftoff spike:
-    // kinematic assignment had set vSuspR = v_terrain (large extension velocity
-    // while tracking a downslope), and when the extension limit was hit, zeroing
-    // vSuspR created an instantaneous ~1.2 m/s step in one frame.
-    // Instead, let the spring naturally decelerate vSuspR:
-    //   a_susp_r = -fsusp_r × (1/m_u + 1/Ms) with spring extended gives ~-22 m/s²
-    //   → vSuspR ramps from 1.2 → 0 over ~50 ms (smooth deceleration curve, not spike).
-    // The position clamp still prevents exceeding TRAVEL_EXT, so this is safe.
-  } else if (rearSuspTravel_r < -TRAVEL_MAX) {
-    rearSuspTravel_r = -TRAVEL_MAX;
-    if (vSuspR < 0) {
-      // Bottom-out: transfer unsprung momentum to chassis (vertical).
-      // Mirrors the front fork bottom-out. In the new architecture rv_r = vSuspR,
-      // which is NOT derived from vChassis, so this transfer does NOT corrupt the
-      // damper velocity the way the old vRearWheel - v_rear_attach formula did.
-      vChassis += P.m_unsprung_r * vSuspR / (Ms + P.m_unsprung_r);
-      vSuspR = 0;
+  // ── Swingarm angle mechanical limits ────────────────────────────────────
+  if (swingAngle > PHI_FULL_DROOP) {
+    // Top-out (full droop / rebound stop). Clamp the angle but DO NOT zero
+    // swingRate: the (now extended) shock spring pulls the swingarm back over a
+    // few ms, giving a smooth velocity curve instead of an instantaneous step —
+    // the rotational analog of the liftoff-spike fix.
+    swingAngle = PHI_FULL_DROOP;
+  } else if (swingAngle < PHI_FULL_BUMP) {
+    // Bottom-out (hard bump stop). Transfer the wheel's vertical momentum to the
+    // chassis and arrest the swingarm — real bottoming is an abrupt event.
+    swingAngle = PHI_FULL_BUMP;
+    if (swingRate < 0) {
+      vChassis += P.m_unsprung_r * (wheelLeverY * swingRate) / (Ms + P.m_unsprung_r);
+      swingRate = 0;
     }
   }
 
+  // Wheel vertical travel from the unloaded rest angle (+ = compressed).
+  wheelTravel_r = SWINGARM_L * (Math.sin(PHI_REST) - Math.sin(swingAngle));
+
   // Save display forces (disp_f negative = compressed = travel used)
   disp_f = df;
-  disp_r = rearSuspTravel_r - P.pre_r;   // spring displacement (same sign convention as before)
+  disp_r = -wheelTravel_r;   // negative = compressed (same display convention as before)
 
   // ── Recompute derived front wheel world position after all corrections ─────
   // No hard-floor snap here: the tire spring drives fork compression naturally,
@@ -960,68 +1079,51 @@ function _physicsStep(dt_s) {
     frontWheelY_m = stY2 + (REST_F_M + forkSlide_f) * Math.cos(φ2);
   }
 
-  // ── Rear wheel kinematic X from swingarm arc ──────────────────────────────
+  // ── Rear wheel world position from swingAngle + terrain contact ───────────
   {
-    // Post-integration chassis attach: re-derive with updated pitchAngle/chassisY_m
     const _cosP2 = Math.cos(pitchAngle), _sinP2 = Math.sin(pitchAngle);
-    const _ra2   = chassisY_m - B_REAR_M * _sinP2;
-    // Derive rearWheelY_m from integrated suspension travel
-    rearWheelY_m = _ra2 + REST_R_M + rearSuspTravel_r;
+    const _comX  = worldX_m - A_FRONT_M;
+    // Recompute the axle (chassis frame) from the post-integration swingAngle.
+    let ax_c = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
+    let ay_c = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
+    rearWheelX_m = _comX     + ax_c * _cosP2 - ay_c * _sinP2;
+    rearWheelY_m = chassisY_m + ax_c * _sinP2 + ay_c * _cosP2;
 
-    const _comX = worldX_m - A_FRONT_M;
-    const _pivX = _comX + SW_PIV_X_FROM_COM * _cosP2 - SW_PIV_Y_FROM_COM * _sinP2;
-    const _pivY = chassisY_m + SW_PIV_X_FROM_COM * _sinP2 + SW_PIV_Y_FROM_COM * _cosP2;
-    const _swDY_raw = rearWheelY_m - _pivY;
-    const _swDY = Math.max(-SWINGARM_L, Math.min(SWINGARM_L, _swDY_raw));
-    if (_swDY !== _swDY_raw) {
-      rearWheelY_m    = _pivY + _swDY;
-      rearSuspTravel_r = rearWheelY_m - _ra2 - REST_R_M;  // back-compute to keep consistent
-      // Re-clamp: swingarm geometry can push rearSuspTravel_r outside suspension travel limits
-      // when chassis excursions are large (e.g. 3× amplitude). Without the clamp, the next
-      // sub-step sees a huge spring displacement and launches vSuspR to spurious high values.
-      rearSuspTravel_r = Math.max(-TRAVEL_MAX, Math.min(TRAVEL_EXT, rearSuspTravel_r));
-      rearWheelY_m     = _ra2 + REST_R_M + rearSuspTravel_r;  // re-derive to stay consistent
-      vSuspR = 0;
-    }
-    const _swDX = Math.sqrt(SWINGARM_L * SWINGARM_L - _swDY * _swDY);
-    rearWheelX_m = _pivX - Math.sign(_cosP2 || -1) * _swDX;
+    // Jacobian d(wheelWorldY)/d(swingAngle): how fast the wheel rises/falls per rad.
+    //   = (dax/dφ)·sinP + (day/dφ)·cosP = (L sinφ)·sinP + (L cosφ)·cosP
+    const Jphi = (SWINGARM_L * Math.sin(swingAngle)) * _sinP2
+               + (SWINGARM_L * Math.cos(swingAngle)) * _cosP2;   // ≈ L·cos(φ−P), > 0
 
-    // ── Rear wheel terrain contact: position snap + kinematic velocity ───────
-    // Position snap: prevents wheel from going below terrain.
-    // Kinematic velocity: on terrain, vSuspR is the time-derivative of rearSuspTravel_r
-    //   when the wheel is constrained to the ground surface:
-    //     d/dt(rearSuspTravel_r) = d/dt(rearWheelY_m) - d/dt(rear_attach_Y)
-    //                            = v_terrain           - (vChassis - pitchRate·B·cosP)
-    //   This IS the physical rate at which the suspension compresses/extends as the
-    //   bike rides over terrain — exactly what the damper should see.
-    //
-    //   Replaces the impulse, which enforced the same constraint instantaneously (spike).
-    //   The kinematic assignment is applied continuously every sub-step on terrain,
-    //   so there is no discontinuity: vSuspR always equals the terrain-following rate.
-    //   The only "step" at first contact is the physical one — chassis was falling at
-    //   some speed and the terrain was moving — and its magnitude reflects real physics.
     const nat_r2 = calcNaturalWY_m(rearWheelX_m, WHEEL_R_R);
     const CONTACT_BUF = 0.005; // m
     if (rearWheelY_m >= nat_r2 - (rearContact ? CONTACT_BUF : 0)) {
-      if (rearWheelY_m > nat_r2) {
-        rearWheelY_m     = nat_r2;
-        rearSuspTravel_r  = Math.max(-TRAVEL_MAX, Math.min(TRAVEL_EXT, rearWheelY_m - _ra2 - REST_R_M));
-        rearWheelY_m     = _ra2 + REST_R_M + rearSuspTravel_r;  // keep consistent after clamp
+      // Position snap: drive swingAngle so the wheel sits exactly on the terrain.
+      // One Newton step on wheelWorldY(φ) (smooth terrain ⇒ converges immediately).
+      if (rearWheelY_m > nat_r2 && Jphi > 1e-6) {
+        let dphi = (nat_r2 - rearWheelY_m) / Jphi;
+        swingAngle = Math.max(PHI_FULL_BUMP, Math.min(PHI_FULL_DROOP, swingAngle + dphi));
+        ax_c = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
+        ay_c = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
+        rearWheelX_m = _comX     + ax_c * _cosP2 - ay_c * _sinP2;
+        rearWheelY_m = chassisY_m + ax_c * _sinP2 + ay_c * _cosP2;
       }
-      // Kinematic velocity: terrain rate minus chassis-attach rate = suspension travel rate.
+      // Kinematic velocity: the swingRate that keeps the wheel tracking the terrain.
+      //   d(wheelWorldY)/dt = vChassisTerm + Jphi·swingRate  (set = v_terrain)
+      // where vChassisTerm is the wheel's vertical velocity with the swingarm FROZEN
+      // (pure chassis heave + pitch of the attached point).
       const v_ground_r  = P.speed / 3.6;
       const v_terrain_r = (calcNaturalWY_m(rearWheelX_m + v_ground_r * dt_s, WHEEL_R_R) - nat_r2) / dt_s;
-      const _vRa2_k     = vChassis - pitchRate * B_REAR_M * _cosP2;
-      const targetV_r   = v_terrain_r - _vRa2_k;
-      // Always blend toward the kinematic target with a 5 ms time constant.
-      // This prevents instantaneous velocity steps at landing (tire-spring buildup
-      // takes ~5–10 ms in reality) while still tracking terrain accurately once in
-      // steady contact (lag ≈ 5 ms = negligible at typical bump frequencies).
-      // At normal time scale (dt_s ≈ 4 ms per sub-step): alpha ≈ 55% per step → fast.
-      // At 0.10× time scale (dt_s ≈ 1.6 ms per sub-step): alpha ≈ 27% per step,
-      //   max single-step Δv = 0.27 × target_gap ≈ 0.27 m/s — no visible spike.
-      const alpha_r = 1.0 - Math.exp(-dt_s / 0.005); // 5 ms time constant
-      vSuspR = vSuspR + alpha_r * (targetV_r - vSuspR);
+      const vChassisTerm = vChassis + (ax_c * _cosP2 - ay_c * _sinP2) * pitchRate;
+      const targetRate   = Jphi > 1e-6 ? (v_terrain_r - vChassisTerm) / Jphi : swingRate;
+      // On the ground, swingAngle is set by the position snap above and swingRate tracks
+      // the terrain-following rate. We blend toward it with a 5 ms time constant so the
+      // airborne→ground transition (landing) is smooth instead of an instantaneous step.
+      // Because the swingarm EOM is NOT integrated while on the ground (see the gated
+      // integration above), there is no unbalanced-torque leak: the blend converges
+      // cleanly to targetRate (→0 at rest, no residual) yet still spreads the landing
+      // velocity change over a few ms — eliminating the contact spike.
+      const alpha_r = 1.0 - Math.exp(-dt_s / 0.005);
+      swingRate   = swingRate + alpha_r * (targetRate - swingRate);
       rearContact = true;
     } else {
       rearContact = false;
@@ -1119,7 +1221,7 @@ function draw(ts) {
     hist.rs.push(f_spring_R);   hist.rs.shift();
     hist.rd.push(f_damp_R);    hist.rd.shift();
     hist.fv.push(vForkSlide_f); hist.fv.shift();
-    hist.rv.push(vSuspR);       hist.rv.shift();
+    hist.rv.push(rearSuspVel);  hist.rv.shift();
   }
 
   // ── Stats ─────────────────────────────────────────────────
@@ -1299,6 +1401,54 @@ function draw(ts) {
   ctx.fillText('MT-07', -40, -40);
 
   ctx.restore();
+
+  // ── Rear coil-over shock (animated) ──────────────────────────────────
+  // Drawn after the chassis body so the whole strut is visible. Connects the
+  // fixed chassis mount (SHOCK_UP) to the swingarm-borne lower mount; the coil
+  // bunches up as the shock compresses, mirroring shockTravel_r.
+  {
+    // Chassis-frame → screen helper (same transform as swingarm pivot).
+    const c2s = (cx, cy) => [comSX + (cx * cosP_d - cy * sinP_d) * PM,
+                             comY  + (cx * sinP_d + cy * cosP_d) * PM];
+    const loCx = SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(swingAngle);
+    const loCy = SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(swingAngle);
+    const [ux, uy] = c2s(SHOCK_UP_X, SHOCK_UP_Y);   // upper (chassis) mount
+    const [lx, ly] = c2s(loCx, loCy);               // lower (swingarm) mount
+    const dx = lx - ux, dy = ly - uy;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len, ny = dy / len;             // unit along shock (upper→lower)
+    const ppx = -ny, ppy = nx;                      // perpendicular (for coil offset)
+
+    ctx.lineCap = 'round';
+    // Damper body / rod: upper ~38% of the strut.
+    const bX = ux + nx * len * 0.38, bY = uy + ny * len * 0.38;
+    ctx.strokeStyle = '#141414'; ctx.lineWidth = 9 * sc;
+    ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(bX, bY); ctx.stroke();
+    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 4.5 * sc;
+    ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(bX, bY); ctx.stroke();
+
+    // Coil spring along the lower ~62%. Coils bunch as the shock shortens.
+    const coils = 7, amp = 6 * sc;
+    const segs  = coils * 8;
+    const tf    = Math.max(0, Math.min(1, shockTravel_r / 0.07));  // compression fraction
+    ctx.strokeStyle = `hsl(${350 - tf * 20},${60 + tf * 40}%,${42 + tf * 13}%)`;
+    ctx.lineWidth = 2.5 * sc;
+    ctx.beginPath();
+    for (let i = 0; i <= segs; i++) {
+      const t  = i / segs;
+      const bx = bX + nx * (len * 0.62) * t;
+      const by = bY + ny * (len * 0.62) * t;
+      const off = Math.sin(t * Math.PI * 2 * coils) * amp;
+      const sx = bx + ppx * off, sy = by + ppy * off;
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+
+    // Mount eyes
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.arc(ux, uy, 4 * sc, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(lx, ly, 4 * sc, 0, Math.PI * 2); ctx.fill();
+  }
 
   // ── Fork tube (×2 length — stanchion extends above steer head) ──────
   // Fork direction from steer head toward wheel (screen coords)
