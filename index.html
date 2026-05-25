@@ -280,16 +280,14 @@ const SWINGARM_L        =  0.490;   // m
 //   Larger phi ⇒ wheel lower ⇒ suspension MORE EXTENDED.
 //   Smaller phi ⇒ wheel higher ⇒ suspension COMPRESSED.
 
-// ── Rear DIRECT SHOCK geometry (Phase 1; Phase 2 inserts a rocker linkage) ──
-// Both mounts are expressed in the chassis frame (m from CoM). The lower mount
-// rides on the swingarm at distance SW_SHOCK_D from the pivot (along the arm),
-// the upper mount is fixed on the frame/subframe. Because both ends sit on
-// chassis-attached bodies whose only relative motion is the swingarm rotation,
-// the shock LENGTH is a pure function of phi (independent of chassis pose) — so
-// shockLen(phi) and its derivative fully drive the spring/damper via virtual work.
-const SW_SHOCK_D     = 0.235;        // m  lower mount distance from pivot along swingarm
-const SHOCK_UP_X     = -0.300;       // m  upper mount X (behind CoM, on subframe)
-const SHOCK_UP_Y     = -0.120;       // m  upper mount Y (above CoM)
+// ── Rear shock frame mount (chassis frame, m from CoM) ──────────────────────
+// The shock spans this fixed frame mount to the rocker (see the LK linkage block
+// below). Because every body in the linkage is chassis-attached and the only
+// relative freedom is the swingarm rotation, the shock LENGTH is a pure function
+// of phi (independent of chassis pose) — so shockLen(phi) and its derivative fully
+// drive the spring/damper via virtual work.
+const SHOCK_UP_X     = -0.360;       // m  shock frame mount X (behind CoM, on subframe)
+const SHOCK_UP_Y     = -0.160;       // m  shock frame mount Y (above CoM)
 const I_SWINGARM     = 0.6;          // kg·m²  swingarm's own rotational inertia about pivot
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
@@ -324,23 +322,64 @@ const _SAG_NOM       = 0.033;                                                   
 const PHI_REST       = Math.asin(Math.sin(SW_PHI_SAG) + _SAG_NOM / SWINGARM_L);             // unloaded
 const PHI_FULL_DROOP = Math.asin(Math.sin(SW_PHI_SAG) + (_SAG_NOM + TRAVEL_EXT) / SWINGARM_L); // topped
 const PHI_FULL_BUMP  = Math.asin(Math.sin(SW_PHI_SAG) - (TRAVEL_MAX - _SAG_NOM) / SWINGARM_L); // bottomed
-// Shock natural (unloaded) length: zero spring force at PHI_REST.
-const SHOCK_REST_LEN = (() => {
-  const s = { x: SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(PHI_REST),
-              y: SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(PHI_REST) };
-  return Math.hypot(s.x - SHOCK_UP_X, s.y - SHOCK_UP_Y);
+// ── Rising-rate rocker linkage (Pro-Link / Monocross style) ─────────────────
+// Force path: swingarm → tie-rod → rocker (bell crank on the frame) → shock → frame.
+// All points in the chassis frame (m from CoM). The linkage makes shock travel a
+// progressive (rising-rate) function of swingarm rotation. The physics consumes only
+// shockLength(phi) and its derivative, so the linkage is a drop-in for the direct shock.
+//   • Tie-rod attaches to the swingarm LK_SW_ARM_D from the pivot.
+//   • Rocker pivots on the frame at (pivX,pivY); its tie-rod point B and shock point C
+//     are rigid (fixed radii/angles), captured from their chosen rest positions.
+//   • Shock spans rocker point C → frame mount D (= SHOCK_UP).
+const LK = (() => {
+  const pivX = -0.260, pivY = 0.140;     // rocker pivot on frame
+  const swArmD = 0.140;                  // tie-rod attach on swingarm, dist from sw pivot
+  const Brx = -0.30698, Bry = 0.15710;   // rocker tie-rod point, REST position
+  const Crx = -0.24980, Cry = 0.02340;   // rocker shock  point, REST position
+  const Dx = SHOCK_UP_X, Dy = SHOCK_UP_Y;// shock frame mount
+  const Rb = Math.hypot(Brx - pivX, Bry - pivY), angB0 = Math.atan2(Bry - pivY, Brx - pivX);
+  const Rc = Math.hypot(Crx - pivX, Cry - pivY), angC0 = Math.atan2(Cry - pivY, Crx - pivX);
+  // Tie-rod length, fixed from the rest pose.
+  const aRx = SW_PIV_X_FROM_COM - swArmD * Math.cos(PHI_REST);
+  const aRy = SW_PIV_Y_FROM_COM + swArmD * Math.sin(PHI_REST);
+  const tie = Math.hypot(aRx - Brx, aRy - Bry);
+  // Determine which circle-circle root matches the rest B (so we pick it consistently).
+  const dx = aRx - pivX, dy = aRy - pivY, d = Math.hypot(dx, dy);
+  const a = (d * d + Rb * Rb - tie * tie) / (2 * d);
+  const h = Math.sqrt(Math.max(0, Rb * Rb - a * a));
+  const mx = pivX + a * dx / d, my = pivY + a * dy / d;
+  const ox = -dy / d * h, oy = dx / d * h;
+  const rootSign = ((mx + ox - Brx) ** 2 + (my + oy - Bry) ** 2)
+                 < ((mx - ox - Brx) ** 2 + (my - oy - Bry) ** 2) ? +1 : -1;
+  return { pivX, pivY, swArmD, Rb, angB0, Rc, angC0, Dx, Dy, tie, rootSign, Brx, Bry, Crx, Cry };
 })();
+
+// Solve the 4-bar for a given swingarm angle. Returns all joint positions + shock length.
+function lkSolve(phi) {
+  const Ax = SW_PIV_X_FROM_COM - LK.swArmD * Math.cos(phi);   // tie-rod point on swingarm
+  const Ay = SW_PIV_Y_FROM_COM + LK.swArmD * Math.sin(phi);
+  // B = intersection of circle(pivot, Rb) and circle(A, tie); pick the rest-consistent root.
+  const dx = Ax - LK.pivX, dy = Ay - LK.pivY;
+  const d  = Math.hypot(dx, dy) || 1e-9;
+  const a  = (d * d + LK.Rb * LK.Rb - LK.tie * LK.tie) / (2 * d);
+  const h  = Math.sqrt(Math.max(0, LK.Rb * LK.Rb - a * a));   // 0 if (near-)binding
+  const mx = LK.pivX + a * dx / d, my = LK.pivY + a * dy / d;
+  const Bx = mx + LK.rootSign * (-dy / d * h), By = my + LK.rootSign * (dx / d * h);
+  // Rocker rotation, then C rotates rigidly with it.
+  const dTheta = Math.atan2(By - LK.pivY, Bx - LK.pivX) - LK.angB0;
+  const angC   = LK.angC0 + dTheta;
+  const Cx = LK.pivX + LK.Rc * Math.cos(angC), Cy = LK.pivY + LK.Rc * Math.sin(angC);
+  return { Ax, Ay, Bx, By, Cx, Cy, shockLen: Math.hypot(Cx - LK.Dx, Cy - LK.Dy) };
+}
+
+// Shock natural (unloaded) length: zero spring force at PHI_REST.
+const SHOCK_REST_LEN = lkSolve(PHI_REST).shockLen;
 // Motion ratio at sag = wheel-travel / shock-travel = (L·cosφ) / (d shockLen/dφ).
 // Calibrates the shock spring rate so the WHEEL rate at sag equals the P.k_r slider,
 // and converts wheel-mm preload to shock-mm. Geometry-only constant.
 const SW_MR_SAG = (() => {
-  const h = 1e-4;
-  const sl = (phi) => {
-    const sx = SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(phi);
-    const sy = SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(phi);
-    return Math.hypot(sx - SHOCK_UP_X, sy - SHOCK_UP_Y);
-  };
-  const dShock = (sl(SW_PHI_SAG + h) - sl(SW_PHI_SAG - h)) / (2 * h);
+  const hh = 1e-4;
+  const dShock = (lkSolve(SW_PHI_SAG + hh).shockLen - lkSolve(SW_PHI_SAG - hh).shockLen) / (2 * hh);
   return (SWINGARM_L * Math.cos(SW_PHI_SAG)) / dShock;
 })();
 
@@ -746,24 +785,11 @@ function swAxleChassis(phi) {
   };
 }
 
-// Lower shock mount (chassis frame): a point on the swingarm SW_SHOCK_D from the pivot.
-function swShockLowChassis(phi) {
-  return {
-    x: SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(phi),
-    y: SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(phi),
-  };
-}
-
-// Shock length for a given swingarm angle (Phase 1: direct shock between the
-// fixed upper mount and the swingarm-borne lower mount).
-// Phase 2 will replace the body of this function with a rocker-linkage solve;
-// nothing else in the physics needs to change because the EOM consumes only
-// shockLen(phi) and its derivative.
+// Shock length for a given swingarm angle — via the rocker linkage (lkSolve).
+// The EOM consumes only shockLen(phi) and its derivative, so routing the shock
+// through the linkage automatically yields the progressive (rising) rate.
 function shockLength(phi) {
-  const s = swShockLowChassis(phi);
-  const dx = s.x - SHOCK_UP_X;
-  const dy = s.y - SHOCK_UP_Y;
-  return Math.hypot(dx, dy);
+  return lkSolve(phi).shockLen;
 }
 
 // d(shockLength)/d(phi), central finite difference (rad).
@@ -1402,52 +1428,68 @@ function draw(ts) {
 
   ctx.restore();
 
-  // ── Rear coil-over shock (animated) ──────────────────────────────────
-  // Drawn after the chassis body so the whole strut is visible. Connects the
-  // fixed chassis mount (SHOCK_UP) to the swingarm-borne lower mount; the coil
-  // bunches up as the shock compresses, mirroring shockTravel_r.
+  // ── Rear linkage + coil-over shock (animated) ────────────────────────
+  // Drawn after the chassis body so the whole assembly is visible. Renders the
+  // full Pro-Link-style path: swingarm → tie-rod → rocker (bell crank) → shock →
+  // frame. Joint positions come from the same lkSolve() the physics uses, so the
+  // animation is exactly consistent with the rising-rate behavior.
   {
-    // Chassis-frame → screen helper (same transform as swingarm pivot).
+    // Chassis-frame → screen helper (same transform as the swingarm pivot).
     const c2s = (cx, cy) => [comSX + (cx * cosP_d - cy * sinP_d) * PM,
                              comY  + (cx * sinP_d + cy * cosP_d) * PM];
-    const loCx = SW_PIV_X_FROM_COM - SW_SHOCK_D * Math.cos(swingAngle);
-    const loCy = SW_PIV_Y_FROM_COM + SW_SHOCK_D * Math.sin(swingAngle);
-    const [ux, uy] = c2s(SHOCK_UP_X, SHOCK_UP_Y);   // upper (chassis) mount
-    const [lx, ly] = c2s(loCx, loCy);               // lower (swingarm) mount
-    const dx = lx - ux, dy = ly - uy;
+    const lk = lkSolve(swingAngle);
+    const [pX, pY] = c2s(LK.pivX, LK.pivY);     // rocker pivot
+    const [aX, aY] = c2s(lk.Ax, lk.Ay);         // tie-rod ↔ swingarm
+    const [bX2, bY2] = c2s(lk.Bx, lk.By);       // tie-rod ↔ rocker
+    const [cX, cY] = c2s(lk.Cx, lk.Cy);         // rocker ↔ shock
+    const [dX, dY] = c2s(SHOCK_UP_X, SHOCK_UP_Y); // shock ↔ frame
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+    // Tie-rod (swingarm A → rocker B): slim steel link.
+    ctx.strokeStyle = '#0d0d0d'; ctx.lineWidth = 6 * sc;
+    ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(bX2, bY2); ctx.stroke();
+    ctx.strokeStyle = '#5a5a5a'; ctx.lineWidth = 2.5 * sc;
+    ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(bX2, bY2); ctx.stroke();
+
+    // Rocker (bell crank): filled triangle pivot–B–C.
+    ctx.beginPath(); ctx.moveTo(pX, pY); ctx.lineTo(bX2, bY2); ctx.lineTo(cX, cY); ctx.closePath();
+    ctx.fillStyle = '#2c2c2c'; ctx.fill();
+    ctx.strokeStyle = '#5a5a5a'; ctx.lineWidth = 1.5 * sc; ctx.stroke();
+
+    // Coil-over shock (rocker C → frame D): damper body near the frame, coil along
+    // the lower portion. The coil bunches as the shock compresses (shockTravel_r).
+    const dx = cX - dX, dy = cY - dY;
     const len = Math.hypot(dx, dy) || 1;
-    const nx = dx / len, ny = dy / len;             // unit along shock (upper→lower)
-    const ppx = -ny, ppy = nx;                      // perpendicular (for coil offset)
-
-    ctx.lineCap = 'round';
-    // Damper body / rod: upper ~38% of the strut.
-    const bX = ux + nx * len * 0.38, bY = uy + ny * len * 0.38;
+    const nx = dx / len, ny = dy / len;          // unit along shock (frame→rocker)
+    const ppx = -ny, ppy = nx;
+    const bx0 = dX + nx * len * 0.36, by0 = dY + ny * len * 0.36;  // body end
     ctx.strokeStyle = '#141414'; ctx.lineWidth = 9 * sc;
-    ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(bX, bY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dX, dY); ctx.lineTo(bx0, by0); ctx.stroke();
     ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 4.5 * sc;
-    ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(bX, bY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dX, dY); ctx.lineTo(bx0, by0); ctx.stroke();
 
-    // Coil spring along the lower ~62%. Coils bunch as the shock shortens.
-    const coils = 7, amp = 6 * sc;
-    const segs  = coils * 8;
-    const tf    = Math.max(0, Math.min(1, shockTravel_r / 0.07));  // compression fraction
+    const coils = 6, amp = 5.5 * sc, segs = coils * 8;
+    const tf = Math.max(0, Math.min(1, shockTravel_r / 0.077));   // compression fraction
     ctx.strokeStyle = `hsl(${350 - tf * 20},${60 + tf * 40}%,${42 + tf * 13}%)`;
     ctx.lineWidth = 2.5 * sc;
     ctx.beginPath();
     for (let i = 0; i <= segs; i++) {
       const t  = i / segs;
-      const bx = bX + nx * (len * 0.62) * t;
-      const by = bY + ny * (len * 0.62) * t;
+      const bx = bx0 + nx * (len * 0.64) * t;
+      const by = by0 + ny * (len * 0.64) * t;
       const off = Math.sin(t * Math.PI * 2 * coils) * amp;
       const sx = bx + ppx * off, sy = by + ppy * off;
       i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
     }
     ctx.stroke();
 
-    // Mount eyes
-    ctx.fillStyle = '#222';
-    ctx.beginPath(); ctx.arc(ux, uy, 4 * sc, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(lx, ly, 4 * sc, 0, Math.PI * 2); ctx.fill();
+    // Pivot + joint eyes.
+    ctx.fillStyle = '#1a1a1a';
+    for (const [jx, jy, r] of [[pX,pY,4.5],[aX,aY,3.5],[bX2,bY2,3.5],[cX,cY,3.5],[dX,dY,4]]) {
+      ctx.beginPath(); ctx.arc(jx, jy, r * sc, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#666';
+    ctx.beginPath(); ctx.arc(pX, pY, 2 * sc, 0, Math.PI * 2); ctx.fill();
   }
 
   // ── Fork tube (×2 length — stanchion extends above steer head) ──────
