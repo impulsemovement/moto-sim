@@ -11,6 +11,19 @@ canvas { display: block; background: #080808; }
 #c { border: 1px solid #1f1f1f; border-radius: 8px; }
 
 #sim-wrap { position: relative; display: inline-block; width: 100%; }
+#zoom-btns {
+  position: absolute; top: 10px; left: 10px;
+  display: flex; flex-direction: column; gap: 4px; z-index: 10;
+}
+#zoom-btns button {
+  width: 32px; height: 32px;
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
+  background: rgba(0,0,0,0.45); color: #f0f0f0;
+  font-size: 18px; font-weight: 700; line-height: 1;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  transition: background 0.1s;
+}
+#zoom-btns button:active { background: rgba(255,255,255,0.15); }
 .ride-btn {
   position: absolute; bottom: 16px;
   width: 80px; height: 44px;
@@ -48,14 +61,15 @@ canvas { display: block; background: #080808; }
 .card-curve  { grid-area: curve; }
 .card-terrain{ grid-area: terrain; }
 .card-fhist  { grid-area: fhist; }
-.ui { grid-template-areas: "susp curve" "terrain fhist"; }
+.card-vhist  { grid-area: vhist; }
+.ui { grid-template-areas: "susp curve" "terrain fhist" "vhist ."; }
 
 /* Mobile: single column, curve + fhist drop below terrain */
 @media (max-width: 640px) {
   body { padding: 2px; }
   .ui {
     grid-template-columns: 1fr;
-    grid-template-areas: "susp" "terrain" "curve" "fhist";
+    grid-template-areas: "susp" "terrain" "curve" "fhist" "vhist";
   }
   .stats { grid-template-columns: repeat(3,1fr); }
   .stat-n { font-size: 14px; }
@@ -90,6 +104,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 
 <div id="sim-wrap">
   <canvas id="c"></canvas>
+  <div id="zoom-btns">
+    <button id="btn-zoom-in"  title="Zoom in">+</button>
+    <button id="btn-zoom-out" title="Zoom out">−</button>
+  </div>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
 </div>
@@ -227,6 +245,16 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     </div>
   </div>
 
+  <!-- BOTTOM-LEFT: Suspension velocity history graph -->
+  <div class="card card-vhist">
+    <div class="card-header" style="margin-bottom:6px">SUSPENSION VELOCITY (5 s)</div>
+    <canvas id="vgraph" height="120" style="display:block;width:100%;border-radius:4px;"></canvas>
+    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
+      <span style="font-size:10px;color:#ff8800">— F.Vel m/s</span>
+      <span style="font-size:10px;color:#22c55e">— R.Vel m/s</span>
+    </div>
+  </div>
+
 </div><!-- .ui -->
 
 <script>
@@ -235,6 +263,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 //  CONSTANTS  (SI units throughout)
 // ═══════════════════════════════════════════════════════════
 let PM           = 200;          // pixels per meter — updated by resizeMain()
+let PM_base      = 200;          // base PM before user zoom
+let userZoom     = 1.0;          // zoom multiplier from +/- buttons
 const g          = 9.81;         // m/s²
 const RAKE_RAD   = 24.83 * Math.PI / 180;
 
@@ -277,10 +307,11 @@ const ctx    = canvas.getContext('2d');
 
 function resizeMain() {
   const mobile  = window.innerWidth < 641;
-  const pad     = mobile ? 4 : 20;                 // 2px each side mobile, 10px desktop
+  const pad     = mobile ? 4 : 20;
   canvas.width  = window.innerWidth - pad;
-  canvas.height = Math.round(mobile ? 260 : 416); // 320 * 1.30
-  PM            = mobile ? 100 : 200;              // 50% zoom on mobile so bike fits screen
+  canvas.height = Math.round(mobile ? 260 : 416);
+  PM_base       = mobile ? 100 : 200;
+  PM            = PM_base * userZoom;
 }
 resizeMain();
 window.addEventListener('resize', resizeMain);
@@ -442,7 +473,9 @@ let rebLUT_R  = buildCurveLUT(rebPts_R);
 function groundY_m(wx_m) {
   const amp  = P.amp;
   const freq = P.freq;
-  const noise = P.rough>0 ? valueNoise(wx_m*5)*0.015*P.rough : 0;
+  // Quadratic scaling: gentle at low %, progressively larger toward 100%
+  // (0→3mm at 25%, ~15mm at 50%, ~34mm at 75%, 60mm at 100%)
+  const noise = P.rough>0 ? valueNoise(wx_m*5)*0.06*P.rough*P.rough : 0;
   switch (P.terrain) {
     case 0: // Bumps
       return Math.sin(wx_m*Math.PI*freq)*0.08*amp
@@ -520,9 +553,10 @@ let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = exten
 let frontWheelX_m = 0;
 let frontWheelY_m = 0;
 
-let rearWheelY_m  = 0;
-let vRearWheel    = 0;
-let rearWheelX_m  = 0;
+let rearWheelY_m     = 0;   // derived each sub-step from chassis + rearSuspTravel_r
+let rearWheelX_m     = 0;
+let rearSuspTravel_r = 0;   // chassis-relative suspension travel (negative = compressed)
+let vSuspR           = 0;   // rate of rearSuspTravel_r — directly used as damper velocity
 
 let worldX_m      = 0;
 let lastTs        = null;
@@ -532,6 +566,8 @@ let initialized   = false;
 let a_long        = 0;
 let gasPressed    = false;
 let brakePressed  = false;
+let gasInput      = 0;   // 0–1, ramps up over 1.5 s when pressed, falls in 0.5 s when released
+let brakeInput    = 0;   // same
 const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 class)
 
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
@@ -542,13 +578,15 @@ let wheelAngle_r  = 0;
 let f_spring_F=0, f_damp_F=0, f_spring_R=0, f_damp_R=0;
 let f_tire_F=0, f_tire_R=0;
 let disp_f=0, disp_r=0;
+// Wheel contact state — tracked by hard floor, used for AIR indicator & landing logic
+let rearContact = false;  // true when rear wheel is on the ground
 
 // ═══════════════════════════════════════════════════════════
 //  FORCE HISTORY  (300 samples = ~5 s at 60fps)
 // ═══════════════════════════════════════════════════════════
 const HIST_MAX = 300;
-const hist = { fs:[], fd:[], rs:[], rd:[] };
-['fs','fd','rs','rd'].forEach(k => { for(let i=0;i<HIST_MAX;i++) hist[k].push(0); });
+const hist = { fs:[], fd:[], rs:[], rd:[], fv:[], rv:[] };
+['fs','fd','rs','rd','fv','rv'].forEach(k => { for(let i=0;i<HIST_MAX;i++) hist[k].push(0); });
 
 // ═══════════════════════════════════════════════════════════
 //  STATIC EQUILIBRIUM INIT
@@ -580,7 +618,10 @@ function initPhysics() {
   forkSlide_f  = -sagF;
   vForkSlide_f = 0;
 
-  // Rear wheel Y (world, same as before)
+  // Rear suspension: start at static equilibrium compression
+  rearSuspTravel_r = -sagR;
+  vSuspR = 0;
+  // Seed rearWheelY_m for the eq_r geometry solve below (overwritten every sub-step)
   rearWheelY_m = nat_r + pen_r;
   rearWheelX_m = worldX_m - WHEELBASE;   // approximate, updated by physics after settle
 
@@ -603,7 +644,8 @@ function initPhysics() {
     frontWheelY_m = steerY0   + (REST_F_M + forkSlide_f) * Math.cos(φ0);
   }
 
-  vChassis = 0; pitchRate = 0; vForkSlide_f = 0; vRearWheel = 0;
+  vChassis = 0; pitchRate = 0; vForkSlide_f = 0; vSuspR = 0;
+  rearContact = false;
 
   // Settle with terrain FROZEN (speed=0) so bumps don't create transients
   // that overwhelm the initial equilibrium estimate.
@@ -611,7 +653,8 @@ function initPhysics() {
   P.speed = 0;
   for (let i = 0; i < 500; i++) simStep(0.005);
   P.speed = savedSpeed;
-  vChassis = 0; vForkSlide_f = 0; vRearWheel = 0; pitchRate = 0;
+  vChassis = 0; vForkSlide_f = 0; vSuspR = 0; pitchRate = 0;
+  rearContact = false;
   initialized = true;
 }
 
@@ -643,12 +686,36 @@ function _physicsStep(dt_s) {
   const K_F = P.k_f * 1000;  // N/m
   const K_R = P.k_r * 1000;
 
-  // ── Gas / brake: derive a_long from ACTUAL speed change (clamped at 0/160) ─
-  // This means pitch moment drops to zero once the bike can't accelerate further.
+  // ── Gas / brake: ramp inputs then derive a_long from ACTUAL speed change ────
+  // gasInput / brakeInput ramp 0→1 in 1.5 s when held, 1→0 in 0.5 s when released.
+  // Multiplying by the ramp value makes the response feel progressive, not on/off.
   {
+    // Sine ease-out ramp: input(t) = sin(π·t / 2T)
+    //   d(input)/dt  = (π/2T) · cos(π·t/2T) = (π/2T) · √(1 − input²)
+    // → rate is highest at the start and smoothly falls to zero at the limit.
+    // The same curve applied to (1 − input) gives an ease-out release:
+    // fast drop immediately, settles gently to zero.
+    const K_UP   = (Math.PI / (2 * 0.75)) * dt_s;  // ramp up  in 0.75 s
+    const K_DOWN = (Math.PI / (2 * 0.25)) * dt_s;  // ramp down in 0.25 s
+
+    function sineRamp(val, k) {
+      return Math.min(1, val + k * Math.sqrt(Math.max(0, 1 - val * val)));
+    }
+    if (gasPressed) {
+      gasInput = sineRamp(gasInput, K_UP);
+    } else {
+      // ease-out on the inverted axis so release is fast-start, smooth-stop
+      gasInput = 1 - sineRamp(1 - gasInput, K_DOWN);
+    }
+    if (brakePressed) {
+      brakeInput = sineRamp(brakeInput, K_UP);
+    } else {
+      brakeInput = 1 - sineRamp(1 - brakeInput, K_DOWN);
+    }
+
     const speedBefore = P.speed;
-    const requested   = gasPressed ? GAS_ACCEL : brakePressed ? -BRAKE_DECEL : 0;
-    if (gasPressed || brakePressed) {
+    const requested   = (GAS_ACCEL * gasInput) - (BRAKE_DECEL * brakeInput);
+    if (gasInput > 0 || brakeInput > 0) {
       P.speed = Math.max(0, Math.min(160, P.speed + requested * dt_s * 3.6));
       const sl = document.getElementById('speed');
       if (sl) sl.value = Math.round(P.speed);
@@ -687,8 +754,16 @@ function _physicsStep(dt_s) {
   frontWheelY_m = steerY + s_f * cosφ;          // wheel world Y (derived, not integrated)
 
   // ── Rear chassis attachment ───────────────────────────────────────────────
-  const rear_attach_Y = chassisY_m - pitchAngle * B_REAR_M;
-  const v_rear_attach = vChassis   - pitchRate  * B_REAR_M;
+  // Full 2-D rotation (not small-angle approx) so rear suspension is correct at wheelie angles.
+  // Rear axle sits at chassis-frame offset (-B_REAR_M, 0) from CoM:
+  //   world Y = chassisY + (-B_REAR_M)·sinP + 0·cosP = chassisY - B_REAR_M·sinP
+  //   world Vy = vChassis - pitchRate·B_REAR_M·cosP
+  const rear_attach_Y = chassisY_m - B_REAR_M * sinP;
+  const v_rear_attach = vChassis   - pitchRate * B_REAR_M * cosP;
+
+  // Pre-integration derived rear wheel Y (uses previous-step rearSuspTravel_r,
+  // one sub-step lag — acceptable; needed for tire spring force calculation below).
+  rearWheelY_m = rear_attach_Y + REST_R_M + rearSuspTravel_r;
 
   // ── Front fork spring & damper (along fork axis) ──────────────────────────
   // forkSlide_f < 0 → compressed → spring pushes wheel out (extends fork)
@@ -704,9 +779,12 @@ function _physicsStep(dt_s) {
   f_damp_F = Math.sign(rv_f) * fd_mag_f;
   const fsusp_f  = f_spring_F + f_damp_F;        // force along fork axis (neg = compressed)
 
-  // ── Rear suspension spring & damper (vertical) ────────────────────────────
-  let dr   = (rearWheelY_m - rear_attach_Y) - REST_R_M - P.pre_r;
-  let rv_r = vRearWheel - v_rear_attach;
+  // ── Rear suspension spring & damper (chassis-relative DOF) ──────────────
+  // rv_r = vSuspR is directly integrated — mirrors vForkSlide_f on the front.
+  // No longer derived as (vRearWheel - v_rear_attach), which injected pitchRate
+  // noise and caused momentum-transfer spikes at travel limits.
+  let dr   = rearSuspTravel_r - P.pre_r;   // spring displacement (neg = compressed)
+  let rv_r = vSuspR;                         // damper velocity (direct DOF rate)
 
   if (dr > TRAVEL_EXT)  { dr = TRAVEL_EXT;  if (rv_r > 0) rv_r = 0; }
   if (dr < -TRAVEL_MAX) { dr = -TRAVEL_MAX; if (rv_r < 0) rv_r = 0; }
@@ -721,13 +799,25 @@ function _physicsStep(dt_s) {
   const nat_f = calcNaturalWY_m(frontWheelX_m, WHEEL_R_F);
   const nat_r = calcNaturalWY_m(rearWheelX_m,  WHEEL_R_R);
 
-  // Clamp tire penetration to 25 mm max — prevents runaway energy accumulation
-  // when the suspension is simultaneously at its travel limit (trampoline fix).
-  const MAX_TIRE_PEN = 0.025;
-  const pen_f = Math.min(Math.max(0, frontWheelY_m - nat_f), MAX_TIRE_PEN);
-  const pen_r = Math.min(Math.max(0, rearWheelY_m  - nat_r), MAX_TIRE_PEN);
+  // Front tire: no penetration cap — full spring force drives fork compression,
+  // which is required for the compression damper to see a velocity and respond.
+  // Fork travel limits (TRAVEL_MAX) are the physical bound, not a force cap.
+  const pen_f = Math.max(0, frontWheelY_m - nat_f);
   f_tire_F = pen_f > 0 ? -P.k_tire_f * pen_f : 0;
-  f_tire_R = pen_r > 0 ? -P.k_tire_r * pen_r : 0;
+
+  // Rear tire spring — now safe to include in a_susp_r (see EOM below).
+  // In the new chassis-relative DOF architecture, rv_r = vSuspR (not derived from
+  // vRearWheel - v_rear_attach), so the tire spring force no longer contaminates
+  // the damper velocity with pitchRate or vChassis jumps.
+  // The tire spring is REQUIRED for suspension equilibrium: without it, a_susp_r
+  // has a large extension bias (gravity + compressed spring both extend), which
+  // fights the hard-floor constraint and causes chassis velocity build-up.
+  {
+    const pen_r_raw = rearWheelY_m - nat_r;
+    const pen_r = Math.max(0, pen_r_raw);
+    const PEN_CAP_R = 0.025; // m — caps stiff-spring force to prevent one-step overshoot
+    f_tire_R = pen_r > 0 ? -P.k_tire_r * Math.min(pen_r, PEN_CAP_R) : 0;
+  }
 
   // ── Chassis EOM ───────────────────────────────────────────────────────────
   // Fork force on chassis: the fork is tilted, so only the Y component of the
@@ -742,7 +832,24 @@ function _physicsStep(dt_s) {
   const tau_long   = -M_total * a_long * H_COM; // pitch moment from long. accel (N·m)
 
   const a_chassis   = g + (fsusp_f_y + fsusp_r) / Ms;
-  const alpha_pitch = (A_FRONT_M * fsusp_f_y - B_REAR_M * fsusp_r + tau_long) / I_YY;
+
+  // ── Pitch EOM ─────────────────────────────────────────────────────────────
+  // Raw suspension pitch moment. With asymmetric moment arms (A≠B) pure heave
+  // generates a small spurious pitch. Subtract the "common-mode" force —
+  // the portion of each suspension load attributable to balanced heave — so
+  // symmetric heave (both wheels hitting the same bump simultaneously) creates
+  // no net pitch.  Only *differential* suspension forces drive pitch.
+  const L = A_FRONT_M + B_REAR_M;           // wheelbase
+  const f_heave_f = fsusp_f_y * (B_REAR_M  / L); // front share of heave reaction
+  const f_heave_r = fsusp_r   * (A_FRONT_M / L); // rear  share of heave reaction
+  const tau_susp  = A_FRONT_M * (fsusp_f_y - f_heave_f)
+                  - B_REAR_M  * (fsusp_r   - f_heave_r);
+  // Pitch damping: limits pitchRate to physically realistic values.
+  // At 40 N·m·s/rad, pitchRate can reach ~2.4 rad/s (137°/s) over bumps — too high.
+  // Real motorcycles stay below ~1 rad/s in normal riding; 100 N·m·s/rad achieves this
+  // while still allowing meaningful nose-dive under braking and squat under acceleration.
+  const C_PITCH_DRAG = 100; // N·m·s/rad
+  const alpha_pitch = (tau_susp + tau_long - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
@@ -756,8 +863,33 @@ function _physicsStep(dt_s) {
                - fsusp_f / P.m_unsprung_f
                + f_tire_F * cosφ / P.m_unsprung_f;
 
-  // ── Rear wheel EOM (vertical) ─────────────────────────────────────────────
-  const a_rw = g - fsusp_r / P.m_unsprung_r + f_tire_R / P.m_unsprung_r;
+  // ── Rear suspension travel EOM (chassis-relative DOF) ───────────────────
+  // Mirrors front fork EOM: gravity extends, spring+damper and tire spring oppose.
+  // f_tire_R < 0 (upward) counters the compressed-spring extension bias, allowing
+  // the system to reach static equilibrium at the correct sag without fighting the
+  // hard-floor constraint.
+  // Rear suspension travel EOM — contact-state-dependent form.
+  //
+  // ON GROUND (rearContact from previous sub-step):
+  //   World-frame: a = g - fsusp_r/m_u + f_tire/m_u
+  //   Gravity extends the spring; tire force opposes. Correct for the on-ground case.
+  //
+  // AIRBORNE (rearContact = false):
+  //   Reduced-mass form: a = -fsusp_r × (1/m_u + 1/Ms)
+  //   Both masses fall at g identically → gravity cancels in the relative frame.
+  //   Only the spring acts on the relative DOF: a_rel = (g - fsusp_r/m_u) - (g - fsusp_r/Ms)
+  //                                                   = -fsusp_r × (1/m_u + 1/Ms)
+  //   When spring is near rest (fsusp_r ≈ 0): a_susp_r ≈ 0 → vSuspR stays roughly constant.
+  //   This prevents the g-driven extension buildup that previously accumulated vSuspR to
+  //   ~0.5+ m/s extension during airborne phases, causing a large spike at landing contact.
+  // EOM uses rearContact from previous sub-step.
+  // On ground: world-frame form (gravity + spring + tire spring).
+  // Airborne: reduced-mass form — gravity cancels exactly in the relative frame
+  //   (both masses fall at g together), so only the spring acts on relative motion.
+  //   a_susp_r ≈ 0 when spring is near rest → vSuspR stays small → no g-driven buildup.
+  const a_susp_r = rearContact
+    ? g - fsusp_r / P.m_unsprung_r + f_tire_R / P.m_unsprung_r   // on ground
+    : -fsusp_r * (1.0 / P.m_unsprung_r + 1.0 / Ms);              // airborne: reduced-mass
 
   // ── Integrate (explicit Euler) ────────────────────────────────────────────
   vChassis     += a_chassis   * dt_s;
@@ -765,11 +897,12 @@ function _physicsStep(dt_s) {
   chassisY_m   += vChassis    * dt_s;
   pitchAngle   += pitchRate   * dt_s;
 
+
   vForkSlide_f += a_fork      * dt_s;
   forkSlide_f  += vForkSlide_f * dt_s;
 
-  vRearWheel   += a_rw        * dt_s;
-  rearWheelY_m += vRearWheel  * dt_s;
+  vSuspR           += a_susp_r   * dt_s;
+  rearSuspTravel_r += vSuspR     * dt_s;
 
   // ── Fork travel limits (direct DOF clamp — no positional correction needed) ─
   if (forkSlide_f > TRAVEL_EXT) {
@@ -787,50 +920,112 @@ function _physicsStep(dt_s) {
     }
   }
 
-  // ── Rear wheel positional travel-limit correction ─────────────────────────
-  {
-    const ra2  = chassisY_m - pitchAngle * B_REAR_M;
-    const raV2 = vChassis   - pitchRate  * B_REAR_M;
-    const dr2  = (rearWheelY_m - ra2) - REST_R_M - P.pre_r;
-    if (dr2 > TRAVEL_EXT) {
-      rearWheelY_m -= (dr2 - TRAVEL_EXT);
-      if (vRearWheel - raV2 > 0) vRearWheel = raV2;
-    } else if (dr2 < -TRAVEL_MAX) {
-      rearWheelY_m -= (dr2 + TRAVEL_MAX);
-      if (vRearWheel - raV2 < 0) {
-        // Bottom-out: merge wheel & chassis-attach velocities using mass ratio
-        // so the chassis gets an upward kick rather than just stopping the wheel.
-        const v_merged = (Ms * raV2 + P.m_unsprung_r * vRearWheel) / (Ms + P.m_unsprung_r);
-        vChassis    += (v_merged - raV2);   // impulse transferred to chassis heave
-        vRearWheel   = v_merged;
-      }
+  // ── Rear suspension travel limits (direct DOF clamp) ────────────────────
+  if (rearSuspTravel_r > TRAVEL_EXT) {
+    rearSuspTravel_r = TRAVEL_EXT;
+    // DO NOT zero vSuspR here. The old `vSuspR = 0` caused the liftoff spike:
+    // kinematic assignment had set vSuspR = v_terrain (large extension velocity
+    // while tracking a downslope), and when the extension limit was hit, zeroing
+    // vSuspR created an instantaneous ~1.2 m/s step in one frame.
+    // Instead, let the spring naturally decelerate vSuspR:
+    //   a_susp_r = -fsusp_r × (1/m_u + 1/Ms) with spring extended gives ~-22 m/s²
+    //   → vSuspR ramps from 1.2 → 0 over ~50 ms (smooth deceleration curve, not spike).
+    // The position clamp still prevents exceeding TRAVEL_EXT, so this is safe.
+  } else if (rearSuspTravel_r < -TRAVEL_MAX) {
+    rearSuspTravel_r = -TRAVEL_MAX;
+    if (vSuspR < 0) {
+      // Bottom-out: transfer unsprung momentum to chassis (vertical).
+      // Mirrors the front fork bottom-out. In the new architecture rv_r = vSuspR,
+      // which is NOT derived from vChassis, so this transfer does NOT corrupt the
+      // damper velocity the way the old vRearWheel - v_rear_attach formula did.
+      vChassis += P.m_unsprung_r * vSuspR / (Ms + P.m_unsprung_r);
+      vSuspR = 0;
     }
   }
 
   // Save display forces (disp_f negative = compressed = travel used)
   disp_f = df;
-  disp_r = dr;
+  disp_r = rearSuspTravel_r - P.pre_r;   // spring displacement (same sign convention as before)
 
   // ── Recompute derived front wheel world position after all corrections ─────
+  // No hard-floor snap here: the tire spring drives fork compression naturally,
+  // which produces vForkSlide_f < 0 and activates the compression damper.
+  // A hard floor would bypass that velocity, making the comp damper invisible.
   {
     const φ2   = RAKE_RAD - pitchAngle;
     const cP2  = Math.cos(pitchAngle), sP2 = Math.sin(pitchAngle);
-    const stX2 = (worldX_m - A_FRONT_M) + A_FRONT_M * cP2;   // steer head X (full rotation)
-    const stY2 = chassisY_m + A_FRONT_M * sP2;                // steer head Y (full rotation)
+    const stX2 = (worldX_m - A_FRONT_M) + A_FRONT_M * cP2;
+    const stY2 = chassisY_m + A_FRONT_M * sP2;
     frontWheelX_m = stX2 + (REST_F_M + forkSlide_f) * Math.sin(φ2);
     frontWheelY_m = stY2 + (REST_F_M + forkSlide_f) * Math.cos(φ2);
   }
 
   // ── Rear wheel kinematic X from swingarm arc ──────────────────────────────
   {
+    // Post-integration chassis attach: re-derive with updated pitchAngle/chassisY_m
+    const _cosP2 = Math.cos(pitchAngle), _sinP2 = Math.sin(pitchAngle);
+    const _ra2   = chassisY_m - B_REAR_M * _sinP2;
+    // Derive rearWheelY_m from integrated suspension travel
+    rearWheelY_m = _ra2 + REST_R_M + rearSuspTravel_r;
+
     const _comX = worldX_m - A_FRONT_M;
-    // Pivot is body-fixed: rotate chassis-frame offset (SW_PIV_X_FROM_COM, SW_PIV_Y_FROM_COM)
-    // by pitchAngle into world frame.  cosP/sinP already computed above.
-    const _pivX = _comX + SW_PIV_X_FROM_COM * cosP - SW_PIV_Y_FROM_COM * sinP;
-    const _pivY = chassisY_m + SW_PIV_X_FROM_COM * sinP + SW_PIV_Y_FROM_COM * cosP;
-    const _swDY = rearWheelY_m - _pivY;
-    const _swDX = Math.sqrt(Math.max(0, SWINGARM_L * SWINGARM_L - _swDY * _swDY));
-    rearWheelX_m = _pivX - _swDX;
+    const _pivX = _comX + SW_PIV_X_FROM_COM * _cosP2 - SW_PIV_Y_FROM_COM * _sinP2;
+    const _pivY = chassisY_m + SW_PIV_X_FROM_COM * _sinP2 + SW_PIV_Y_FROM_COM * _cosP2;
+    const _swDY_raw = rearWheelY_m - _pivY;
+    const _swDY = Math.max(-SWINGARM_L, Math.min(SWINGARM_L, _swDY_raw));
+    if (_swDY !== _swDY_raw) {
+      rearWheelY_m    = _pivY + _swDY;
+      rearSuspTravel_r = rearWheelY_m - _ra2 - REST_R_M;  // back-compute to keep consistent
+      // Re-clamp: swingarm geometry can push rearSuspTravel_r outside suspension travel limits
+      // when chassis excursions are large (e.g. 3× amplitude). Without the clamp, the next
+      // sub-step sees a huge spring displacement and launches vSuspR to spurious high values.
+      rearSuspTravel_r = Math.max(-TRAVEL_MAX, Math.min(TRAVEL_EXT, rearSuspTravel_r));
+      rearWheelY_m     = _ra2 + REST_R_M + rearSuspTravel_r;  // re-derive to stay consistent
+      vSuspR = 0;
+    }
+    const _swDX = Math.sqrt(SWINGARM_L * SWINGARM_L - _swDY * _swDY);
+    rearWheelX_m = _pivX - Math.sign(_cosP2 || -1) * _swDX;
+
+    // ── Rear wheel terrain contact: position snap + kinematic velocity ───────
+    // Position snap: prevents wheel from going below terrain.
+    // Kinematic velocity: on terrain, vSuspR is the time-derivative of rearSuspTravel_r
+    //   when the wheel is constrained to the ground surface:
+    //     d/dt(rearSuspTravel_r) = d/dt(rearWheelY_m) - d/dt(rear_attach_Y)
+    //                            = v_terrain           - (vChassis - pitchRate·B·cosP)
+    //   This IS the physical rate at which the suspension compresses/extends as the
+    //   bike rides over terrain — exactly what the damper should see.
+    //
+    //   Replaces the impulse, which enforced the same constraint instantaneously (spike).
+    //   The kinematic assignment is applied continuously every sub-step on terrain,
+    //   so there is no discontinuity: vSuspR always equals the terrain-following rate.
+    //   The only "step" at first contact is the physical one — chassis was falling at
+    //   some speed and the terrain was moving — and its magnitude reflects real physics.
+    const nat_r2 = calcNaturalWY_m(rearWheelX_m, WHEEL_R_R);
+    const CONTACT_BUF = 0.005; // m
+    if (rearWheelY_m >= nat_r2 - (rearContact ? CONTACT_BUF : 0)) {
+      if (rearWheelY_m > nat_r2) {
+        rearWheelY_m     = nat_r2;
+        rearSuspTravel_r  = Math.max(-TRAVEL_MAX, Math.min(TRAVEL_EXT, rearWheelY_m - _ra2 - REST_R_M));
+        rearWheelY_m     = _ra2 + REST_R_M + rearSuspTravel_r;  // keep consistent after clamp
+      }
+      // Kinematic velocity: terrain rate minus chassis-attach rate = suspension travel rate.
+      const v_ground_r  = P.speed / 3.6;
+      const v_terrain_r = (calcNaturalWY_m(rearWheelX_m + v_ground_r * dt_s, WHEEL_R_R) - nat_r2) / dt_s;
+      const _vRa2_k     = vChassis - pitchRate * B_REAR_M * _cosP2;
+      const targetV_r   = v_terrain_r - _vRa2_k;
+      // Always blend toward the kinematic target with a 5 ms time constant.
+      // This prevents instantaneous velocity steps at landing (tire-spring buildup
+      // takes ~5–10 ms in reality) while still tracking terrain accurately once in
+      // steady contact (lag ≈ 5 ms = negligible at typical bump frequencies).
+      // At normal time scale (dt_s ≈ 4 ms per sub-step): alpha ≈ 55% per step → fast.
+      // At 0.10× time scale (dt_s ≈ 1.6 ms per sub-step): alpha ≈ 27% per step,
+      //   max single-step Δv = 0.27 × target_gap ≈ 0.27 m/s — no visible spike.
+      const alpha_r = 1.0 - Math.exp(-dt_s / 0.005); // 5 ms time constant
+      vSuspR = vSuspR + alpha_r * (targetV_r - vSuspR);
+      rearContact = true;
+    } else {
+      rearContact = false;
+    }
   }
 
   // Gas / brake: update speed and resolve a_long
@@ -892,8 +1087,12 @@ function drawWheel(cx, cy, r_px, rotAngle) {
 // ═══════════════════════════════════════════════════════════
 //  SCREEN COORDINATE HELPERS
 // ═══════════════════════════════════════════════════════════
+let camY_m = 0;   // smoothed camera Y reference — follows terrain, not the bike's bounce
+
 function screenY(y_m) {
-  return (y_m - chassisY_m) * PM + canvas.height * 0.5;
+  // Camera tracks X only; Y is fixed to camY_m so the bike's heave is visible on screen.
+  // Ground reference sits at 70% down the canvas; bike floats above it.
+  return (y_m - camY_m) * PM + canvas.height * 0.70;
 }
 function screenLen(d_m) { return d_m * PM; }
 
@@ -915,10 +1114,12 @@ function draw(ts) {
     simStep(dt_s);
 
     // Force history
-    hist.fs.push(f_spring_F); hist.fs.shift();
-    hist.fd.push(f_damp_F);   hist.fd.shift();
-    hist.rs.push(f_spring_R); hist.rs.shift();
-    hist.rd.push(f_damp_R);   hist.rd.shift();
+    hist.fs.push(f_spring_F);   hist.fs.shift();
+    hist.fd.push(f_damp_F);    hist.fd.shift();
+    hist.rs.push(f_spring_R);   hist.rs.shift();
+    hist.rd.push(f_damp_R);    hist.rd.shift();
+    hist.fv.push(vForkSlide_f); hist.fv.shift();
+    hist.rv.push(vSuspR);       hist.rv.shift();
   }
 
   // ── Stats ─────────────────────────────────────────────────
@@ -955,15 +1156,24 @@ function draw(ts) {
   ctx.fillStyle='#4a4a4a'; ctx.fill();
   ctx.strokeStyle='#e11d48'; ctx.lineWidth=10; ctx.stroke();
 
+  // ── Camera Y: very slow drift toward mean terrain height (~10 s time constant) ─────
+  // Individual bumps do NOT move the camera — only long-term elevation changes do.
+  // This keeps the terrain visually stable while the bike bounces above it.
+  camY_m += (groundY_m(comX_m_d) - camY_m) * 0.003;
+
   // ── Kinematic screen positions (chassis-relative) ─────────
   // These use the X positions computed in the physics step from fork/swingarm geometry.
+
+  // Chassis CoM screen Y — computed early so all body-fixed points can use it
+  const comX    = comSX;
+  const comY    = screenY(chassisY_m);
 
   // Chassis rotation (for all body-fixed point positions)
   const cosP_d = Math.cos(pitchAngle), sinP_d = Math.sin(pitchAngle);
 
   // Steering head: full 2D rotation of A_FRONT_M along chassis axis from CoM
   const steerX    = comSX + A_FRONT_M * cosP_d * PM;
-  const steerY_px = H/2   + A_FRONT_M * sinP_d * PM;
+  const steerY_px = comY  + A_FRONT_M * sinP_d * PM;
 
   // Front wheel screen position (frontWheelX/Y already use full rotation from physics)
   const fwX_px = w2sx(frontWheelX_m);
@@ -971,7 +1181,7 @@ function draw(ts) {
 
   // Swingarm pivot: full 2D rotation of chassis-frame offset (SW_PIV_X, SW_PIV_Y) from CoM
   const swPivotX = comSX + (SW_PIV_X_FROM_COM * cosP_d - SW_PIV_Y_FROM_COM * sinP_d) * PM;
-  const swPivotY = H/2   + (SW_PIV_X_FROM_COM * sinP_d + SW_PIV_Y_FROM_COM * cosP_d) * PM;
+  const swPivotY = comY  + (SW_PIV_X_FROM_COM * sinP_d + SW_PIV_Y_FROM_COM * cosP_d) * PM;
 
   // Rear wheel screen position (from kinematic rearWheelX_m)
   const rwX_px = w2sx(rearWheelX_m);
@@ -979,10 +1189,6 @@ function draw(ts) {
 
   // Chassis body
   const angle   = pitchAngle;
-  const bodyLen = 1.2;   // m visual length
-  const bodyH_m = 0.20;  // m visual height
-  const comX    = comSX;                   // CoM is always at fixed screen X
-  const comY    = screenY(chassisY_m);
 
   // Scale factor so chassis vertices (sized for PM=200) render correctly at any PM
   const sc = PM / 200;
@@ -1151,7 +1357,7 @@ function draw(ts) {
     ctx.fillStyle='#e11d48'; ctx.textAlign='left';
     ctx.fillText('AIR', fwX_px+Math.round(WHEEL_R_F*PM)+5, fwY_px+4);
   }
-  if (f_tire_R===0) {
+  if (!rearContact) {
     ctx.fillStyle='#e11d48'; ctx.textAlign='right';
     ctx.fillText('AIR', rwX_px-Math.round(WHEEL_R_R*PM)-5, rwY_px+4);
   }
@@ -1189,6 +1395,7 @@ function draw(ts) {
   ctx.fillText('R', bx2+6, bTop-5);
 
   drawForceGraph();
+  drawVelocityGraph();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1213,18 +1420,18 @@ function drawForceGraph() {
     const y=H*i/4;
     fgctx.beginPath(); fgctx.moveTo(0,y); fgctx.lineTo(W,y); fgctx.stroke();
   }
-  // Zero line
+  // Zero line — thicker and brighter so it reads against the dark background
   const zy=H*0.5;
-  fgctx.strokeStyle='#2a2a2a'; fgctx.lineWidth=1;
+  fgctx.strokeStyle='#484848'; fgctx.lineWidth=2;
   fgctx.beginPath(); fgctx.moveTo(0,zy); fgctx.lineTo(W,zy); fgctx.stroke();
 
-  // Y axis labels
-  fgctx.fillStyle='#333'; fgctx.font='9px sans-serif'; fgctx.textAlign='left';
-  fgctx.fillText('+8kN',2,10);
+  // Y axis labels (inverted: compression is positive up on screen)
+  fgctx.fillStyle='#555'; fgctx.font='9px sans-serif'; fgctx.textAlign='left';
+  fgctx.fillText('-8kN',2,10);
   fgctx.fillText('0',2,zy-2);
-  fgctx.fillText('-8kN',2,H-3);
+  fgctx.fillText('+8kN',2,H-3);
 
-  // Plot lines
+  // Plot lines — values inverted so compression (negative) reads upward
   const lines = [
     { data: hist.fs, color: '#e11d48' },
     { data: hist.fd, color: '#ff8800' },
@@ -1237,10 +1444,61 @@ function drawForceGraph() {
     fgctx.strokeStyle=color; fgctx.lineWidth=1.5;
     data.forEach((v,i) => {
       const x = i/(HIST_MAX-1)*W;
-      const y = zy - (v/YF_MAX)*(H*0.5);
+      const y = zy + (v/YF_MAX)*(H*0.5);   // inverted: positive force → down on screen
       i===0 ? fgctx.moveTo(x,y) : fgctx.lineTo(x,y);
     });
     fgctx.stroke();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SUSPENSION VELOCITY GRAPH
+// ═══════════════════════════════════════════════════════════
+const vg    = document.getElementById('vgraph');
+const vgctx = vg.getContext('2d');
+
+function resizeVG() { vg.width = vg.clientWidth; }
+window.addEventListener('resize', resizeVG);
+
+function drawVelocityGraph() {
+  const W=vg.width, H=vg.height;
+  if (!W||!H) return;
+  const V_MAX = V_MAX_SIM;   // ±3.0 m/s — matches damper calibration range
+
+  vgctx.fillStyle='#0a0a0a'; vgctx.fillRect(0,0,W,H);
+
+  // Grid
+  vgctx.strokeStyle='#1a1a1a'; vgctx.lineWidth=1;
+  for (let i=0; i<=4; i++) {
+    const y=H*i/4;
+    vgctx.beginPath(); vgctx.moveTo(0,y); vgctx.lineTo(W,y); vgctx.stroke();
+  }
+  // Zero line
+  const zy=H*0.5;
+  vgctx.strokeStyle='#484848'; vgctx.lineWidth=2;
+  vgctx.beginPath(); vgctx.moveTo(0,zy); vgctx.lineTo(W,zy); vgctx.stroke();
+
+  // Y axis labels — compression (negative = extending fork) shown upward
+  vgctx.fillStyle='#555'; vgctx.font='9px sans-serif'; vgctx.textAlign='left';
+  vgctx.fillText(`-${V_MAX}m/s`,2,10);
+  vgctx.fillText('0',2,zy-2);
+  vgctx.fillText(`+${V_MAX}m/s`,2,H-3);
+
+  // Plot lines — front fork and rear suspension travel velocities
+  const lines = [
+    { data: hist.fv, color: '#ff8800' },
+    { data: hist.rv, color: '#22c55e' }
+  ];
+
+  lines.forEach(({ data, color }) => {
+    vgctx.beginPath();
+    vgctx.strokeStyle=color; vgctx.lineWidth=1.5;
+    data.forEach((v,i) => {
+      const x = i/(HIST_MAX-1)*W;
+      const y = zy + (v/V_MAX)*(H*0.5);
+      i===0 ? vgctx.moveTo(x,y) : vgctx.lineTo(x,y);
+    });
+    vgctx.stroke();
   });
 }
 
@@ -1487,9 +1745,25 @@ function applyPreset(name) {
 // ═══════════════════════════════════════════════════════════
 requestAnimationFrame(resizeCurveCanvas);
 requestAnimationFrame(resizeFG);
+requestAnimationFrame(resizeVG);
 requestAnimationFrame(draw);
+// ═══════════════════════════════════════════════════════════
+//  ZOOM BUTTONS
+// ═══════════════════════════════════════════════════════════
+(function() {
+  const ZOOM_MIN = 0.25, ZOOM_MAX = 4.0, ZOOM_STEP = 1.25;
+  document.getElementById('btn-zoom-in').addEventListener('click', () => {
+    userZoom = Math.min(ZOOM_MAX, userZoom * ZOOM_STEP);
+    PM = PM_base * userZoom;
+  });
+  document.getElementById('btn-zoom-out').addEventListener('click', () => {
+    userZoom = Math.max(ZOOM_MIN, userZoom / ZOOM_STEP);
+    PM = PM_base * userZoom;
+  });
+})();
+
 // Re-run after layout fully settles so flex heights are computed
-setTimeout(() => { resizeCurveCanvas(); resizeFG(); }, 100);
+setTimeout(() => { resizeCurveCanvas(); resizeFG(); resizeVG(); }, 100);
 </script>
 </body>
 </html>
