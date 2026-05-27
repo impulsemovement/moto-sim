@@ -134,12 +134,12 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div id="susp-front">
       <label>Spring rate <span id="lk_f">35 N/mm</span></label>
       <input type="range" id="k_f" min="5" max="100" value="35" step="0.5">
+      <label>Air gap / progression <span id="lair_f">0%</span></label>
+      <input type="range" id="air_f" min="0" max="100" value="0">
       <label>Preload <span id="lpre_f">0 mm</span></label>
       <input type="range" id="pre_f" min="-20" max="20" value="0">
-      <label>Comp gain <span id="ldc_f">0.50×</span></label>
-      <input type="range" id="dc_f" min="0" max="200" value="50">
-      <label>Reb gain <span id="ldr_f">0.50×</span></label>
-      <input type="range" id="dr_f" min="0" max="200" value="50">
+      <label>Damping gain / oil visc. <span id="ldamp_f">0.50×</span></label>
+      <input type="range" id="damp_f" min="0" max="200" value="50">
       <label>Tire pressure <span id="lktire_f">36 psi</span></label>
       <input type="range" id="ktire_f" min="28" max="52" value="36" step="1">
       <label>Wheel mass <span id="lmunsp_f">13 kg</span></label>
@@ -152,18 +152,13 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       <input type="range" id="k_r" min="5" max="100" value="35" step="0.5">
       <label>Preload <span id="lpre_r">0 mm</span></label>
       <input type="range" id="pre_r" min="-20" max="20" value="0">
-      <label>Comp gain <span id="ldc_r">0.50×</span></label>
-      <input type="range" id="dc_r" min="0" max="200" value="50">
-      <label>Reb gain <span id="ldr_r">0.50×</span></label>
-      <input type="range" id="dr_r" min="0" max="200" value="50">
+      <label>Damping gain / oil visc. <span id="ldamp_r">0.50×</span></label>
+      <input type="range" id="damp_r" min="0" max="200" value="50">
       <label>Tire pressure <span id="lktire_r">36 psi</span></label>
       <input type="range" id="ktire_r" min="28" max="52" value="36" step="1">
       <label>Wheel mass <span id="lmunsp_r">17 kg</span></label>
       <input type="range" id="munsp_r" min="5" max="25" value="17" step="0.5">
     </div>
-
-    <label>Rider mass <span id="lmass">75 kg</span></label>
-    <input type="range" id="mass" min="40" max="140" value="75">
   </div>
 
   <!-- TOP-RIGHT: Damping curve card -->
@@ -231,6 +226,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
         <input type="range" id="brakerate" min="1" max="25" value="12" step="0.5">
       </div>
     </div>
+    <label>Rider mass <span id="lmass">75 kg</span></label>
+    <input type="range" id="mass" min="40" max="140" value="75">
   </div>
 
   <!-- BOTTOM-RIGHT: Force history graph -->
@@ -238,10 +235,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-header" style="margin-bottom:6px">FORCE HISTORY (5 s)</div>
     <canvas id="fgraph" height="170" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
-      <span style="font-size:10px;color:#e11d48">— F.Spring</span>
-      <span style="font-size:10px;color:#ff8800">— F.Damp</span>
-      <span style="font-size:10px;color:#3b82f6">— R.Spring</span>
-      <span style="font-size:10px;color:#22c55e">— R.Damp</span>
+      <span class="leg" data-graph="f" data-key="fs" style="font-size:10px;color:#e11d48;cursor:pointer;user-select:none">— F.Spring</span>
+      <span class="leg" data-graph="f" data-key="fd" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Damp</span>
+      <span class="leg" data-graph="f" data-key="rs" style="font-size:10px;color:#3b82f6;cursor:pointer;user-select:none">— R.Spring</span>
+      <span class="leg" data-graph="f" data-key="rd" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Damp</span>
     </div>
   </div>
 
@@ -250,8 +247,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-header" style="margin-bottom:6px">SUSPENSION VELOCITY (5 s)</div>
     <canvas id="vgraph" height="120" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
-      <span style="font-size:10px;color:#ff8800">— F.Vel m/s</span>
-      <span style="font-size:10px;color:#22c55e">— R.Vel m/s</span>
+      <span class="leg" data-graph="v" data-key="fv" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Vel m/s</span>
+      <span class="leg" data-graph="v" data-key="rv" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Vel m/s</span>
     </div>
   </div>
 
@@ -289,6 +286,17 @@ const SWINGARM_L        =  0.490;   // m
 const SHOCK_UP_X     = -0.360;       // m  shock frame mount X (behind CoM, on subframe)
 const SHOCK_UP_Y     = -0.160;       // m  shock frame mount Y (above CoM)
 const I_SWINGARM     = 0.6;          // kg·m²  swingarm's own rotational inertia about pivot
+// Visual-only shock frame mount. The physics shock spans the rocker point C → SHOCK_UP
+// (which, with this linkage, happens to LENGTHEN on compression — physically sign-consistent
+// but reads backwards on screen). For the ANIMATION we mount the coil-over from the same
+// real rocker point C to this alternate frame point, chosen so the drawn shock SHORTENS as
+// the suspension compresses (like a conventional shock). Drawing-only; never used in physics.
+const SHOCK_VIS_X    =  0.000;       // m  visual shock frame mount X
+const SHOCK_VIS_Y    = -0.080;       // m  visual shock frame mount Y
+// Front fork hydraulic bump stop — engages in the last BS_ZONE of compression travel.
+const BS_ZONE        = 0.10;         // last 10% of travel
+const BS_STIFF       = 9;            // bump-stop spring stiffness multiplier on K_F
+const BS_DAMP        = 9000;         // N·s/m  hydraulic bump-stop damping at full engagement
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
 const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
@@ -415,9 +423,9 @@ function psiToKtire(psi) {
 }
 
 let P = {
-  k_f:35, pre_f:0, dc_f:0.5, dr_f:0.5,
+  k_f:35, pre_f:0, damp_f:0.5, air_f:0,
   k_tire_f: psiToKtire(36), m_unsprung_f: 13,   // front tire / wheel
-  k_r:35, pre_r:0, dc_r:0.5, dr_r:0.5,
+  k_r:35, pre_r:0, damp_r:0.5,
   k_tire_r: psiToKtire(36), m_unsprung_r: 17,   // rear  tire / wheel
   mass:75,
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
@@ -439,14 +447,13 @@ function bind(id, lblId, fn) {
 }
 
 bind('k_f',       'lk_f',       v => { P.k_f    = v;       return v + ' N/mm'; });
+bind('air_f',     'lair_f',     v => { P.air_f   = v/100;   return v + '%'; });
 bind('pre_f',     'lpre_f',     v => { P.pre_f   = v/1000;  return v + ' mm'; });
-bind('dc_f',      'ldc_f',      v => { P.dc_f    = v/100;   return (v/100).toFixed(2)+'×'; });
-bind('dr_f',      'ldr_f',      v => { P.dr_f    = v/100;   return (v/100).toFixed(2)+'×'; });
+bind('damp_f',    'ldamp_f',    v => { P.damp_f  = v/100;   return (v/100).toFixed(2)+'×'; });
 
 bind('k_r',       'lk_r',       v => { P.k_r    = v;       return v + ' N/mm'; });
 bind('pre_r',     'lpre_r',     v => { P.pre_r   = v/1000;  return v + ' mm'; });
-bind('dc_r',      'ldc_r',      v => { P.dc_r    = v/100;   return (v/100).toFixed(2)+'×'; });
-bind('dr_r',      'ldr_r',      v => { P.dr_r    = v/100;   return (v/100).toFixed(2)+'×'; });
+bind('damp_r',    'ldamp_r',    v => { P.damp_r  = v/100;   return (v/100).toFixed(2)+'×'; });
 
 bind('ktire_f',   'lktire_f',   v => { P.k_tire_f = psiToKtire(+v); return v + ' psi'; });
 bind('munsp_f',   'lmunsp_f',   v => { P.m_unsprung_f = +v;          return v + ' kg'; });
@@ -526,8 +533,19 @@ function buildCurveLUT(pts) {
 
 function evalCurveLUT(lut, x) {
   x = Math.max(0, Math.min(1, x));
-  if (x<=lut[0].x)            return lut[0].y;
-  if (x>=lut[lut.length-1].x) return lut[lut.length-1].y;
+  const n = lut.length;
+  // Beyond the first/last control point, EXTRAPOLATE along the end segment's slope
+  // (instead of clamping flat) so the curve "continues past" the movable endpoints.
+  if (x<=lut[0].x) {
+    const a=lut[0], b=lut[1];
+    const slope=(b.y-a.y)/((b.x-a.x)||1e-6);
+    return Math.max(0, a.y + slope*(x-a.x));
+  }
+  if (x>=lut[n-1].x) {
+    const a=lut[n-2], b=lut[n-1];
+    const slope=(b.y-a.y)/((b.x-a.x)||1e-6);
+    return Math.max(0, b.y + slope*(x-b.x));
+  }
   let lo=0, hi=lut.length-1;
   while (hi-lo>1) { const m=(lo+hi)>>1; if (lut[m].x<=x) lo=m; else hi=m; }
   const t=(x-lut[lo].x)/(lut[hi].x-lut[lo].x);
@@ -683,6 +701,9 @@ const HIST_MAX = 300;
 const hist = { fs:[], fd:[], rs:[], rd:[], fv:[], rv:[] };
 ['fs','fd','rs','rd','fv','rv'].forEach(k => { for(let i=0;i<HIST_MAX;i++) hist[k].push(0); });
 
+// Per-series visibility for the force/velocity graph legends (click to toggle).
+const seriesVisible = { fs:true, fd:true, rs:true, rd:true, fv:true, rv:true };
+
 // ═══════════════════════════════════════════════════════════
 //  STATIC EQUILIBRIUM INIT
 // ═══════════════════════════════════════════════════════════
@@ -758,9 +779,9 @@ function initPhysics() {
 //  DAMPING FORCE  (using per-wheel LUTs)
 // ═══════════════════════════════════════════════════════════
 function dampForce(rv, isComp, isRear) {
-  const gain    = isComp
-    ? (isRear ? P.dc_r : P.dc_f)
-    : (isRear ? P.dr_r : P.dr_f);
+  // Single "damping gain / oil viscosity" per wheel scales BOTH comp and reb
+  // (like changing the oil viscosity affects the whole damper).
+  const gain    = isRear ? P.damp_r : P.damp_f;
   const lut     = isComp
     ? (isRear ? compLUT_R : compLUT_F)
     : (isRear ? rebLUT_R  : rebLUT_F);
@@ -901,10 +922,33 @@ function _physicsStep(dt_s) {
   if (df > TRAVEL_EXT)  { df = TRAVEL_EXT;  if (rv_f > 0) rv_f = 0; }
   if (df < -TRAVEL_MAX) { df = -TRAVEL_MAX; if (rv_f < 0) rv_f = 0; }
 
-  f_spring_F = K_F * df;
+  // Linear coil rate.
+  let f_spring_lin = K_F * df;                   // neg = compressed → pushes wheel out
+  // Air-spring progression: deeper compression ramps up the effective rate (like an
+  // air gap / progressive spring). 0% = pure linear; 100% = strong rising rate near bottom.
+  // Modeled as an added rising force that grows with compression cubed.
+  if (df < 0 && P.air_f > 0) {
+    const xn = -df / TRAVEL_MAX;                  // 0..1 compression fraction
+    f_spring_lin += -K_F * P.air_f * TRAVEL_MAX * 2.0 * (xn * xn * xn);
+  }
+  f_spring_F = f_spring_lin;
+
   const comp_f   = rv_f < 0;
   const fd_mag_f = rv_f !== 0 ? dampForce(rv_f, comp_f, false) : 0;
   f_damp_F = Math.sign(rv_f) * fd_mag_f;
+
+  // ── Hydraulic bump stop (last BS_ZONE of compression travel) ───────────────
+  // A stiff progressive spring plus velocity-dependent hydraulic damping that only
+  // resists further compression — models the fork's end-stroke hydraulic lock.
+  {
+    const comp   = -df;                            // compression (m), >0
+    const thresh = TRAVEL_MAX * (1 - BS_ZONE);
+    if (comp > thresh) {
+      const e = (comp - thresh) / (TRAVEL_MAX * BS_ZONE);  // 0..1 engagement
+      f_spring_F += -K_F * BS_STIFF * (e * e) * (TRAVEL_MAX * BS_ZONE);  // push out
+      if (rv_f < 0) f_damp_F += BS_DAMP * (e * e) * rv_f;                // resist compression
+    }
+  }
   const fsusp_f  = f_spring_F + f_damp_F;        // force along fork axis (neg = compressed)
 
   // ── Rear shock spring & damper (swingarm rotational DOF) ────────────────
@@ -1464,7 +1508,9 @@ function draw(ts) {
     const [aX, aY] = c2s(lk.Ax, lk.Ay);         // tie-rod ↔ swingarm
     const [bX2, bY2] = c2s(lk.Bx, lk.By);       // tie-rod ↔ rocker
     const [cX, cY] = c2s(lk.Cx, lk.Cy);         // rocker ↔ shock
-    const [dX, dY] = c2s(SHOCK_UP_X, SHOCK_UP_Y); // shock ↔ frame
+    // Use the VISUAL frame mount so the drawn coil-over shortens on compression
+    // (the physics mount, SHOCK_UP, lengthens on compression — see SHOCK_VIS note).
+    const [dX, dY] = c2s(SHOCK_VIS_X, SHOCK_VIS_Y); // shock ↔ frame (visual)
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
     // Tie-rod (swingarm A → rocker B): slim steel link.
@@ -1491,7 +1537,7 @@ function draw(ts) {
     ctx.beginPath(); ctx.moveTo(dX, dY); ctx.lineTo(bx0, by0); ctx.stroke();
 
     const coils = 6, amp = 5.5 * sc, segs = coils * 8;
-    const tf = Math.max(0, Math.min(1, shockTravel_r / 0.077));   // compression fraction
+    const tf = Math.max(0, Math.min(1, wheelTravel_r / TRAVEL_MAX));   // compression fraction
     ctx.strokeStyle = `hsl(${350 - tf * 20},${60 + tf * 40}%,${42 + tf * 13}%)`;
     ctx.lineWidth = 2.5 * sc;
     ctx.beginPath();
@@ -1647,13 +1693,14 @@ function drawForceGraph() {
 
   // Plot lines — values inverted so compression (negative) reads upward
   const lines = [
-    { data: hist.fs, color: '#e11d48' },
-    { data: hist.fd, color: '#ff8800' },
-    { data: hist.rs, color: '#3b82f6' },
-    { data: hist.rd, color: '#22c55e' }
+    { data: hist.fs, color: '#e11d48', key:'fs' },
+    { data: hist.fd, color: '#ff8800', key:'fd' },
+    { data: hist.rs, color: '#3b82f6', key:'rs' },
+    { data: hist.rd, color: '#22c55e', key:'rd' }
   ];
 
-  lines.forEach(({ data, color }) => {
+  lines.forEach(({ data, color, key }) => {
+    if (!seriesVisible[key]) return;
     fgctx.beginPath();
     fgctx.strokeStyle=color; fgctx.lineWidth=1.5;
     data.forEach((v,i) => {
@@ -1700,11 +1747,12 @@ function drawVelocityGraph() {
 
   // Plot lines — front fork and rear suspension travel velocities
   const lines = [
-    { data: hist.fv, color: '#ff8800' },
-    { data: hist.rv, color: '#22c55e' }
+    { data: hist.fv, color: '#ff8800', key:'fv' },
+    { data: hist.rv, color: '#22c55e', key:'rv' }
   ];
 
-  lines.forEach(({ data, color }) => {
+  lines.forEach(({ data, color, key }) => {
+    if (!seriesVisible[key]) return;
     vgctx.beginPath();
     vgctx.strokeStyle=color; vgctx.lineWidth=1.5;
     data.forEach((v,i) => {
@@ -1809,12 +1857,20 @@ function drawCurveEditor() {
     const active = mode===curveMode;
     cctx.globalAlpha = active ? 1.0 : 0.20;
 
+    // Build a draw path that extends to the graph edges (x=0 and x=1) by
+    // extrapolating past the first/last control points (clipped to the plot rect).
+    const drawPts = [{ x:0, y:evalCurveLUT(lut,0) }];
+    lut.forEach(p => { if (p.x>0 && p.x<1) drawPts.push(p); });
+    drawPts.push({ x:1, y:evalCurveLUT(lut,1) });
+    cctx.save();
+    cctx.beginPath(); cctx.rect(GP.l, GP.t, gw, gh); cctx.clip();
     cctx.beginPath();
-    lut.forEach((p,i) => {
+    drawPts.forEach((p,i) => {
       const s=ptToScreen(p.x,p.y);
       i===0 ? cctx.moveTo(s.sx,s.sy) : cctx.lineTo(s.sx,s.sy);
     });
     cctx.strokeStyle=color; cctx.lineWidth=active?2.5:1.5; cctx.stroke();
+    cctx.restore();
 
     if (lut.length) {
       const last=ptToScreen(lut[lut.length-1].x, lut[lut.length-1].y);
@@ -1849,7 +1905,8 @@ function getPos(e) {
 
 function findHit(sx, sy) {
   const pts=getActivePts();
-  for (let i=1; i<pts.length; i++) {
+  // Include endpoints (i=0 and last) so they can be dragged too.
+  for (let i=0; i<pts.length; i++) {
     const s=ptToScreen(pts[i].x, pts[i].y);
     if (Math.hypot(s.sx-sx, s.sy-sy)<15) return i;
   }
@@ -1861,9 +1918,12 @@ function doDrag(sx, sy) {
   const pts=getActivePts();
   const {nx,ny}=screenToPt(sx,sy);
   const i=dragIdx;
-  let newX=pts[i].x;
-  if (i>0 && i<pts.length-1) newX=Math.max(pts[i-1].x+0.02, Math.min(pts[i+1].x-0.02, nx));
-  const newY=(i===0)?0:Math.max(0,Math.min(1,ny));
+  let newX;
+  if (i===0)                  newX=Math.max(0, Math.min(pts[1].x-0.02, nx));
+  else if (i===pts.length-1)  newX=Math.max(pts[i-1].x+0.02, Math.min(1, nx));
+  else                        newX=Math.max(pts[i-1].x+0.02, Math.min(pts[i+1].x-0.02, nx));
+  // Endpoints are now Y-movable too (no longer pinned to y=0 / the graph edges).
+  const newY=Math.max(0, Math.min(1, ny));
   pts[i]={x:newX, y:newY};
   rebuildActiveLUT();
   drawCurveEditor();
@@ -1953,6 +2013,23 @@ function applyPreset(name) {
     if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  setBrake(false);
   });
 })();
+
+// ═══════════════════════════════════════════════════════════
+//  GRAPH LEGEND TOGGLES  (click a label to show/hide its line)
+// ═══════════════════════════════════════════════════════════
+function applyLegendStyle() {
+  document.querySelectorAll('.leg').forEach(el => {
+    el.style.opacity = seriesVisible[el.dataset.key] ? '1' : '0.3';
+  });
+}
+document.querySelectorAll('.leg').forEach(el => {
+  el.addEventListener('click', () => {
+    const k = el.dataset.key;
+    seriesVisible[k] = !seriesVisible[k];
+    applyLegendStyle();
+  });
+});
+applyLegendStyle();
 
 // ═══════════════════════════════════════════════════════════
 //  STARTUP
