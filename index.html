@@ -910,9 +910,10 @@ function _physicsStep(dt_s) {
   // ── Rear shock spring & damper (swingarm rotational DOF) ────────────────
   // The shock connects a fixed chassis mount to a swingarm-borne mount; its
   // length is a pure function of swingAngle, so spring/damper are driven via
-  // virtual work. We compute the SPRING through the shock geometry (giving the
-  // linkage's rising rate) and the DAMPER from the wheel-vertical rate (so the
-  // user-tuned damper curves keep their wheel-referenced feel).
+  // virtual work. BOTH the spring AND the damper act in the shock and therefore
+  // pass through the linkage's motion ratio, so both are progressive (rising rate):
+  // their effective wheel-rate scales as 1/MR². The user sliders are calibrated to
+  // mean the wheel-rate value AT SAG; the linkage adds the progression around that.
   //
   // Shock kinematics:
   shockLen_cur        = shockLength(swingAngle);
@@ -927,13 +928,25 @@ function _physicsStep(dt_s) {
   // Spring force referred to the wheel (chassis +y = down): compressed pushes wheel DOWN.
   const F_spring_wheel = F_shock_sprg * dShock / wheelLeverY;   // N, + = pushes wheel down (extends)
 
-  // Damper: wheel-vertical rate (chassis-relative). +y down ⇒ + = extension.
-  const wheelVertRate = wheelLeverY * swingRate;            // m/s, = old vSuspR equivalent
+  // Damper — PROGRESSIVE, via the same motion ratio as the spring.
+  // The damper is a shock element, so it responds to SHOCK velocity and its force
+  // is referred back to the wheel through the linkage. Calibrating the user curve to
+  // the wheel rate at sag, the physically correct transform is:
+  //   F_damp_wheel = (MR_sag/MR) · curve( wheelVertRate · MR_sag/MR )
+  // For a linear damper this makes the effective wheel-damping coefficient scale as
+  // (MR_sag/MR)² — exactly like the spring rate — so the rear damps harder as it
+  // compresses (MR drops toward bump) and softer toward droop. At sag MR=MR_sag ⇒
+  // ratio 1 ⇒ identical to the old wheel-referenced behavior.
+  const wheelVertRate = wheelLeverY * swingRate;            // m/s, chassis-rel wheel vel (+ = extend)
   rearSuspVel         = wheelVertRate;                       // expose for the velocity graph
-  const comp_r        = wheelVertRate < 0;                  // compressing = wheel moving up
-  const fd_mag_r      = wheelVertRate !== 0 ? dampForce(wheelVertRate, comp_r, true) : 0;
-  // Damper force on the wheel (+y down) opposes wheel motion: -sign(vw)*|F|.
-  const F_damp_wheel  = -Math.sign(wheelVertRate) * fd_mag_r;
+  const MR_cur        = wheelLeverY / dShock;               // signed current motion ratio
+  let   dampRatio     = MR_sag / MR_cur;                    // = MR_sag/MR (>0; signs cancel)
+  dampRatio           = Math.max(0.3, Math.min(3.0, dampRatio)); // guard against extremes
+  const v_eff         = wheelVertRate * dampRatio;          // shock-referenced damper velocity
+  const comp_r        = v_eff < 0;                          // compressing = wheel moving up
+  const fd_mag_r      = v_eff !== 0 ? dampForce(v_eff, comp_r, true) : 0;
+  // Damper force on the wheel (+y down) opposes wheel motion, scaled by the ratio.
+  const F_damp_wheel  = -Math.sign(v_eff) * fd_mag_r * dampRatio;
 
   // Net suspension force on the WHEEL (+y down); chassis feels the opposite.
   const F_wheel_susp  = F_spring_wheel + F_damp_wheel;
