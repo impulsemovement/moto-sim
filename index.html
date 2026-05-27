@@ -1122,32 +1122,41 @@ function _physicsStep(dt_s) {
 
     const nat_r2 = calcNaturalWY_m(rearWheelX_m, WHEEL_R_R);
     const CONTACT_BUF = 0.005; // m
-    if (rearWheelY_m >= nat_r2 - (rearContact ? CONTACT_BUF : 0)) {
-      // Position snap: drive swingAngle so the wheel sits exactly on the terrain.
-      // One Newton step on wheelWorldY(φ) (smooth terrain ⇒ converges immediately).
-      if (rearWheelY_m > nat_r2 && Jphi > 1e-6) {
-        let dphi = (nat_r2 - rearWheelY_m) / Jphi;
-        swingAngle = Math.max(PHI_FULL_BUMP, Math.min(PHI_FULL_DROOP, swingAngle + dphi));
-        ax_c = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
-        ay_c = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
-        rearWheelX_m = _comX     + ax_c * _cosP2 - ay_c * _sinP2;
-        rearWheelY_m = chassisY_m + ax_c * _sinP2 + ay_c * _cosP2;
-      }
+    // Swingarm angle that would place the wheel EXACTLY on the terrain (one Newton step).
+    // The wheel stays planted by extending/compressing the swingarm; it only lifts off
+    // when this required angle exceeds the droop (rebound) limit — i.e. the suspension
+    // tops out before it can reach the ground (a true loss of contact, e.g. a step-down).
+    const angleOnGround = Jphi > 1e-6 ? swingAngle + (nat_r2 - rearWheelY_m) / Jphi : swingAngle;
+
+    // Contact decision (with hysteresis on the droop-limit threshold to avoid flicker):
+    //   • Already on the ground  → stay until the swingarm would need to exceed droop.
+    //   • Currently airborne     → land once the free-falling wheel reaches the terrain
+    //     AND the swingarm can actually reach it within its travel.
+    const reachBuf = CONTACT_BUF / Math.max(Math.abs(Jphi), 1e-6); // buf in angle units
+    const inContact = rearContact
+      ? (angleOnGround <= PHI_FULL_DROOP + reachBuf)
+      : (rearWheelY_m >= nat_r2 - CONTACT_BUF && angleOnGround <= PHI_FULL_DROOP);
+
+    if (inContact) {
+      // BIDIRECTIONAL position snap: plant the wheel on the terrain. As the chassis
+      // rebounds (rises), this EXTENDS the swingarm to keep the wheel down — the fix
+      // for the rebound chatter, where a one-sided (push-up-only) snap let the wheel
+      // lift off prematurely and bounce on/off contact.
+      swingAngle = Math.max(PHI_FULL_BUMP, Math.min(PHI_FULL_DROOP, angleOnGround));
+      ax_c = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
+      ay_c = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
+      rearWheelX_m = _comX     + ax_c * _cosP2 - ay_c * _sinP2;
+      rearWheelY_m = chassisY_m + ax_c * _sinP2 + ay_c * _cosP2;
+
       // Kinematic velocity: the swingRate that keeps the wheel tracking the terrain.
       //   d(wheelWorldY)/dt = vChassisTerm + Jphi·swingRate  (set = v_terrain)
-      // where vChassisTerm is the wheel's vertical velocity with the swingarm FROZEN
-      // (pure chassis heave + pitch of the attached point).
-      const v_ground_r  = P.speed / 3.6;
-      const v_terrain_r = (calcNaturalWY_m(rearWheelX_m + v_ground_r * dt_s, WHEEL_R_R) - nat_r2) / dt_s;
+      // Blend toward it with a 5 ms time constant so the landing transition is smooth.
+      const Jphi2 = (SWINGARM_L * Math.sin(swingAngle)) * _sinP2
+                  + (SWINGARM_L * Math.cos(swingAngle)) * _cosP2;
+      const v_ground_r   = P.speed / 3.6;
+      const v_terrain_r  = (calcNaturalWY_m(rearWheelX_m + v_ground_r * dt_s, WHEEL_R_R) - nat_r2) / dt_s;
       const vChassisTerm = vChassis + (ax_c * _cosP2 - ay_c * _sinP2) * pitchRate;
-      const targetRate   = Jphi > 1e-6 ? (v_terrain_r - vChassisTerm) / Jphi : swingRate;
-      // On the ground, swingAngle is set by the position snap above and swingRate tracks
-      // the terrain-following rate. We blend toward it with a 5 ms time constant so the
-      // airborne→ground transition (landing) is smooth instead of an instantaneous step.
-      // Because the swingarm EOM is NOT integrated while on the ground (see the gated
-      // integration above), there is no unbalanced-torque leak: the blend converges
-      // cleanly to targetRate (→0 at rest, no residual) yet still spreads the landing
-      // velocity change over a few ms — eliminating the contact spike.
+      const targetRate   = Math.abs(Jphi2) > 1e-6 ? (v_terrain_r - vChassisTerm) / Jphi2 : swingRate;
       const alpha_r = 1.0 - Math.exp(-dt_s / 0.005);
       swingRate   = swingRate + alpha_r * (targetRate - swingRate);
       rearContact = true;
