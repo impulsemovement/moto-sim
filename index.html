@@ -123,7 +123,14 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   height: 20px;
   margin: 0; padding: 0;
   cursor: pointer;
-  accent-color: #888;
+  accent-color: #e11d48;
+  opacity: 0.3;
+  transition: opacity 0.15s;
+}
+.graph-yscale-wrap:hover input[type=range],
+.graph-yscale-wrap input[type=range]:focus,
+.graph-yscale-wrap input[type=range]:active {
+  opacity: 1;
 }
 #curve-card.collapsed-curve { flex:none; }
 #curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
