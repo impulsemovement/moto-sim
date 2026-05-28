@@ -991,7 +991,7 @@ function _physicsStep(dt_s) {
   // Shock spring: K_shock is calibrated (initPhysics) so wheel rate at sag = P.k_r.
   // Preload P.pre_r is a wheel-mm offset; convert to an effective shock-length offset.
   const MR_sag        = SW_MR_SAG;                          // wheel-travel / shock-travel at sag
-  const preShockLen   = (P.pre_r / 1000) / MR_sag;          // m of extra shock compression from preload
+  const preShockLen   = P.pre_r / MR_sag;                    // m of extra shock compression from preload
   shockTravel_r       = (SHOCK_REST_LEN - shockLen_cur) + preShockLen;  // + = compressed
   const F_shock_sprg  = K_SHOCK * shockTravel_r;            // N along shock, + = compressed (pushes out)
   // Spring force referred to the wheel (chassis +y = down): compressed pushes wheel DOWN.
