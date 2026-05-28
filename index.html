@@ -108,17 +108,23 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .card-title:hover { color:#bbb; }
 .card-title .card-arrow { font-size:9px; color:#555; }
 .card-body.collapsed { display:none !important; }
-.graph-row { display:flex; align-items:stretch; gap:4px; }
-.graph-row canvas { flex:1; min-width:0; display:block; border-radius:4px; }
-.graph-yscale {
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
-  writing-mode: vertical-lr;
-  width: 20px;
+.graph-row { display:flex; align-items:flex-start; gap:0; }
+.graph-row canvas { display:block; border-radius:4px; flex-shrink:0; }
+.graph-yscale-col {
+  width: 28px;
   flex-shrink: 0;
-  cursor: ns-resize;
-  accent-color: #555;
-  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+.graph-yscale-col input[type=range] {
+  transform: rotate(-90deg);
+  transform-origin: center center;
+  cursor: pointer;
+  accent-color: #666;
+  margin: 0;
+  padding: 0;
 }
 #curve-card.collapsed-curve { flex:none; }
 #curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
@@ -268,8 +274,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div class="graph-row">
-      <canvas id="fgraph" height="255"></canvas>
-      <input type="range" id="fgraph-scale" class="graph-yscale" min="20" max="100" value="100" title="Y-axis zoom">
+      <canvas id="fgraph" height="255" style="width:calc(100% - 28px);"></canvas>
+      <div class="graph-yscale-col" style="height:255px;">
+        <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:230px;" title="Y-axis zoom">
+      </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="f" data-key="fs" style="font-size:10px;color:#e11d48;cursor:pointer;user-select:none">— F.Spring</span>
@@ -285,8 +293,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div class="graph-row">
-      <canvas id="vgraph" height="180"></canvas>
-      <input type="range" id="vgraph-scale" class="graph-yscale" min="20" max="100" value="100" title="Y-axis zoom">
+      <canvas id="vgraph" height="180" style="width:calc(100% - 28px);"></canvas>
+      <div class="graph-yscale-col" style="height:180px;">
+        <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:155px;" title="Y-axis zoom">
+      </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="v" data-key="fv" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Vel m/s</span>
@@ -1666,7 +1676,7 @@ function draw(ts) {
 const fg    = document.getElementById('fgraph');
 const fgctx = fg.getContext('2d');
 
-function resizeFG() { fg.width = fg.parentElement.clientWidth - 28; }
+function resizeFG() { fg.width = fg.clientWidth || fg.parentElement.clientWidth - 28; }
 window.addEventListener('resize', resizeFG);
 
 function drawForceGraph() {
@@ -1722,7 +1732,7 @@ function drawForceGraph() {
 const vg    = document.getElementById('vgraph');
 const vgctx = vg.getContext('2d');
 
-function resizeVG() { vg.width = vg.parentElement.clientWidth - 28; }
+function resizeVG() { vg.width = vg.clientWidth || vg.parentElement.clientWidth - 28; }
 window.addEventListener('resize', resizeVG);
 
 function drawVelocityGraph() {
