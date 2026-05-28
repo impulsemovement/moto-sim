@@ -108,19 +108,27 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .card-title:hover { color:#bbb; }
 .card-title .card-arrow { font-size:9px; color:#555; }
 .card-body.collapsed { display:none !important; }
-.graph-row { display:flex; align-items:flex-start; gap:0; }
-.graph-row canvas { display:block; border-radius:4px; flex-shrink:0; }
+.graph-row {
+  position: relative;
+  padding-right: 32px;
+}
+.graph-row canvas {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+}
 .graph-yscale-col {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
   width: 28px;
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: visible;
 }
 .graph-yscale-col input[type=range] {
   transform: rotate(-90deg);
-  transform-origin: center center;
   cursor: pointer;
   accent-color: #666;
   margin: 0;
@@ -274,8 +282,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div class="graph-row">
-      <canvas id="fgraph" height="255" style="width:calc(100% - 28px);"></canvas>
-      <div class="graph-yscale-col" style="height:255px;">
+      <canvas id="fgraph" height="255"></canvas>
+      <div class="graph-yscale-col">
         <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:230px;" title="Y-axis zoom">
       </div>
     </div>
@@ -293,8 +301,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div class="graph-row">
-      <canvas id="vgraph" height="180" style="width:calc(100% - 28px);"></canvas>
-      <div class="graph-yscale-col" style="height:180px;">
+      <canvas id="vgraph" height="180"></canvas>
+      <div class="graph-yscale-col">
         <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:155px;" title="Y-axis zoom">
       </div>
     </div>
@@ -1676,7 +1684,7 @@ function draw(ts) {
 const fg    = document.getElementById('fgraph');
 const fgctx = fg.getContext('2d');
 
-function resizeFG() { fg.width = fg.clientWidth || fg.parentElement.clientWidth - 28; }
+function resizeFG() { fg.width = fg.clientWidth; }
 window.addEventListener('resize', resizeFG);
 
 function drawForceGraph() {
@@ -1732,7 +1740,7 @@ function drawForceGraph() {
 const vg    = document.getElementById('vgraph');
 const vgctx = vg.getContext('2d');
 
-function resizeVG() { vg.width = vg.clientWidth || vg.parentElement.clientWidth - 28; }
+function resizeVG() { vg.width = vg.clientWidth; }
 window.addEventListener('resize', resizeVG);
 
 function drawVelocityGraph() {
