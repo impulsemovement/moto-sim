@@ -108,6 +108,18 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .card-title:hover { color:#bbb; }
 .card-title .card-arrow { font-size:9px; color:#555; }
 .card-body.collapsed { display:none !important; }
+.graph-wrap { display:flex; align-items:stretch; gap:4px; }
+.graph-wrap canvas { flex:1; min-width:0; border-radius:4px; display:block; }
+.graph-yscale {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  width: 18px;
+  flex-shrink: 0;
+  cursor: ns-resize;
+  accent-color: #444;
+}
 #curve-card.collapsed-curve { flex:none; }
 #curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
 </style>
@@ -255,7 +267,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <div class="card card-fhist">
     <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
-    <canvas id="fgraph" height="170" style="display:block;width:100%;border-radius:4px;"></canvas>
+    <div class="graph-wrap">
+      <canvas id="fgraph" height="170"></canvas>
+      <input type="range" id="fgraph-scale" class="graph-yscale" min="1" max="100" value="80" title="Y axis scale">
+    </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="f" data-key="fs" style="font-size:10px;color:#e11d48;cursor:pointer;user-select:none">— F.Spring</span>
       <span class="leg" data-graph="f" data-key="fd" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Damp</span>
@@ -269,7 +284,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <div class="card card-vhist">
     <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
-    <canvas id="vgraph" height="120" style="display:block;width:100%;border-radius:4px;"></canvas>
+    <div class="graph-wrap">
+      <canvas id="vgraph" height="120"></canvas>
+      <input type="range" id="vgraph-scale" class="graph-yscale" min="1" max="100" value="100" title="Y axis scale">
+    </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="v" data-key="fv" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Vel m/s</span>
       <span class="leg" data-graph="v" data-key="rv" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Vel m/s</span>
@@ -1654,7 +1672,8 @@ window.addEventListener('resize', resizeFG);
 function drawForceGraph() {
   const W=fg.width, H=fg.height;
   if (!W||!H) return;
-  const YF_MAX=8000;  // N axis range ±8000
+  const fgScale = document.getElementById('fgraph-scale');
+  const YF_MAX = 8000 * (fgScale ? fgScale.value / 100 : 1);
 
   fgctx.fillStyle='#0a0a0a'; fgctx.fillRect(0,0,W,H);
 
@@ -1671,9 +1690,10 @@ function drawForceGraph() {
 
   // Y axis labels (inverted: compression is positive up on screen)
   fgctx.fillStyle='#555'; fgctx.font='9px sans-serif'; fgctx.textAlign='left';
-  fgctx.fillText('-8kN',2,10);
+  const fLabel = YF_MAX>=1000 ? `${(YF_MAX/1000).toFixed(1)}kN` : `${Math.round(YF_MAX)}N`;
+  fgctx.fillText(`-${fLabel}`,2,10);
   fgctx.fillText('0',2,zy-2);
-  fgctx.fillText('+8kN',2,H-3);
+  fgctx.fillText(`+${fLabel}`,2,H-3);
 
   // Plot lines — values inverted so compression (negative) reads upward
   const lines = [
@@ -1708,7 +1728,8 @@ window.addEventListener('resize', resizeVG);
 function drawVelocityGraph() {
   const W=vg.width, H=vg.height;
   if (!W||!H) return;
-  const V_MAX = V_MAX_SIM;   // ±3.0 m/s — matches damper calibration range
+  const vgScale = document.getElementById('vgraph-scale');
+  const V_MAX = V_MAX_SIM * (vgScale ? vgScale.value / 100 : 1);
 
   vgctx.fillStyle='#0a0a0a'; vgctx.fillRect(0,0,W,H);
 
@@ -1725,9 +1746,9 @@ function drawVelocityGraph() {
 
   // Y axis labels — compression (negative = extending fork) shown upward
   vgctx.fillStyle='#555'; vgctx.font='9px sans-serif'; vgctx.textAlign='left';
-  vgctx.fillText(`-${V_MAX}m/s`,2,10);
+  vgctx.fillText(`-${V_MAX.toFixed(2)}m/s`,2,10);
   vgctx.fillText('0',2,zy-2);
-  vgctx.fillText(`+${V_MAX}m/s`,2,H-3);
+  vgctx.fillText(`+${V_MAX.toFixed(2)}m/s`,2,H-3);
 
   // Plot lines — front fork and rear suspension travel velocities
   const lines = [
