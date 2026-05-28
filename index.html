@@ -291,8 +291,8 @@ const I_SWINGARM     = 0.6;          // kg·m²  swingarm's own rotational inert
 // but reads backwards on screen). For the ANIMATION we mount the coil-over from the same
 // real rocker point C to this alternate frame point, chosen so the drawn shock SHORTENS as
 // the suspension compresses (like a conventional shock). Drawing-only; never used in physics.
-const SHOCK_VIS_X    =  0.000;       // m  visual shock frame mount X
-const SHOCK_VIS_Y    = -0.080;       // m  visual shock frame mount Y
+const SHOCK_VIS_X    =  9/200;       // m  visual shock frame mount X — vertex J "gearbox bottom-left"
+const SHOCK_VIS_Y    = 57/200;       // m  visual shock frame mount Y
 // Front fork hydraulic bump stop — engages in the last BS_ZONE of compression travel.
 const BS_ZONE        = 0.10;         // last 10% of travel
 const BS_STIFF       = 9;            // bump-stop spring stiffness multiplier on K_F
@@ -1020,8 +1020,14 @@ function _physicsStep(dt_s) {
   {
     const pen_r_raw = rearWheelY_m - nat_r;
     const pen_r = Math.max(0, pen_r_raw);
-    const PEN_CAP_R = 0.025; // m — caps stiff-spring force to prevent one-step overshoot
-    f_tire_R = pen_r > 0 ? -P.k_tire_r * Math.min(pen_r, PEN_CAP_R) : 0;
+    // No penetration cap — full spring stiffness prevents ground penetration while
+    // allowing the EOM to respond naturally. Numerically stable at MAX_SUBSTEP=5ms
+    // (Euler critical dt for this tire/swingarm system is ~16.5ms, 3.3× margin).
+    // Light velocity-proportional damping suppresses the ~19 Hz tire resonance.
+    const C_TIRE_R = 1500;   // N·s/m  tire contact damping (≈30% critical damping)
+    const v_pen_r  = wheelLeverY * swingRate; // +ve = wheel extending (leaving ground)
+    const f_tire_damp_r = pen_r > 0 ? -C_TIRE_R * v_pen_r : 0;
+    f_tire_R = pen_r > 0 ? -P.k_tire_r * pen_r + f_tire_damp_r : 0;
   }
 
   // ── Chassis EOM ───────────────────────────────────────────────────────────
@@ -1099,15 +1105,13 @@ function _physicsStep(dt_s) {
   vForkSlide_f += a_fork      * dt_s;
   forkSlide_f  += vForkSlide_f * dt_s;
 
-  // Integrate the swingarm EOM only when AIRBORNE. On the ground the wheel is slaved
-  // to the terrain (position snap + kinematic swingRate in the contact block below),
-  // so integrating the EOM there would just inject the large unbalanced suspension
-  // torque that the ground reaction is meant to cancel — the source of the blow-up.
-  // `rearContact` here is the previous sub-step's state (set at the end of this fn).
-  if (!rearContact) {
-    swingRate  += alpha_sw * dt_s;
-    swingAngle += swingRate * dt_s;
-  }
+  // Swingarm EOM — integrate unconditionally (same as the front fork).
+  // The tire spring Q_tire is the contact force; it prevents ground penetration
+  // and naturally allows the wheel to bounce off bumps. Gating to airborne only
+  // (the old approach) bypassed the unsprung-mass dynamics and glued the wheel
+  // kinematically to the terrain, killing the wheel-mass behaviour the user sees.
+  swingRate  += alpha_sw * dt_s;
+  swingAngle += swingRate * dt_s;
 
   // ── Fork travel limits (direct DOF clamp — no positional correction needed) ─
   if (forkSlide_f > TRAVEL_EXT) {
@@ -1162,64 +1166,22 @@ function _physicsStep(dt_s) {
     frontWheelY_m = stY2 + (REST_F_M + forkSlide_f) * Math.cos(φ2);
   }
 
-  // ── Rear wheel world position from swingAngle + terrain contact ───────────
+  // ── Rear wheel world position from swingAngle (physics-driven, no snap) ────
+  // Like the front fork, contact is handled entirely by the tire spring (f_tire_R
+  // above), which was computed from the PREVIOUS sub-step's wheel position.  No
+  // position snap or kinematic rate assignment: those approaches overrode the EOM
+  // and erased the unsprung-mass dynamics. rearContact is used only for the AIR
+  // indicator and effective-gravity term in the next sub-step.
   {
     const _cosP2 = Math.cos(pitchAngle), _sinP2 = Math.sin(pitchAngle);
     const _comX  = worldX_m - A_FRONT_M;
-    // Recompute the axle (chassis frame) from the post-integration swingAngle.
-    let ax_c = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
-    let ay_c = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
-    rearWheelX_m = _comX     + ax_c * _cosP2 - ay_c * _sinP2;
+    const ax_c   = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
+    const ay_c   = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
+    rearWheelX_m = _comX      + ax_c * _cosP2 - ay_c * _sinP2;
     rearWheelY_m = chassisY_m + ax_c * _sinP2 + ay_c * _cosP2;
-
-    // Jacobian d(wheelWorldY)/d(swingAngle): how fast the wheel rises/falls per rad.
-    //   = (dax/dφ)·sinP + (day/dφ)·cosP = (L sinφ)·sinP + (L cosφ)·cosP
-    const Jphi = (SWINGARM_L * Math.sin(swingAngle)) * _sinP2
-               + (SWINGARM_L * Math.cos(swingAngle)) * _cosP2;   // ≈ L·cos(φ−P), > 0
-
+    // Contact flag: wheel centre is within 5 mm of the natural ground contact point.
     const nat_r2 = calcNaturalWY_m(rearWheelX_m, WHEEL_R_R);
-    const CONTACT_BUF = 0.005; // m
-    // Swingarm angle that would place the wheel EXACTLY on the terrain (one Newton step).
-    // The wheel stays planted by extending/compressing the swingarm; it only lifts off
-    // when this required angle exceeds the droop (rebound) limit — i.e. the suspension
-    // tops out before it can reach the ground (a true loss of contact, e.g. a step-down).
-    const angleOnGround = Jphi > 1e-6 ? swingAngle + (nat_r2 - rearWheelY_m) / Jphi : swingAngle;
-
-    // Contact decision (with hysteresis on the droop-limit threshold to avoid flicker):
-    //   • Already on the ground  → stay until the swingarm would need to exceed droop.
-    //   • Currently airborne     → land once the free-falling wheel reaches the terrain
-    //     AND the swingarm can actually reach it within its travel.
-    const reachBuf = CONTACT_BUF / Math.max(Math.abs(Jphi), 1e-6); // buf in angle units
-    const inContact = rearContact
-      ? (angleOnGround <= PHI_FULL_DROOP + reachBuf)
-      : (rearWheelY_m >= nat_r2 - CONTACT_BUF && angleOnGround <= PHI_FULL_DROOP);
-
-    if (inContact) {
-      // BIDIRECTIONAL position snap: plant the wheel on the terrain. As the chassis
-      // rebounds (rises), this EXTENDS the swingarm to keep the wheel down — the fix
-      // for the rebound chatter, where a one-sided (push-up-only) snap let the wheel
-      // lift off prematurely and bounce on/off contact.
-      swingAngle = Math.max(PHI_FULL_BUMP, Math.min(PHI_FULL_DROOP, angleOnGround));
-      ax_c = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
-      ay_c = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
-      rearWheelX_m = _comX     + ax_c * _cosP2 - ay_c * _sinP2;
-      rearWheelY_m = chassisY_m + ax_c * _sinP2 + ay_c * _cosP2;
-
-      // Kinematic velocity: the swingRate that keeps the wheel tracking the terrain.
-      //   d(wheelWorldY)/dt = vChassisTerm + Jphi·swingRate  (set = v_terrain)
-      // Blend toward it with a 5 ms time constant so the landing transition is smooth.
-      const Jphi2 = (SWINGARM_L * Math.sin(swingAngle)) * _sinP2
-                  + (SWINGARM_L * Math.cos(swingAngle)) * _cosP2;
-      const v_ground_r   = P.speed / 3.6;
-      const v_terrain_r  = (calcNaturalWY_m(rearWheelX_m + v_ground_r * dt_s, WHEEL_R_R) - nat_r2) / dt_s;
-      const vChassisTerm = vChassis + (ax_c * _cosP2 - ay_c * _sinP2) * pitchRate;
-      const targetRate   = Math.abs(Jphi2) > 1e-6 ? (v_terrain_r - vChassisTerm) / Jphi2 : swingRate;
-      const alpha_r = 1.0 - Math.exp(-dt_s / 0.005);
-      swingRate   = swingRate + alpha_r * (targetRate - swingRate);
-      rearContact = true;
-    } else {
-      rearContact = false;
-    }
+    rearContact  = rearWheelY_m >= nat_r2 - 0.005;
   }
 
   // Gas / brake: update speed and resolve a_long
