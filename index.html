@@ -75,7 +75,7 @@ canvas { display: block; background: #080808; }
   .stat-n { font-size: 14px; }
 }
 
-.card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; }
+.card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; position: relative; }
 label { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-bottom: 3px; }
 label span { color: #f0f0f0; font-weight: 600; }
 input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
@@ -108,18 +108,20 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .card-title:hover { color:#bbb; }
 .card-title .card-arrow { font-size:9px; color:#555; }
 .card-body.collapsed { display:none !important; }
-.graph-wrap { display:flex; align-items:stretch; gap:4px; }
-.graph-wrap canvas { flex:1; min-width:0; border-radius:4px; display:block; }
 .graph-yscale {
-  writing-mode: vertical-lr;
-  direction: rtl;
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
-  width: 18px;
-  flex-shrink: 0;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: center center;
+  width: 80px;
+  height: 18px;
   cursor: ns-resize;
-  accent-color: #444;
+  accent-color: #555;
+  opacity: 0.6;
+  z-index: 1;
 }
+.graph-yscale:hover { opacity: 1; }
 #curve-card.collapsed-curve { flex:none; }
 #curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
 </style>
@@ -267,10 +269,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <div class="card card-fhist">
     <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
-    <div class="graph-wrap">
-      <canvas id="fgraph" height="170"></canvas>
-      <input type="range" id="fgraph-scale" class="graph-yscale" min="1" max="100" value="80" title="Y axis scale">
-    </div>
+    <canvas id="fgraph" height="170" style="display:block;width:100%;border-radius:4px;"></canvas>
+    <input type="range" id="fgraph-scale" class="graph-yscale" min="1" max="100" value="80" title="Y axis scale">
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="f" data-key="fs" style="font-size:10px;color:#e11d48;cursor:pointer;user-select:none">— F.Spring</span>
       <span class="leg" data-graph="f" data-key="fd" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Damp</span>
@@ -284,10 +284,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <div class="card card-vhist">
     <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
-    <div class="graph-wrap">
-      <canvas id="vgraph" height="120"></canvas>
-      <input type="range" id="vgraph-scale" class="graph-yscale" min="1" max="100" value="100" title="Y axis scale">
-    </div>
+    <canvas id="vgraph" height="120" style="display:block;width:100%;border-radius:4px;"></canvas>
+    <input type="range" id="vgraph-scale" class="graph-yscale" min="1" max="100" value="100" title="Y axis scale">
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="v" data-key="fv" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Vel m/s</span>
       <span class="leg" data-graph="v" data-key="rv" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Vel m/s</span>
