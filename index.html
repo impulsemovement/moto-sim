@@ -229,9 +229,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       </div>
     </div>
     <canvas id="curve-canvas" height="170"></canvas>
-    <div class="graph-yscale-wrap left" id="curve-scale-wrap" style="top:52px;height:170px;">
-      <input type="range" id="curve-scale" min="10" max="200" value="100" style="width:170px;top:170px;" title="Y-axis scale (10–200% of base force range)">
-    </div>
+    <label style="margin-top:6px;">Damping curve gain <span id="lcurve-scale">100%</span></label>
+    <input type="range" id="curve-scale" min="10" max="200" value="100" style="margin-bottom:0;">
     </div><!-- .card-body -->
   </div>
 
@@ -1815,11 +1814,15 @@ function getCurveScale() { return curveScaleVals[curveScaleKey()] / 100; }
 
 function syncCurveScaleSlider() {
   const sl = document.getElementById('curve-scale');
-  if (sl) sl.value = curveScaleVals[curveScaleKey()];
+  const lb = document.getElementById('lcurve-scale');
+  if (sl) { sl.value = curveScaleVals[curveScaleKey()]; }
+  if (lb) lb.textContent = curveScaleVals[curveScaleKey()] + '%';
 }
 
 document.getElementById('curve-scale').addEventListener('input', function() {
   curveScaleVals[curveScaleKey()] = +this.value;
+  const lb = document.getElementById('lcurve-scale');
+  if (lb) lb.textContent = this.value + '%';
   drawCurveEditor();
 });
 
