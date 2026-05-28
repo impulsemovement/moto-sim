@@ -98,6 +98,18 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .card-header { font-size:11px; color:#555; margin-bottom:8px; font-weight:600; letter-spacing:0.05em; }
 #curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; flex:1; min-height:0; }
 #curve-card   { display:flex; flex-direction:column; }
+.card-title {
+  display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; user-select:none;
+  font-size:11px; font-weight:700; letter-spacing:0.08em; color:#888;
+  padding-bottom:8px; margin-bottom:8px;
+  border-bottom:1px solid #1f1f1f;
+}
+.card-title:hover { color:#bbb; }
+.card-title .card-arrow { font-size:9px; color:#555; }
+.card-body.collapsed { display:none !important; }
+#curve-card.collapsed-curve { flex:none; }
+#curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
 </style>
 </head>
 <body>
@@ -125,6 +137,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 
   <!-- TOP-LEFT: Suspension card -->
   <div class="card card-susp">
+    <div class="card-title" onclick="toggleCard(this)">SUSPENSION<span class="card-arrow">▼</span></div>
+    <div class="card-body">
     <div class="toggle-group">
       <button class="toggle-btn active" id="btn-front" onclick="setWheelMode('front')">FRONT</button>
       <button class="toggle-btn"        id="btn-rear"  onclick="setWheelMode('rear')">REAR</button>
@@ -159,10 +173,13 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       <label>Wheel mass <span id="lmunsp_r">17 kg</span></label>
       <input type="range" id="munsp_r" min="5" max="25" value="17" step="0.5">
     </div>
+    </div><!-- .card-body -->
   </div>
 
   <!-- TOP-RIGHT: Damping curve card -->
   <div class="card card-curve" id="curve-card">
+    <div class="card-title" onclick="toggleCard(this)">DAMPING CURVES<span class="card-arrow">▼</span></div>
+    <div class="card-body">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="toggle-group" style="margin-bottom:0">
@@ -180,10 +197,13 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       </div>
     </div>
     <canvas id="curve-canvas" height="170"></canvas>
+    </div><!-- .card-body -->
   </div>
 
   <!-- BOTTOM-LEFT: Terrain card -->
   <div class="card card-terrain">
+    <div class="card-title" onclick="toggleCard(this)">TERRAIN AND CHASSIS<span class="card-arrow">▼</span></div>
+    <div class="card-body">
     <label>Terrain <span id="lterrain">Bumps</span></label>
     <input type="range" id="terrain" min="0" max="4" value="0" step="1">
     <div style="display:flex;gap:2px;font-size:9px;color:#444;margin-top:-5px;margin-bottom:8px">
@@ -228,11 +248,13 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     </div>
     <label>Rider mass <span id="lmass">75 kg</span></label>
     <input type="range" id="mass" min="40" max="140" value="75">
+    </div><!-- .card-body -->
   </div>
 
   <!-- BOTTOM-RIGHT: Force history graph -->
   <div class="card card-fhist">
-    <div class="card-header" style="margin-bottom:6px">FORCE HISTORY (5 s)</div>
+    <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
+    <div class="card-body">
     <canvas id="fgraph" height="170" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="f" data-key="fs" style="font-size:10px;color:#e11d48;cursor:pointer;user-select:none">— F.Spring</span>
@@ -240,16 +262,19 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       <span class="leg" data-graph="f" data-key="rs" style="font-size:10px;color:#3b82f6;cursor:pointer;user-select:none">— R.Spring</span>
       <span class="leg" data-graph="f" data-key="rd" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Damp</span>
     </div>
+    </div><!-- .card-body -->
   </div>
 
   <!-- BOTTOM-LEFT: Suspension velocity history graph -->
   <div class="card card-vhist">
-    <div class="card-header" style="margin-bottom:6px">SUSPENSION VELOCITY (5 s)</div>
+    <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
+    <div class="card-body">
     <canvas id="vgraph" height="120" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
       <span class="leg" data-graph="v" data-key="fv" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Vel m/s</span>
       <span class="leg" data-graph="v" data-key="rv" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Vel m/s</span>
     </div>
+    </div><!-- .card-body -->
   </div>
 
 </div><!-- .ui -->
@@ -1045,16 +1070,10 @@ function _physicsStep(dt_s) {
   const a_chassis   = g + (fsusp_f_y + fsusp_r) / Ms;
 
   // ── Pitch EOM ─────────────────────────────────────────────────────────────
-  // Raw suspension pitch moment. With asymmetric moment arms (A≠B) pure heave
-  // generates a small spurious pitch. Subtract the "common-mode" force —
-  // the portion of each suspension load attributable to balanced heave — so
-  // symmetric heave (both wheels hitting the same bump simultaneously) creates
-  // no net pitch.  Only *differential* suspension forces drive pitch.
-  const L = A_FRONT_M + B_REAR_M;           // wheelbase
-  const f_heave_f = fsusp_f_y * (B_REAR_M  / L); // front share of heave reaction
-  const f_heave_r = fsusp_r   * (A_FRONT_M / L); // rear  share of heave reaction
-  const tau_susp  = A_FRONT_M * (fsusp_f_y - f_heave_f)
-                  - B_REAR_M  * (fsusp_r   - f_heave_r);
+  // Suspension pitch moment: each wheel's vertical force × its moment arm from CoM.
+  // Front suspension acts at A_FRONT_M ahead of CoM; rear at B_REAR_M behind CoM.
+  // Positive tau_susp = nose-up (front pushes chassis up relative to rear).
+  const tau_susp  = A_FRONT_M * fsusp_f_y - B_REAR_M * fsusp_r;
   // Pitch damping: limits pitchRate to physically realistic values.
   // At 40 N·m·s/rad, pitchRate can reach ~2.4 rad/s (137°/s) over bumps — too high.
   // Real motorcycles stay below ~1 rad/s in normal riding; 100 N·m·s/rad achieves this
@@ -1124,7 +1143,10 @@ function _physicsStep(dt_s) {
       // relative velocity (prevents chassis continuing to compress into the stop).
       // Δv_chassis = m_uf / (Ms + m_uf) * (vForkSlide_f · cosφ)
       // vForkSlide_f < 0 and cosφ > 0, so Δv is upward (negative Y) — correct.
-      vChassis += P.m_unsprung_f * vForkSlide_f * cosφ / (Ms + P.m_unsprung_f);
+      // Also impart a nose-up pitch impulse: impact at A_FRONT_M ahead of CoM.
+      const delta_v_co = P.m_unsprung_f * vForkSlide_f * cosφ / (Ms + P.m_unsprung_f);
+      vChassis  += delta_v_co;
+      pitchRate += delta_v_co * Ms * A_FRONT_M / I_YY;
       vForkSlide_f = 0;
     }
   }
@@ -1992,6 +2014,21 @@ document.querySelectorAll('.leg').forEach(el => {
   });
 });
 applyLegendStyle();
+
+// ═══════════════════════════════════════════════════════════
+//  COLLAPSIBLE CARDS
+// ═══════════════════════════════════════════════════════════
+function toggleCard(titleEl) {
+  const body = titleEl.nextElementSibling;
+  const arrow = titleEl.querySelector('.card-arrow');
+  const collapsed = body.classList.toggle('collapsed');
+  arrow.textContent = collapsed ? '◀' : '▼';
+  // For curve card, toggle flex layout so the card shrinks when collapsed
+  const card = titleEl.closest('.card');
+  if (card && card.id === 'curve-card') {
+    card.classList.toggle('collapsed-curve', collapsed);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 //  STARTUP
