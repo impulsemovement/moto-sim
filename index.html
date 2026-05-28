@@ -123,16 +123,19 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   top: 0;
   bottom: 0;
   width: 28px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .graph-yscale-col input[type=range] {
   transform: rotate(-90deg);
+  transform-origin: center center;
   cursor: pointer;
-  accent-color: #666;
+  accent-color: #888;
   margin: 0;
   padding: 0;
+  flex-shrink: 0;
 }
 #curve-card.collapsed-curve { flex:none; }
 #curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
@@ -284,7 +287,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="graph-row">
       <canvas id="fgraph" height="255"></canvas>
       <div class="graph-yscale-col">
-        <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:230px;" title="Y-axis zoom">
+        <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:255px;" title="Y-axis zoom">
       </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
@@ -303,7 +306,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="graph-row">
       <canvas id="vgraph" height="180"></canvas>
       <div class="graph-yscale-col">
-        <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:155px;" title="Y-axis zoom">
+        <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:180px;" title="Y-axis zoom">
       </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
