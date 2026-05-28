@@ -110,10 +110,11 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .card-body.collapsed { display:none !important; }
 .graph-yscale-wrap {
   position: absolute;
-  right: 4px;
   overflow: hidden;
   width: 20px;
 }
+.graph-yscale-wrap.right { right: 4px; }
+.graph-yscale-wrap.left  { left: 4px; }
 .graph-yscale-wrap input[type=range] {
   position: absolute;
   left: 20px;
@@ -131,6 +132,13 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 .graph-yscale-wrap input[type=range]:focus,
 .graph-yscale-wrap input[type=range]:active {
   opacity: 1;
+}
+/* Left-side wrapper: rotate -90deg from bottom-left so max is at top */
+.graph-yscale-wrap.left input[type=range] {
+  left: 0;
+  transform: rotate(-90deg);
+  transform-origin: 0px 0px;
+  /* top set via inline style = wrapper height */
 }
 #curve-card.collapsed-curve { flex:none; }
 #curve-card .card-body { display:flex; flex-direction:column; flex:1; min-height:0; }
@@ -221,6 +229,9 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       </div>
     </div>
     <canvas id="curve-canvas" height="170"></canvas>
+    <div class="graph-yscale-wrap left" id="curve-scale-wrap" style="top:52px;height:170px;">
+      <input type="range" id="curve-scale" min="10" max="200" value="100" style="width:170px;top:170px;" title="Y-axis scale (10–200% of base force range)">
+    </div>
     </div><!-- .card-body -->
   </div>
 
@@ -280,7 +291,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <canvas id="fgraph" height="255" style="display:block;width:100%;border-radius:4px;"></canvas>
-    <div class="graph-yscale-wrap" style="top:36px;height:255px;">
+    <div class="graph-yscale-wrap right" style="top:36px;height:255px;">
       <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:255px;" title="Y-axis zoom">
     </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
@@ -297,7 +308,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <canvas id="vgraph" height="180" style="display:block;width:100%;border-radius:4px;"></canvas>
-    <div class="graph-yscale-wrap" style="top:36px;height:180px;">
+    <div class="graph-yscale-wrap right" style="top:36px;height:180px;">
       <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:180px;" title="Y-axis zoom">
     </div>
     <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
@@ -535,6 +546,7 @@ function setWheelMode(m) {
   document.getElementById('susp-front').style.display = m==='front' ? '' : 'none';
   document.getElementById('susp-rear').style.display  = m==='rear'  ? '' : 'none';
   document.getElementById('curve-label').textContent = m.toUpperCase();
+  syncCurveScaleSlider();
   drawCurveEditor();
 }
 
@@ -840,7 +852,9 @@ function dampForce(rv, isComp, isRear) {
   const lut     = isComp
     ? (isRear ? compLUT_R : compLUT_F)
     : (isRear ? rebLUT_R  : rebLUT_F);
-  const F_MAX   = isRear ? F_MAX_R : F_MAX_F;
+  const baseMax = isRear ? F_MAX_R : F_MAX_F;
+  const scaleKey = (isComp ? 'comp' : 'reb') + (isRear ? 'R' : 'F');
+  const F_MAX   = baseMax * (curveScaleVals[scaleKey] / 100);
   const normV   = Math.abs(rv) / V_MAX_SIM;
   const frac    = evalCurveLUT(lut, normV);
   return gain * frac * F_MAX;
@@ -1790,6 +1804,25 @@ const GP   = { l:48, r:16, t:12, b:34 };
 
 let curveMode = 'comp';
 
+// Per-curve Y-axis scale (percentage of base F_MAX, 10–200)
+const curveScaleVals = { compF: 100, rebF: 100, compR: 100, rebR: 100 };
+
+function curveScaleKey() {
+  return (curveMode === 'comp' ? 'comp' : 'reb') + (wheelMode === 'front' ? 'F' : 'R');
+}
+
+function getCurveScale() { return curveScaleVals[curveScaleKey()] / 100; }
+
+function syncCurveScaleSlider() {
+  const sl = document.getElementById('curve-scale');
+  if (sl) sl.value = curveScaleVals[curveScaleKey()];
+}
+
+document.getElementById('curve-scale').addEventListener('input', function() {
+  curveScaleVals[curveScaleKey()] = +this.value;
+  drawCurveEditor();
+});
+
 function resizeCurveCanvas() {
   cc.width  = cc.clientWidth;
   cc.height = cc.clientHeight || 220;
@@ -1848,7 +1881,7 @@ function drawCurveEditor() {
   cctx.fillStyle='#444'; cctx.fillText('m/s', GP.l+gw/2, GP.t+gh+30);
 
   // Y axis labels
-  const F_MAX_LABEL = wheelMode==='front' ? F_MAX_F : F_MAX_R;
+  const F_MAX_LABEL = (wheelMode==='front' ? F_MAX_F : F_MAX_R) * getCurveScale();
   cctx.textAlign='right';
   for (let i=0; i<=4; i++) {
     cctx.fillStyle='#555';
@@ -1981,6 +2014,7 @@ function setCurveMode(mode) {
   curveMode=mode;
   document.getElementById('btn-comp').classList.toggle('active', mode==='comp');
   document.getElementById('btn-reb').classList.toggle('active',  mode==='reb');
+  syncCurveScaleSlider();
   drawCurveEditor();
 }
 
