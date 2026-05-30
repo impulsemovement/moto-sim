@@ -887,8 +887,17 @@ let   rewindIndex    = 0;       // scrub position into recorder
 let a_long        = 0;
 let gasPressed    = false;
 let brakePressed  = false;
-let gasInput      = 0;   // 0–1, ramps up over 1.5 s when pressed, falls in 0.5 s when released
-let brakeInput    = 0;   // same
+// Ramp PHASE (linear in time, 0→1) and the smoothed INPUT (smootherstep of phase, 0→1).
+// smootherstep has zero slope at both ends → gentle onset (doesn't come on hard) and a
+// gentle, non-abrupt release. The output gasInput/brakeInput are what the physics uses.
+let gasPhase      = 0;
+let brakePhase    = 0;
+let gasInput      = 0;
+let brakeInput    = 0;
+const GAS_RAMP_UP    = 0.85;  // s  throttle press → full
+const GAS_RAMP_DOWN  = 0.70;  // s  throttle release → zero
+const BRAKE_RAMP_UP  = 0.65;  // s  brake press → full
+const BRAKE_RAMP_DOWN = 0.60; // s  brake release → zero
 const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 class)
 
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
@@ -1163,13 +1172,18 @@ function _physicsStep(dt_s) {
   // resistance + cruise assist. Integrating it gives vChassisX; the speed slider
   // is the cruise-control TARGET, and the displayed speed is the emergent vChassisX.
   {
-    const K_UP   = (Math.PI / (2 * 0.75)) * dt_s;  // ramp up  in 0.75 s
-    const K_DOWN = (Math.PI / (2 * 0.25)) * dt_s;  // ramp down in 0.25 s
-    function sineRamp(val, k) {
-      return Math.min(1, val + k * Math.sqrt(Math.max(0, 1 - val * val)));
-    }
-    gasInput   = gasPressed   ? sineRamp(gasInput,   K_UP) : 1 - sineRamp(1 - gasInput,   K_DOWN);
-    brakeInput = brakePressed ? sineRamp(brakeInput, K_UP) : 1 - sineRamp(1 - brakeInput, K_DOWN);
+    // Advance each phase linearly toward its target (1 pressed, 0 released) over the
+    // configured ramp time, then shape it with smootherstep (6t⁵−15t⁴+10t³). The zero
+    // end-slopes give a gentle build-up and a gentle, non-abrupt fall-off.
+    const smoother = t => t * t * t * (t * (t * 6 - 15) + 10);
+    const advance = (phase, pressed, upT, downT) => {
+      const T = pressed ? upT : downT;
+      return Math.max(0, Math.min(1, phase + (pressed ? 1 : -1) * dt_s / T));
+    };
+    gasPhase   = advance(gasPhase,   gasPressed,   GAS_RAMP_UP,   GAS_RAMP_DOWN);
+    brakePhase = advance(brakePhase, brakePressed, BRAKE_RAMP_UP, BRAKE_RAMP_DOWN);
+    gasInput   = smoother(gasPhase);
+    brakeInput = smoother(brakePhase);
   }
 
   // Traction requires ground contact: a wheel in the air makes no drive/brake force
@@ -2902,7 +2916,7 @@ function resetSim() {
   worldX_m     = 0;
   wheelAngle_f = 0; wheelAngle_r = 0;
   disp_f = 0; disp_r = 0;
-  a_long = 0; gasInput = 0; brakeInput = 0;
+  a_long = 0; gasInput = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
   gasPressed = false; brakePressed = false;
   rearContact  = false;
   camY_m       = 0;
