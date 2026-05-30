@@ -1525,6 +1525,12 @@ function _physicsStep(dt_s) {
   shockLen_cur        = shockLength(swingAngle);
   const dShock        = dShockLength(swingAngle);          // m/rad, >0 (compression shortens shock)
   const wheelLeverY   = dAxleYchassis(swingAngle);         // = L·cosφ, chassis-frame wheel-vertical lever
+  // World-frame vertical lever of the rear contact about the pivot: ∂(wheel world Y)/∂φ =
+  // L·cos(φ − pitch). As the chassis pitches into a wheelie/stoppie the contact-patch
+  // (world-vertical) force gets a SMALLER lever on the swingarm, so the spring unloads and
+  // the load transfers straight to the chassis through the pivot. Used for the gravity &
+  // tire (ground) forces; the shock force itself stays in the chassis frame (wheelLeverY).
+  const wheelLeverYw  = SWINGARM_L * Math.cos(swingAngle - pitchAngle);
   // Shock spring: K_shock is calibrated (initPhysics) so wheel rate at sag = P.k_r.
   // Preload P.pre_r is a wheel-mm offset; convert to an effective shock-length offset.
   const MR_sag        = SW_MR_SAG;                          // wheel-travel / shock-travel at sag
@@ -1585,7 +1591,7 @@ function _physicsStep(dt_s) {
   // fights the hard-floor constraint and causes chassis velocity build-up.
   {
     const pen_r = Math.max(0, rearWheelY_m - nat_r);
-    const v_pen_r = wheelLeverY * swingRate;   // +ve = wheel moving down (compressing tire)
+    const v_pen_r = wheelLeverYw * swingRate;  // world-vertical contact velocity (+ve = compressing)
     f_tire_R = tireForce(pen_r, v_pen_r, P.k_tire_r, P.m_unsprung_r, dt_s, TIRE_TRAVEL_R);
   }
 
@@ -1654,8 +1660,10 @@ function _physicsStep(dt_s) {
   // caused the landing spike. a_chassis is already computed above (feed-forward,
   // no circular dependency since it depends on fsusp_r, not on α_sw).
   const I_sw   = P.m_unsprung_r * SWINGARM_L * SWINGARM_L + I_SWINGARM;
-  const Q_grav = P.m_unsprung_r * (g - a_chassis) * wheelLeverY; // + = droop (extend)
-  const Q_tire = f_tire_R * wheelLeverY;                          // f_tire_R<0 (up) ⇒ compress
+  // World-vertical forces (gravity, tire contact) use the WORLD lever so chassis pitch
+  // changes their leverage on the swingarm; the chassis-frame shock force uses wheelLeverY.
+  const Q_grav = P.m_unsprung_r * (g - a_chassis) * wheelLeverYw; // + = droop (extend)
+  const Q_tire = f_tire_R * wheelLeverYw;                         // f_tire_R<0 (up) ⇒ compress
   const Q_susp = F_wheel_susp * wheelLeverY;                      // + = extend (compressed shock)
   const alpha_sw = (Q_grav + Q_tire + Q_susp) / I_sw;             // rad/s²
 
