@@ -25,17 +25,20 @@ canvas { display: block; background: #080808; }
 }
 #zoom-btns button:hover { background: rgba(255,255,255,0.10); }
 #zoom-btns button:active { background: rgba(255,255,255,0.15); }
-#btn-reset {
-  position: absolute; top: 10px; right: 10px; z-index: 10;
-  width: 52px; height: 26px;
+.top-btn {
+  position: absolute; top: 10px; z-index: 10;
+  height: 26px;
   border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
   background: rgba(0,0,0,0.45); color: #aaa;
   font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
   cursor: pointer; user-select: none; -webkit-user-select: none;
   transition: background 0.1s, color 0.1s;
 }
-#btn-reset:hover { background: rgba(255,255,255,0.08); color: #ddd; }
-#btn-reset:active { background: rgba(255,255,255,0.12); color: #fff; }
+.top-btn:hover  { background: rgba(255,255,255,0.08); color: #ddd; }
+.top-btn:active { background: rgba(255,255,255,0.12); color: #fff; }
+#btn-reset { right: 10px;  width: 52px; }
+#btn-pause { right: 70px;  width: 34px; font-size: 13px; }
+#btn-step  { right: 112px; width: 34px; font-size: 13px; }
 .ride-btn {
   position: absolute; bottom: 16px;
   width: 80px; height: 44px;
@@ -164,7 +167,9 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <button id="btn-zoom-in"  title="Zoom in">+</button>
     <button id="btn-zoom-out" title="Zoom out">−</button>
   </div>
-  <button id="btn-reset" title="Reset simulation">RESET</button>
+  <button id="btn-step"  class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
+  <button id="btn-pause" class="top-btn" title="Pause / play (Space)">⏸</button>
+  <button id="btn-reset" class="top-btn" title="Reset simulation (R)">RESET</button>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
 </div>
@@ -760,6 +765,11 @@ let worldX_m      = 0;
 let lastTs        = null;
 let initialized   = false;
 
+// Playback controls
+let paused        = false;  // true → physics frozen, rendering continues
+let stepRequested = false;  // one-shot: advance a single fixed step while paused
+const FRAME_STEP  = 0.016;  // s  fixed dt used for a manual frame-step
+
 // Longitudinal acceleration (gas / brake input), m/s²  positive = forward
 let a_long        = 0;
 let gasPressed    = false;
@@ -1351,8 +1361,13 @@ function draw(ts) {
 
   if (!initialized) { initPhysics(); }
 
-  if (dt > 0) {
-    const dt_s = dt * P.timeScale;
+  // Determine this frame's physics step: normal live stepping unless paused;
+  // when paused, advance only if a single frame-step was requested.
+  let dt_s = 0;
+  if (!paused && dt > 0)      dt_s = dt * P.timeScale;
+  else if (stepRequested)     { dt_s = FRAME_STEP * P.timeScale; stepRequested = false; }
+
+  if (dt_s > 0) {
     simStep(dt_s);
 
     // Force history
@@ -2513,6 +2528,29 @@ function resetSim() {
   initPhysics();
 }
 document.getElementById('btn-reset').addEventListener('click', resetSim);
+
+// ═══════════════════════════════════════════════════════════
+//  PAUSE / PLAY + FRAME-STEP
+// ═══════════════════════════════════════════════════════════
+function setPaused(on) {
+  paused = on;
+  const pb = document.getElementById('btn-pause');
+  const sb = document.getElementById('btn-step');
+  if (pb) { pb.textContent = paused ? '▶' : '⏸'; pb.title = (paused ? 'Play' : 'Pause') + ' (Space)'; }
+  if (sb) sb.style.display = paused ? '' : 'none';
+}
+function togglePause() { setPaused(!paused); }
+function stepFrame()  { if (!paused) setPaused(true); stepRequested = true; }
+
+document.getElementById('btn-pause').addEventListener('click', togglePause);
+document.getElementById('btn-step').addEventListener('click', stepFrame);
+
+window.addEventListener('keydown', e => {
+  // Ignore when typing in an input (e.g. the setup-name field)
+  if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePause(); }
+  else if (e.key === '.')                  { e.preventDefault(); stepFrame(); }
+});
 
 // ═══════════════════════════════════════════════════════════
 //  ZOOM BUTTONS
