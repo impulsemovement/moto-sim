@@ -1006,8 +1006,8 @@ let gasInput      = 0;
 let brakeInput    = 0;
 const GAS_RAMP_UP    = 0.85;  // s  throttle press → full (slow climb so it doesn't snap to WOT)
 const GAS_RAMP_DOWN  = 0.50;  // s  throttle release → zero (gentle drop for consistent wheelies)
-const BRAKE_RAMP_UP  = 0.32;  // s  brake press → full
-const BRAKE_RAMP_DOWN = 0.20; // s  brake release → zero
+const BRAKE_RAMP_UP  = 0.85;  // s  brake press → full (same ease-out feel as the throttle)
+const BRAKE_RAMP_DOWN = 0.50; // s  brake release → zero
 const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 class)
 
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
@@ -1321,22 +1321,14 @@ function _physicsStep(dt_s) {
   // resistance + cruise assist. Integrating it gives vChassisX; the speed slider
   // is the cruise-control TARGET, and the displayed speed is the emergent vChassisX.
   {
-    // GAS: integrate gasInput directly with a direction-dependent rate, so BOTH the
-    // press and the release are ease-OUT in their own travel direction:
-    //   press   → fast off the bottom, slows as it crawls into full throttle
-    //   release → snaps down quickly from a high opening, slows near closed
-    // (rate ∝ remaining^0.6 each way reproduces a 1−(1−t)^2.5 curve over the ramp time.)
-    if (gasPressed) gasInput += (2.5 / GAS_RAMP_UP)   * Math.pow(1 - gasInput, 0.6) * dt_s;
-    else            gasInput -= (2.5 / GAS_RAMP_DOWN) * Math.pow(gasInput,     0.6) * dt_s;
-    gasInput = Math.max(0, Math.min(1, gasInput));
-    // BRAKE: smootheststep over a linear phase (gentle at both ends).
-    const smoothBrake = t => { const t4 = t*t*t*t; return t4 * (35 - 84*t + 70*t*t - 20*t*t*t); };
-    const advance = (phase, pressed, upT, downT) => {
-      const T = pressed ? upT : downT;
-      return Math.max(0, Math.min(1, phase + (pressed ? 1 : -1) * dt_s / T));
-    };
-    brakePhase = advance(brakePhase, brakePressed, BRAKE_RAMP_UP, BRAKE_RAMP_DOWN);
-    brakeInput = smoothBrake(brakePhase);
+    // GAS & BRAKE use the SAME direction-dependent ease-out integrator, so both behave
+    // identically: press → fast off the bottom then slows into full; release → snaps down
+    // from a high level then eases to zero. (rate ∝ remaining^0.6 reproduces a 1−(1−t)^2.5
+    // curve over the ramp time.) This makes the brake progressive instead of grabby.
+    const rampUp   = (x, T) => Math.min(1, x + (2.5 / T) * Math.pow(1 - x, 0.6) * dt_s);
+    const rampDown = (x, T) => Math.max(0, x - (2.5 / T) * Math.pow(x,     0.6) * dt_s);
+    gasInput   = gasPressed   ? rampUp(gasInput,   GAS_RAMP_UP)   : rampDown(gasInput,   GAS_RAMP_DOWN);
+    brakeInput = brakePressed ? rampUp(brakeInput, BRAKE_RAMP_UP) : rampDown(brakeInput, BRAKE_RAMP_DOWN);
   }
 
   // Traction requires ground contact: a wheel in the air makes no drive/brake force
