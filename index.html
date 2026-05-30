@@ -350,6 +350,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     </div>
     <label>Rider mass <span id="lmass">75 kg</span></label>
     <input type="range" id="mass" min="40" max="140" value="75">
+    <label>Bump pitch effect <span id="lpitchmom">25%</span></label>
+    <input type="range" id="pitchmom" min="0" max="100" value="25">
     <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
     <label>Setups <span id="lsetup-status" style="color:#555;font-weight:400"></span></label>
     <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
@@ -651,7 +653,8 @@ let P = {
   k_tire_r: psiToKtire(36), m_unsprung_r: 17,   // rear  tire / wheel
   mass:75,
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
-  timeScale:1.0, speed:30
+  timeScale:1.0, speed:30,
+  pitchMoment:0.25   // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
 
@@ -725,6 +728,7 @@ bind('ktire_r',   'lktire_r',   v => { P.k_tire_r = psiToKtire(+v); return v + '
 bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + ' kg'; });
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
+bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; });
 bind('speed',     'lspeed',     v => { P.speed   = v; return v+' km/h'; });   // slider = cruise TARGET; stat shows emergent speed
 bind('timescale', 'ltimescale', v => { P.timeScale = v/100; return (v/100).toFixed(2)+'×'; });
 bind('gasrate',   'lgasrate',   v => { GAS_ACCEL   = +v; return v + ' m/s²'; });
@@ -1572,7 +1576,9 @@ function _physicsStep(dt_s) {
   // suspension would otherwise apply a spurious pitch moment to a free-flying bike, so
   // suppress tau_susp here. On the ground or one wheel down (wheelie/stoppie) it's normal.
   const fullyAir = !onGroundFront && !onGroundRear;
-  const tau_susp_eff = fullyAir ? tau_susp * 0.1 : tau_susp;
+  // P.pitchMoment (slider) scales how much the suspension forces pitch the chassis;
+  // 0 = bumps cause no pitch (heave only), 1 = full effect.
+  const tau_susp_eff = (fullyAir ? tau_susp * 0.1 : tau_susp) * P.pitchMoment;
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
   const alpha_pitch = (tau_susp_eff + tau_long + tau_react - C_PITCH_DRAG * pitchRate) / I_YY;
@@ -1641,7 +1647,7 @@ function _physicsStep(dt_s) {
       // pitches off the stop instead of launching into an endless vertical bounce.
       const p_imp = P.m_unsprung_f * (-vForkSlide_f) * cosφ;   // inbound vertical momentum (>0)
       const pf    = bottomOutFactor(P.k_tire_f);               // soft front tire absorbs more
-      pitchRate -= BOTTOM_ROT   * pf * p_imp * A_FRONT_M / I_YY;  // nose up (negative pitch)
+      pitchRate -= BOTTOM_ROT   * pf * P.pitchMoment * p_imp * A_FRONT_M / I_YY;  // nose up (negative pitch)
       vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                // small upward heave
       vForkSlide_f = 0;
     }
@@ -1663,7 +1669,7 @@ function _physicsStep(dt_s) {
     if (swingRate < 0) {
       const p_imp = P.m_unsprung_r * (-(wheelLeverY * swingRate));   // inbound vertical momentum (>0)
       const pf    = bottomOutFactor(P.k_tire_r);                     // soft rear tire absorbs more
-      pitchRate += BOTTOM_ROT   * pf * p_imp * B_REAR_M / I_YY;       // nose down (positive pitch)
+      pitchRate += BOTTOM_ROT   * pf * P.pitchMoment * p_imp * B_REAR_M / I_YY;       // nose down (positive pitch)
       vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                    // small upward heave
       swingRate = 0;
     }
@@ -2558,7 +2564,7 @@ const SETUP_SLIDERS = [
   'k_f','air_f','pre_f','damp_f','ktire_f','munsp_f',
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
-  'terrain','amp','freq','rough','duty'
+  'terrain','amp','freq','rough','duty','pitchmom'
 ];
 
 function loadSetups() {
