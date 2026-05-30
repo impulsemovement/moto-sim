@@ -1628,8 +1628,9 @@ function simStep(dt_s) {
 //  WHEEL DRAWING
 // ═══════════════════════════════════════════════════════════
 function drawWheel(cx, cy, r_px, rotAngle) {
-  // Tire section width ≈ 27% of total radius (realistic for 120/70 & 180/55 R17)
-  const rimR = r_px - Math.round(r_px * 0.27);
+  // Fat tire section ≈ 38% of total radius — reads as a chunky motorcycle tire (with
+  // the open rim, the older 27% band looked like a thin bicycle tire).
+  const rimR = r_px - Math.round(r_px * 0.38);
 
   // Solid tire donut — outer contact edge is clearly the full radius r_px
   ctx.beginPath();
@@ -1649,15 +1650,17 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
   ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.stroke();
 
-  // Spokes — rotated by rolling angle
+  // Spokes — thick, high-contrast pink (matches the fork spring & rear shock).
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(rotAngle || 0);
-  ctx.strokeStyle = '#606060'; ctx.lineWidth = 1.5;
-  for (let i = 0; i < 8; i++) {
-    const a = i / 8 * Math.PI * 2;
+  ctx.strokeStyle = '#e11d48';
+  ctx.lineWidth = Math.max(3, r_px * 0.085);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * 5, Math.sin(a) * 5);
+    ctx.moveTo(Math.cos(a) * 6, Math.sin(a) * 6);
     ctx.lineTo(Math.cos(a) * rimR, Math.sin(a) * rimR);
     ctx.stroke();
   }
