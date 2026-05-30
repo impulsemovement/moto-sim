@@ -724,6 +724,8 @@ const CLUTCH_ENGAGE_TIME = 0.13; // s  to engage (release / dump)
 const CLUTCH_MAX_TORQUE  = 85;   // N·m  max torque the clutch can transmit (engine side)
 const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 14;   // N·m crank-side engine-braking torque at redline (off-throttle)
+const ANTI_SQUAT_SCALE   = 0.4;  // how much the rear longitudinal (drive/brake) force torques the
+                                 // swingarm via geometry (anti-squat / clutch-up suspension load)
 const RPM2RADS = 2 * Math.PI / 60;   // RPM → rad/s
 const RADS2RPM = 60 / (2 * Math.PI); // rad/s → RPM
 function effRatio(g) { return GEAR_RATIOS[g] * FINAL_DRIVE; }
@@ -1687,7 +1689,21 @@ function _physicsStep(dt_s) {
   const Q_grav = P.m_unsprung_r * (g - a_chassis) * wheelLeverYw; // + = droop (extend)
   const Q_tire = f_tire_R * wheelLeverYw;                         // f_tire_R<0 (up) ⇒ compress
   const Q_susp = F_wheel_susp * wheelLeverY;                      // + = extend (compressed shock)
-  const alpha_sw = (Q_grav + Q_tire + Q_susp) / I_sw;             // rad/s²
+  // Longitudinal (drive/brake) force at the rear contact also torques the swingarm through
+  // the geometry: generalized lever ∂(wheel world X)/∂φ = L·sin(φ − pitch). The lever grows
+  // as the bike pitches up, so near a vertical wheelie the drive/brake (and the clutch
+  // engaging) push/pull the bike right through the swingarm — gas extends it (anti-squat /
+  // lifts), brake & engine-braking compress it (pitch the nose down). The front friction
+  // brake doesn't act here; the rear gets all of it only when the front wheel is airborne.
+  const rearBrakeFrac = (f_tire_F !== 0) ? 0.4 : 1.0;
+  const F_rear_long = F_drive_term + F_cruise + F_brake_term * rearBrakeFrac; // N, + = forward
+  // Gate the effect to the steep wheelie/stoppie regime. At low pitch (normal riding/whoops)
+  // this swingarm coupling can pump into a pitch↔suspension feedback, so fade it in from
+  // ~25° to ~45° of pitch — exactly where the rider wants the drive/brake/clutch to push the
+  // bike through the geometry (e.g. holding a wheelie at balance).
+  const pitchGate = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.44) / (0.79 - 0.44)));
+  const Q_long = ANTI_SQUAT_SCALE * pitchGate * F_rear_long * SWINGARM_L * Math.sin(swingAngle - pitchAngle);
+  const alpha_sw = (Q_grav + Q_tire + Q_susp + Q_long) / I_sw;   // rad/s²
 
   // ── Integrate (explicit Euler) ────────────────────────────────────────────
   vChassis     += a_chassis   * dt_s;
