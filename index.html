@@ -1254,21 +1254,21 @@ function _physicsStep(dt_s) {
   // resistance + cruise assist. Integrating it gives vChassisX; the speed slider
   // is the cruise-control TARGET, and the displayed speed is the emergent vChassisX.
   {
-    // Advance each phase linearly toward its target (1 pressed, 0 released) over the
-    // configured ramp time, then shape it.
-    //   GAS uses an ease-OUT (1−(1−t)^2.5): fast response off the bottom of the range,
-    //   then progressively slower as it crawls into full throttle — responsive low-end
-    //   with a soft top (and a correspondingly gentle let-off near full for wheelies).
-    //   BRAKE keeps the smootheststep S-curve (gentle at both ends).
-    const easeOutGas = t => 1 - Math.pow(1 - t, 2.5);
+    // GAS: integrate gasInput directly with a direction-dependent rate, so BOTH the
+    // press and the release are ease-OUT in their own travel direction:
+    //   press   → fast off the bottom, slows as it crawls into full throttle
+    //   release → snaps down quickly from a high opening, slows near closed
+    // (rate ∝ remaining^0.6 each way reproduces a 1−(1−t)^2.5 curve over the ramp time.)
+    if (gasPressed) gasInput += (2.5 / GAS_RAMP_UP)   * Math.pow(1 - gasInput, 0.6) * dt_s;
+    else            gasInput -= (2.5 / GAS_RAMP_DOWN) * Math.pow(gasInput,     0.6) * dt_s;
+    gasInput = Math.max(0, Math.min(1, gasInput));
+    // BRAKE: smootheststep over a linear phase (gentle at both ends).
     const smoothBrake = t => { const t4 = t*t*t*t; return t4 * (35 - 84*t + 70*t*t - 20*t*t*t); };
     const advance = (phase, pressed, upT, downT) => {
       const T = pressed ? upT : downT;
       return Math.max(0, Math.min(1, phase + (pressed ? 1 : -1) * dt_s / T));
     };
-    gasPhase   = advance(gasPhase,   gasPressed,   GAS_RAMP_UP,   GAS_RAMP_DOWN);
     brakePhase = advance(brakePhase, brakePressed, BRAKE_RAMP_UP, BRAKE_RAMP_DOWN);
-    gasInput   = easeOutGas(gasPhase);
     brakeInput = smoothBrake(brakePhase);
   }
 
