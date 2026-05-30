@@ -433,6 +433,24 @@ const B_REAR_M   = 0.686;        // m  CoM from rear  axle
 
 const I_YY       = 90;           // kg·m²  pitch inertia
 
+// ── Chassis body ground-contact points (chassis frame, m from CoM, +x fwd/+y down) ──
+// When the bike pitches far enough to wheelie-flip or endo, these body points strike
+// the ground and get an INELASTIC (dead, no-bounce) contact — like a steel block
+// hitting dirt. Chosen to wrap the bike silhouette (tail, top, nose, belly) so any
+// orientation lands on something. They sit well clear of the ground when upright, so
+// normal riding never triggers them.
+const CHASSIS_CONTACTS = [
+  [-0.685, -0.430],   // tail top
+  [-0.550,  0.050],   // tail / subframe low
+  [ 0.460, -0.520],   // tank / bar top (front-upper)
+  [ 0.715, -0.200],   // steer head / nose
+  [ 0.475,  0.285],   // belly (engine, right)
+  [ 0.045,  0.285],   // belly (engine, left)
+];
+const BODY_RESTITUTION = 0.0;   // 0 = fully dead, no bounce
+const BODY_FRICTION    = 1.2;   // Coulomb-ish ground friction (high → skids stop fast)
+const BODY_POS_CORRECT = 0.8;   // Baumgarte penetration push-out fraction
+
 // Unsprung masses and tire spring rates are runtime parameters (P.m_unsprung_f etc.)
 // Default values live in the P object below.
 
@@ -1042,6 +1060,52 @@ function dAxleYchassis(phi) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  CHASSIS BODY ↔ GROUND CONTACT  (inelastic "dead block" landing)
+// ═══════════════════════════════════════════════════════════
+// Resolves collisions between the rigid chassis body points and the terrain when the
+// bike wheelie-flips or endos. Uses sequential velocity impulses with ZERO restitution
+// (no bounce) plus a Baumgarte position push-out, so the body lands dead and stays put —
+// the heavy "steel block on dirt" feel. Each penetrating point also gets a strong
+// tangential friction impulse so the bike doesn't skate along the ground after impact.
+function resolveChassisGroundContacts(Ms, M_total) {
+  const comX_m = worldX_m - A_FRONT_M;
+  // Resolve a few sequential passes so multiple simultaneous contacts settle (pins the body).
+  for (let pass = 0; pass < 3; pass++) {
+    const cP = Math.cos(pitchAngle), sP = Math.sin(pitchAngle);
+    let any = false;
+    for (const [px, py] of CHASSIS_CONTACTS) {
+      const armX = px * cP - py * sP;             // world horizontal offset of point from CoM
+      const wy   = chassisY_m + (px * sP + py * cP);
+      const gy   = groundY_m(comX_m + armX);
+      const pen  = wy - gy;                        // >0 → point is below the surface (penetrating)
+      if (pen <= 0) continue;
+      any = true;
+      const w = 1 / Ms + (armX * armX) / I_YY;     // generalized inverse mass for a vertical impulse here
+
+      // Velocity impulse: cancel the downward (into-ground) velocity of the point.
+      const vptY = vChassis + pitchRate * armX;    // vertical velocity of the contact point
+      if (vptY > 0) {
+        const Jn = -(1 + BODY_RESTITUTION) * vptY / w;   // momentum impulse (N·s), negative = upward
+        vChassis  += Jn / Ms;
+        pitchRate += Jn * armX / I_YY;
+        // Tangential (horizontal) friction on the whole-vehicle surge DOF.
+        const maxJt = BODY_FRICTION * Math.abs(Jn);
+        let Jt = -vChassisX * M_total;
+        Jt = Math.max(-maxJt, Math.min(maxJt, Jt));
+        vChassisX += Jt / M_total;
+      }
+      // Position correction: push the point out of the ground (prevents sinking under
+      // gravity). Capped per pass so a fast-spinning, partially-buried body can't be
+      // catapulted by large penetrations — it just stops dead instead.
+      const corr = Math.min(BODY_POS_CORRECT * pen, 0.02);
+      chassisY_m += -corr * (1 / Ms) / w;
+      pitchAngle += -corr * (armX / I_YY) / w;
+    }
+    if (!any) break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  SIMULATION STEP  (sub-stepped for numerical stability)
 // ═══════════════════════════════════════════════════════════
 // Default tire spring ~300000 N/m, unsprung ~13kg → ω≈152 rad/s → Euler stable for dt<0.013s.
@@ -1073,24 +1137,31 @@ function _physicsStep(dt_s) {
     brakeInput = brakePressed ? sineRamp(brakeInput, K_UP) : 1 - sineRamp(1 - brakeInput, K_DOWN);
   }
 
-  // Tractive force: flat at M·GAS_ACCEL below DRIVE_V0, power-limited (∝1/v) above
-  // — gives a realistic, bounded top speed instead of constant force forever.
+  // Traction requires ground contact: a wheel in the air makes no drive/brake force
+  // (and no pitch torque). Without this an airborne wheelie keeps being spun up by the
+  // throttle like a flywheel. Uses the previous sub-step's contact flags (1-step lag).
+  const onGroundRear  = rearContact;
+  const onGroundFront = f_tire_F !== 0;
+  const anyGround     = onGroundRear || onGroundFront;
+
+  // Tractive force (rear wheel): flat at M·GAS_ACCEL below DRIVE_V0, power-limited (∝1/v)
+  // above — gives a realistic, bounded top speed instead of constant force forever.
   const F_drive_cap = M_total * GAS_ACCEL;
   const F_drive_pl  = Math.min(F_drive_cap,
                                F_drive_cap * DRIVE_V0 / Math.max(Math.abs(vChassisX), DRIVE_V0));
-  const F_drive_term = F_drive_pl * gasInput;
-  // Braking opposes forward motion only (no reversing once stopped).
-  const F_brake_term = -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0);
+  const F_drive_term = onGroundRear ? F_drive_pl * gasInput : 0;
+  // Braking opposes forward motion only (no reversing once stopped); needs a wheel down.
+  const F_brake_term = anyGround ? -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0) : 0;
   // Cruise assist toward the speed-slider target when the rider isn't on gas/brake.
   let F_cruise = 0;
-  if (gasInput < 0.02 && brakeInput < 0.02) {
+  if (onGroundRear && gasInput < 0.02 && brakeInput < 0.02) {
     const v_target = P.speed / 3.6;
     F_cruise = Math.max(-M_total * BRAKE_DECEL,
                Math.min(M_total * GAS_ACCEL, K_CRUISE * (v_target - vChassisX)));
   }
-  // Resistive forces.
+  // Resistive forces. Aero drag acts always; rolling resistance only when a wheel is down.
   const F_drag = -RHO_CDA * vChassisX * Math.abs(vChassisX);
-  const F_rr   = Math.abs(vChassisX) > 0.05 ? -Math.sign(vChassisX) * C_RR * M_total * g : 0;
+  const F_rr   = (anyGround && Math.abs(vChassisX) > 0.05) ? -Math.sign(vChassisX) * C_RR * M_total * g : 0;
 
   // Tractive/brake forces act at the contact patches (≈H_COM below CoM) → they
   // also produce the dive/squat pitch moment (computed in the pitch EOM below).
@@ -1312,17 +1383,6 @@ function _physicsStep(dt_s) {
   chassisY_m   += vChassis    * dt_s;
   pitchAngle   += pitchRate   * dt_s;
 
-  // ── Pitch geometric limits ────────────────────────────────────────────────
-  // Pitch is a free DOF; under heavy longitudinal load transfer (e.g. a near-1g
-  // launch) the load transfer can exceed what the front/rear contacts can react,
-  // i.e. a wheelie or a stoppie. The 2-mass suspension model can't self-balance a
-  // rotation about a contact patch, so without a stop the DOF would loop. These
-  // hard limits represent the wheelie / stoppie / fork-bottom geometric bound:
-  // pitch pins at the limit (velocity arrested) instead of running away.
-  const PITCH_LIM = 0.28;   // rad ≈ 16°
-  if (pitchAngle >  PITCH_LIM) { pitchAngle =  PITCH_LIM; if (pitchRate > 0) pitchRate = 0; }
-  else if (pitchAngle < -PITCH_LIM) { pitchAngle = -PITCH_LIM; if (pitchRate < 0) pitchRate = 0; }
-
 
   vForkSlide_f += a_fork      * dt_s;
   forkSlide_f  += vForkSlide_f * dt_s;
@@ -1370,6 +1430,10 @@ function _physicsStep(dt_s) {
       swingRate = 0;
     }
   }
+
+  // ── Chassis body ↔ ground (inelastic) — after the pose integrates, before it's
+  // used to derive wheel positions, so a flipped/landed body reads correctly. ──
+  resolveChassisGroundContacts(Ms, M_total);
 
   // Wheel vertical travel from the unloaded rest angle (+ = compressed).
   wheelTravel_r = SWINGARM_L * (Math.sin(PHI_REST) - Math.sin(swingAngle));
