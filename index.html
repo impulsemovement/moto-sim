@@ -77,6 +77,20 @@ canvas { display: block; background: #080808; }
   background: rgba(34,197,94,0.18); color: #22c55e;
   border: 1px solid rgba(34,197,94,0.4);
 }
+#btn-clutch {
+  left: 112px;
+  background: rgba(59,130,246,0.18); color: #3b82f6;
+  border: 1px solid rgba(59,130,246,0.4);
+}
+#gear-box {
+  position: absolute; right: 112px; bottom: 16px; z-index: 10;
+  width: 64px; height: 44px; border-radius: 8px;
+  background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  user-select: none; -webkit-user-select: none;
+}
+#gear-num { font-size: 22px; font-weight: 700; color: #f0f0f0; line-height: 1; }
+#gear-rpm { font-size: 8px; color: #888; margin-top: 1px; letter-spacing: 0.04em; }
 
 .stats { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin: 8px 0; }
 .stat { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 6px; padding: 6px 4px; text-align: center; }
@@ -191,9 +205,14 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <button id="btn-pause"  class="top-btn" title="Pause / play (Space)">⏸</button>
   <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
+  <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
+  <div id="gear-box" title="Gear (A down / D up)">
+    <div id="gear-num">1</div>
+    <div id="gear-rpm">0 rpm</div>
+  </div>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
   <div id="key-legend">
-    <span><b>G</b>/→ Gas · <b>B</b>/← Brake · <b>Space</b> Pause · <b>.</b> Step · <b>R</b> Reset · drag to pan</span>
+    <span><b>G</b>/→ Gas · <b>B</b>/← Brake · <b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>Space</b> Pause · <b>R</b> Reset</span>
     <span id="key-legend-x" title="Hide">✕</span>
   </div>
 </div>
@@ -649,6 +668,31 @@ const C_RR      = 0.015; // rolling-resistance coefficient
 const DRIVE_V0  = 12;    // m/s  below this the drive force is flat; above it is power-limited (∝1/v)
 const K_CRUISE  = 400;   // N per (m/s) — cruise controller gain toward the speed-slider target
 
+// ── Drivetrain: engine + clutch + 6-speed gearbox ───────────────────────────
+// The engine spins at engineRPM. With the clutch OUT (engaged) the engine is geared to
+// the rear wheel (engineRPM = wheelω · effRatio). With the clutch IN (pulled) the engine
+// is free — gas revs it toward redline. Releasing the clutch with the revs higher than
+// the wheel speed dumps a big slip torque → clutch-up wheelie. Lower gears multiply
+// torque (and cap speed sooner); higher gears pull gently with a high top speed.
+const GEAR_RATIOS  = [2.75, 1.95, 1.50, 1.20, 1.00, 0.85]; // gearbox, 1st…6th
+const FINAL_DRIVE  = 7.0;                                  // primary × final-drive (lumped)
+const NUM_GEARS    = GEAR_RATIOS.length;
+const GEAR_REF     = 2;                                    // ratio that ≈ matches the old flat accel
+const RPM_IDLE     = 1500;
+const RPM_REDLINE  = 10000;
+const RPM_LIMIT    = 10800;   // hard rev limiter
+const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider
+const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side)
+const ENGINE_REV_RATE   = 12000; // RPM/s free-rev spin-up at full gas (clutch in)
+const ENGINE_DECAY_RATE = 8000;  // RPM/s decay toward idle off-gas (clutch in)
+const CLUTCH_PULL_TIME   = 0.06; // s  to disengage (pull in)
+const CLUTCH_ENGAGE_TIME = 0.13; // s  to engage (release / dump)
+const CLUTCH_MAX_TORQUE  = 85;   // N·m  max torque the clutch can transmit (engine side)
+const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
+const RPM2RADS = 2 * Math.PI / 60;   // RPM → rad/s
+const RADS2RPM = 60 / (2 * Math.PI); // rad/s → RPM
+function effRatio(g) { return GEAR_RATIOS[g] * FINAL_DRIVE; }
+
 function bind(id, lblId, fn) {
   const el  = document.getElementById(id);
   const lbl = document.getElementById(lblId);
@@ -890,6 +934,12 @@ let worldX_m      = 0;
 let lastTs        = null;
 let initialized   = false;
 
+// Drivetrain state
+let gear          = 0;          // 0…NUM_GEARS-1  (1st…6th)
+let engineRPM     = RPM_IDLE;   // crank speed
+let clutchEngage  = 1;          // 0 = clutch fully IN (open), 1 = fully OUT (locked)
+let clutchPulled  = false;      // input: true while the clutch button/key is held
+
 // Playback controls
 let paused        = false;  // true → physics frozen, rendering continues
 let stepRequested = false;  // one-shot: advance a single fixed step while paused
@@ -955,7 +1005,7 @@ function captureState(dt) {
     dt,
     chassisY_m, vChassis, vChassisX, pitchAngle, pitchRate,
     forkSlide_f, vForkSlide_f, swingAngle, swingRate,
-    worldX_m, wheelAngle_f, wheelAngle_r, omega_f, omega_r, camY_m, camPanX_m,
+    worldX_m, wheelAngle_f, wheelAngle_r, omega_f, omega_r, gear, engineRPM, clutchEngage, camY_m, camPanX_m,
     frontWheelX_m, frontWheelY_m, rearWheelX_m, rearWheelY_m,
     shockLen_cur, shockTravel_r, wheelTravel_r, rearSuspVel,
     disp_f, disp_r,
@@ -968,6 +1018,7 @@ function applyState(s) {
   forkSlide_f=s.forkSlide_f; vForkSlide_f=s.vForkSlide_f; swingAngle=s.swingAngle; swingRate=s.swingRate;
   worldX_m=s.worldX_m; wheelAngle_f=s.wheelAngle_f; wheelAngle_r=s.wheelAngle_r;
   omega_f=s.omega_f||0; omega_r=s.omega_r||0; camY_m=s.camY_m; camPanX_m=s.camPanX_m;
+  if(s.gear!=null) gear=s.gear; if(s.engineRPM!=null) engineRPM=s.engineRPM; if(s.clutchEngage!=null) clutchEngage=s.clutchEngage;
   frontWheelX_m=s.frontWheelX_m; frontWheelY_m=s.frontWheelY_m; rearWheelX_m=s.rearWheelX_m; rearWheelY_m=s.rearWheelY_m;
   shockLen_cur=s.shockLen_cur; shockTravel_r=s.shockTravel_r; wheelTravel_r=s.wheelTravel_r; rearSuspVel=s.rearSuspVel;
   disp_f=s.disp_f; disp_r=s.disp_r;
@@ -1225,12 +1276,37 @@ function _physicsStep(dt_s) {
   const onGroundFront = f_tire_F !== 0;
   const anyGround     = onGroundRear || onGroundFront;
 
-  // Tractive force (rear wheel): flat at M·GAS_ACCEL below DRIVE_V0, power-limited (∝1/v)
-  // above — gives a realistic, bounded top speed instead of constant force forever.
-  const F_drive_cap = M_total * GAS_ACCEL;
-  const F_drive_pl  = Math.min(F_drive_cap,
-                               F_drive_cap * DRIVE_V0 / Math.max(Math.abs(vChassisX), DRIVE_V0));
-  const F_drive_term = onGroundRear ? F_drive_pl * gasInput : 0;
+  // ── Drivetrain: engine RPM, clutch, gearbox → rear-wheel drive force ────────
+  const ratio    = effRatio(gear);
+  const lockedRPM = Math.max(RPM_IDLE, omega_r * ratio * RADS2RPM);  // engine RPM if clutch locked
+  // Clutch engagement ramps toward target (pulled → 0 open, released → 1 locked).
+  {
+    const ceTarget = clutchPulled ? 0 : 1;
+    const ceStep   = dt_s / (clutchPulled ? CLUTCH_PULL_TIME : CLUTCH_ENGAGE_TIME);
+    clutchEngage  += Math.sign(ceTarget - clutchEngage) * Math.min(Math.abs(ceTarget - clutchEngage), ceStep);
+    clutchEngage   = Math.max(0, Math.min(1, clutchEngage));
+  }
+  // Engine RPM: locked to the wheel when fully engaged; otherwise free (gas revs it).
+  if (clutchEngage >= 0.999) {
+    engineRPM = Math.min(RPM_LIMIT, lockedRPM);
+  } else {
+    engineRPM += (gasInput * ENGINE_REV_RATE - (1 - gasInput) * ENGINE_DECAY_RATE) * dt_s;
+    engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
+  }
+  // Engine crank torque (falls off toward redline) → wheel torque via the gear.
+  const T_eng_peak  = GAS_ACCEL * ENGINE_K;
+  const torqueFac   = Math.max(0, Math.min(1, 1 - (engineRPM / RPM_REDLINE - 0.9) / 0.1));
+  const F_throttle  = T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage;
+  // Clutch slip: engine spinning faster than the wheel transmits a big torque while the
+  // clutch is engaging — this is the clutch-up wheelie. It also sheds engine RPM.
+  let F_clutch = 0;
+  const slipRPM = engineRPM - lockedRPM;
+  if (slipRPM > 0 && clutchEngage > 0.02 && clutchEngage < 0.999) {
+    const clutchT = Math.min(CLUTCH_MAX_TORQUE, K_CLUTCH_SLIP * slipRPM) * clutchEngage; // N·m engine-side
+    F_clutch  = clutchT * ratio / WHEEL_R_R;                       // extra wheel drive force
+    engineRPM = Math.max(lockedRPM, engineRPM - (clutchT / I_ENGINE) * RADS2RPM * dt_s);
+  }
+  const F_drive_term = onGroundRear ? (F_throttle + F_clutch) : 0;
   // Braking opposes forward motion only (no reversing once stopped); needs a wheel down.
   const F_brake_term = anyGround ? -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0) : 0;
   // Cruise assist toward the speed-slider target when the rider isn't on gas/brake.
@@ -1278,7 +1354,7 @@ function _physicsStep(dt_s) {
     if (onGroundRear) {
       omega_r += (vChassisX / WHEEL_R_R - omega_r) * gripK;
     } else {
-      const tau = ENG_TORQUE_R * gasInput * (omega_r < OMEGA_MAX ? 1 : 0)
+      const tau = ENG_TORQUE_R * gasInput * clutchEngage * (omega_r < OMEGA_MAX ? 1 : 0)
                 - BRAKE_TORQUE_R * brakeInput * Math.tanh(omega_r / 3);
       omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
     }
@@ -1744,6 +1820,18 @@ function draw(ts) {
   }
   document.getElementById('st-fspring').textContent = Math.round(Math.abs(f_spring_F));
   document.getElementById('st-fdamp').textContent   = Math.round(Math.abs(f_damp_F));
+
+  // ── Gear / RPM indicator ──────────────────────────────────
+  {
+    const gn = document.getElementById('gear-num');
+    const gr = document.getElementById('gear-rpm');
+    if (gn) {
+      gn.textContent = clutchPulled || clutchEngage < 0.5 ? 'N' : (gear + 1);
+      const overRev = engineRPM > RPM_REDLINE * 0.97;
+      gn.style.color = overRev ? '#e11d48' : '#f0f0f0';
+    }
+    if (gr) gr.textContent = Math.round(engineRPM) + ' rpm';
+  }
 
   // ── Clear & sky ───────────────────────────────────────────
   drawParallaxBackground(W, H);
@@ -2569,34 +2657,48 @@ function setSetupStatus(msg) {
     brakePressed = on;
     document.getElementById('btn-brake').classList.toggle('held', on);
   }
+  function setClutch(on) {
+    clutchPulled = on;
+    document.getElementById('btn-clutch').classList.toggle('held', on);
+  }
+  function shiftGear(dir) {
+    gear = Math.max(0, Math.min(NUM_GEARS - 1, gear + dir));
+  }
 
-  const gasBtn   = document.getElementById('btn-gas');
-  const brakeBtn = document.getElementById('btn-brake');
+  const gasBtn    = document.getElementById('btn-gas');
+  const brakeBtn  = document.getElementById('btn-brake');
+  const clutchBtn = document.getElementById('btn-clutch');
 
   // Mouse
-  gasBtn.addEventListener('mousedown',  () => setGas(true));
-  brakeBtn.addEventListener('mousedown',() => setBrake(true));
-  window.addEventListener('mouseup',    () => { setGas(false); setBrake(false); });
+  gasBtn.addEventListener('mousedown',   () => setGas(true));
+  brakeBtn.addEventListener('mousedown', () => setBrake(true));
+  clutchBtn.addEventListener('mousedown',() => setClutch(true));
+  window.addEventListener('mouseup',     () => { setGas(false); setBrake(false); setClutch(false); });
 
   // Touch (prevent scroll while holding)
-  gasBtn.addEventListener('touchstart',   e => { e.preventDefault(); setGas(true); },   {passive:false});
-  gasBtn.addEventListener('touchend',     e => { e.preventDefault(); setGas(false); },  {passive:false});
-  brakeBtn.addEventListener('touchstart', e => { e.preventDefault(); setBrake(true); }, {passive:false});
-  brakeBtn.addEventListener('touchend',   e => { e.preventDefault(); setBrake(false); },{passive:false});
+  gasBtn.addEventListener('touchstart',    e => { e.preventDefault(); setGas(true); },    {passive:false});
+  gasBtn.addEventListener('touchend',      e => { e.preventDefault(); setGas(false); },   {passive:false});
+  brakeBtn.addEventListener('touchstart',  e => { e.preventDefault(); setBrake(true); },  {passive:false});
+  brakeBtn.addEventListener('touchend',    e => { e.preventDefault(); setBrake(false); }, {passive:false});
+  clutchBtn.addEventListener('touchstart', e => { e.preventDefault(); setClutch(true); }, {passive:false});
+  clutchBtn.addEventListener('touchend',   e => { e.preventDefault(); setClutch(false); },{passive:false});
 
-  // Keyboard shortcuts: G / ArrowRight = gas,  B / ArrowLeft = brake.
+  // Keyboard: G/→ gas, B/← brake, C clutch (hold), A downshift, D upshift, R reset.
   // Only a TEXT-entry field (the setup-name box) swallows shortcuts — range sliders,
-  // dropdowns, etc. do NOT, so gas/brake/reset always work even with a slider focused
-  // (preventDefault stops a focused slider from also moving on the arrow keys).
+  // dropdowns, etc. do NOT, so the controls always work even with a slider focused.
   window.addEventListener('keydown', e => {
     if (isTextEntry(e.target)) return;
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') { e.preventDefault(); setGas(true); }
     if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  { e.preventDefault(); setBrake(true); }
+    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); setClutch(true); }
+    if (!e.repeat && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); shiftGear(+1); }
+    if (!e.repeat && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); shiftGear(-1); }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); resetSim(); }
   });
   window.addEventListener('keyup', e => {
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') setGas(false);
     if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  setBrake(false);
+    if (e.key === 'c' || e.key === 'C') setClutch(false);
   });
 })();
 
@@ -3009,6 +3111,7 @@ function resetSim() {
   wheelAngle_f = 0; wheelAngle_r = 0; omega_f = 0; omega_r = 0;
   disp_f = 0; disp_r = 0;
   a_long = 0; gasInput = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
+  gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false;
   gasPressed = false; brakePressed = false;
   rearContact  = false;
   camY_m       = 0;
