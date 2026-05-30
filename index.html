@@ -646,6 +646,30 @@ function tireDampCoef(k_tire) {
   return Math.max(600, Math.min(5000, C_TIRE_BASE * KTIRE_NOMINAL / Math.max(k_tire, 1)));
 }
 
+// ── Tire travel limit (rim-on-ground bottoming) ─────────────────────────────
+// The carcass can only deflect so far before the rim hits the ground. Up to TIRE_TRAVEL
+// it's the normal soft tire rate; past it a much stiffer "rim" rate stops the wheel
+// sinking underground, and the contact goes DEAD (max-stable damping, no rebound) — a
+// rigid rim slamming dirt, not a trampoline.
+const TIRE_TRAVEL_F  = 0.040;  // m  front tire deflection before the rim contacts the ground
+const TIRE_TRAVEL_R  = 0.045;  // m  rear
+const TIRE_FORCE_MAX = 30000;  // N  hard ceiling on the carcass spring force (safety)
+
+// Tire normal force (N, negative = pushing the wheel up out of the ground).
+// The carcass SPRING saturates at the travel limit (it can't push harder once the rim is
+// down — the rigid rim stop is handled inelastically in resolveTireBottom). pen = tire
+// deflection (m); v = wheel velocity into the ground (m/s, + = compressing).
+function tireForce(pen, v, k_tire, m_unsprung, dt, travel) {
+  if (pen <= 0) return 0;
+  const bottomed = pen > travel;
+  let Fup = k_tire * Math.min(pen, travel);       // spring capped at the rim limit
+  // Carcass hysteresis damping; DEAD (max stable) once bottomed (resists both directions).
+  const C = Math.min(bottomed ? Infinity : tireDampCoef(k_tire), 0.9 * m_unsprung / dt);
+  Fup += C * v;
+  Fup = Math.max(0, Math.min(TIRE_FORCE_MAX, Fup));
+  return -Fup;                                    // negative = upward
+}
+
 let P = {
   k_f:18, pre_f:0, damp_f:0.5, air_f:0.15,
   k_tire_f: psiToKtire(36), m_unsprung_f: 13,   // front tire / wheel
@@ -1242,6 +1266,36 @@ function resolveChassisGroundContacts(Ms, M_total) {
   }
 }
 
+// ── Tire bottoming (rim on the ground) — inelastic dead stop ────────────────
+// When a tire is compressed past its travel limit the rim is on the dirt: a rigid stop.
+// The carcass spring (routed through the light unsprung mass) can't arrest a hard landing
+// without either sinking underground (force capped) or launching (stiff spring). So we
+// resolve it as an inelastic contact through the chassis heave+pitch DOFs — which carry
+// the mass — killing the inbound velocity (restitution 0) and pushing the rim back to the
+// limit. Result: the bike stops DEAD at the rim, no deep sink, no rebound launch.
+function resolveTireBottom(Ms) {
+  const comX_m = worldX_m - A_FRONT_M;
+  const wheels = [
+    [frontWheelX_m, frontWheelY_m, WHEEL_R_F, TIRE_TRAVEL_F],
+    [rearWheelX_m,  rearWheelY_m,  WHEEL_R_R, TIRE_TRAVEL_R],
+  ];
+  for (const [wx, wy, r, travel] of wheels) {
+    const excess = (wy - calcNaturalWY_m(wx, r)) - travel;   // how far past the rim limit
+    if (excess <= 0) continue;
+    const armX = wx - comX_m;                                // horizontal offset from CoM
+    const wInv = 1 / Ms + (armX * armX) / I_YY;
+    const vptY = vChassis + pitchRate * armX;                // chassis-borne wheel vertical vel
+    if (vptY > 0) {                                          // arrest the descent (dead, restitution 0)
+      const Jn = -vptY / wInv;
+      vChassis  += Jn / Ms;
+      pitchRate += Jn * armX / I_YY;
+    }
+    const corr = Math.min(excess, 0.03);                     // capped push-out → no catapult
+    chassisY_m += -corr * (1 / Ms) / wInv;
+    pitchAngle += -corr * (armX / I_YY) / wInv;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 //  SIMULATION STEP  (sub-stepped for numerical stability)
 // ═══════════════════════════════════════════════════════════
@@ -1520,11 +1574,7 @@ function _physicsStep(dt_s) {
   const pen_f = Math.max(0, frontWheelY_m - nat_f);
   const v_tire_f = (prevFrontWheelY_m === null) ? 0 : (frontWheelY_m - prevFrontWheelY_m) / dt_s;
   prevFrontWheelY_m = frontWheelY_m;
-  {
-    const C_f = Math.min(tireDampCoef(P.k_tire_f), 0.9 * P.m_unsprung_f / dt_s);
-    const f_tire_damp_f = pen_f > 0 ? -C_f * v_tire_f : 0;   // +v = wheel moving down (compressing)
-    f_tire_F = pen_f > 0 ? -P.k_tire_f * pen_f + f_tire_damp_f : 0;
-  }
+  f_tire_F = tireForce(pen_f, v_tire_f, P.k_tire_f, P.m_unsprung_f, dt_s, TIRE_TRAVEL_F);
 
   // Rear tire spring — now safe to include in a_susp_r (see EOM below).
   // In the new chassis-relative DOF architecture, rv_r = vSuspR (not derived from
@@ -1534,16 +1584,9 @@ function _physicsStep(dt_s) {
   // has a large extension bias (gravity + compressed spring both extend), which
   // fights the hard-floor constraint and causes chassis velocity build-up.
   {
-    const pen_r_raw = rearWheelY_m - nat_r;
-    const pen_r = Math.max(0, pen_r_raw);
-    // No penetration cap — full spring stiffness prevents ground penetration while
-    // allowing the EOM to respond naturally. Carcass damping is pressure-dependent (a
-    // soft/low-psi tire dissipates much more and rebounds dead) and capped to m/dt for
-    // Euler stability. It resists both compression and rebound.
-    const C_TIRE_R = Math.min(tireDampCoef(P.k_tire_r), 0.9 * P.m_unsprung_r / dt_s);
-    const v_pen_r  = wheelLeverY * swingRate; // +ve = wheel moving down (compressing tire)
-    const f_tire_damp_r = pen_r > 0 ? -C_TIRE_R * v_pen_r : 0;
-    f_tire_R = pen_r > 0 ? -P.k_tire_r * pen_r + f_tire_damp_r : 0;
+    const pen_r = Math.max(0, rearWheelY_m - nat_r);
+    const v_pen_r = wheelLeverY * swingRate;   // +ve = wheel moving down (compressing tire)
+    f_tire_R = tireForce(pen_r, v_pen_r, P.k_tire_r, P.m_unsprung_r, dt_s, TIRE_TRAVEL_R);
   }
 
   // ── Chassis heave EOM ─────────────────────────────────────────────────────
@@ -1715,6 +1758,22 @@ function _physicsStep(dt_s) {
     // Contact flag: wheel centre is within 5 mm of the natural ground contact point.
     const nat_r2 = calcNaturalWY_m(rearWheelX_m, WHEEL_R_R);
     rearContact  = rearWheelY_m >= nat_r2 - 0.005;
+  }
+
+  // ── Tire bottoming (rim) — inelastic dead stop, then re-derive wheel positions ──
+  resolveTireBottom(Ms);
+  {
+    const φ3   = RAKE_RAD - pitchAngle;
+    const cP3  = Math.cos(pitchAngle), sP3 = Math.sin(pitchAngle);
+    const stX3 = (worldX_m - A_FRONT_M) + A_FRONT_M * cP3;
+    const stY3 = chassisY_m + A_FRONT_M * sP3;
+    frontWheelX_m = stX3 + (REST_F_M + forkSlide_f) * Math.sin(φ3);
+    frontWheelY_m = stY3 + (REST_F_M + forkSlide_f) * Math.cos(φ3);
+    const _comX = worldX_m - A_FRONT_M;
+    const ax_c  = SW_PIV_X_FROM_COM - SWINGARM_L * Math.cos(swingAngle);
+    const ay_c  = SW_PIV_Y_FROM_COM + SWINGARM_L * Math.sin(swingAngle);
+    rearWheelX_m = _comX      + ax_c * cP3 - ay_c * sP3;
+    rearWheelY_m = chassisY_m + ax_c * sP3 + ay_c * cP3;
   }
 
   // Gas / brake: update speed and resolve a_long
