@@ -587,6 +587,14 @@ const KTIRE_NOMINAL = psiToKtire(36);   // 300 000 N/m reference (36 psi)
 function bottomOutFactor(k_tire) {
   return Math.max(0.15, Math.min(1.6, k_tire / KTIRE_NOMINAL));
 }
+// Tire carcass damping coefficient (N·s/m). A low-pressure tire flexes far more and
+// dissipates much more energy (hysteresis) — so it compresses further AND rebounds
+// slowly/deadly, instead of springing back. Scales inversely with pressure: ~1500 at
+// nominal 36 psi, up to ~5000 when soft, down to ~900 when hard.
+const C_TIRE_BASE = 1500;
+function tireDampCoef(k_tire) {
+  return Math.max(600, Math.min(5000, C_TIRE_BASE * KTIRE_NOMINAL / Math.max(k_tire, 1)));
+}
 
 let P = {
   k_f:18, pre_f:0, damp_f:0.5, air_f:0.15,
@@ -841,6 +849,7 @@ let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = exten
 // Derived wheel world positions (recomputed every physics step, NOT integrated)
 let frontWheelX_m = 0;
 let frontWheelY_m = 0;
+let prevFrontWheelY_m = null;   // previous-substep front-wheel Y, for tire-damping velocity
 
 // Rear suspension: primary DOF is the SWINGARM ANGLE (chassis-relative rotation).
 // The wheel is a point mass at the swingarm tip; it follows an arc about the pivot.
@@ -1326,11 +1335,19 @@ function _physicsStep(dt_s) {
   const nat_f = calcNaturalWY_m(frontWheelX_m, WHEEL_R_F);
   const nat_r = calcNaturalWY_m(rearWheelX_m,  WHEEL_R_R);
 
-  // Front tire: no penetration cap — full spring force drives fork compression,
-  // which is required for the compression damper to see a velocity and respond.
-  // Fork travel limits (TRAVEL_MAX) are the physical bound, not a force cap.
+  // Front tire: spring + carcass damping. No penetration cap — full spring force drives
+  // fork compression, which the compression damper needs to see a velocity and respond.
+  // Carcass damping (pressure-dependent) keeps a soft tire from springing back — it
+  // resists both compression and rebound. The wheel's vertical velocity is taken as a
+  // finite difference of its world Y; the coefficient is capped to m/dt for Euler stability.
   const pen_f = Math.max(0, frontWheelY_m - nat_f);
-  f_tire_F = pen_f > 0 ? -P.k_tire_f * pen_f : 0;
+  const v_tire_f = (prevFrontWheelY_m === null) ? 0 : (frontWheelY_m - prevFrontWheelY_m) / dt_s;
+  prevFrontWheelY_m = frontWheelY_m;
+  {
+    const C_f = Math.min(tireDampCoef(P.k_tire_f), 0.9 * P.m_unsprung_f / dt_s);
+    const f_tire_damp_f = pen_f > 0 ? -C_f * v_tire_f : 0;   // +v = wheel moving down (compressing)
+    f_tire_F = pen_f > 0 ? -P.k_tire_f * pen_f + f_tire_damp_f : 0;
+  }
 
   // Rear tire spring — now safe to include in a_susp_r (see EOM below).
   // In the new chassis-relative DOF architecture, rv_r = vSuspR (not derived from
@@ -1343,11 +1360,11 @@ function _physicsStep(dt_s) {
     const pen_r_raw = rearWheelY_m - nat_r;
     const pen_r = Math.max(0, pen_r_raw);
     // No penetration cap — full spring stiffness prevents ground penetration while
-    // allowing the EOM to respond naturally. Numerically stable at MAX_SUBSTEP=5ms
-    // (Euler critical dt for this tire/swingarm system is ~16.5ms, 3.3× margin).
-    // Light velocity-proportional damping suppresses the ~19 Hz tire resonance.
-    const C_TIRE_R = 1500;   // N·s/m  tire contact damping (≈30% critical damping)
-    const v_pen_r  = wheelLeverY * swingRate; // +ve = wheel extending (leaving ground)
+    // allowing the EOM to respond naturally. Carcass damping is pressure-dependent (a
+    // soft/low-psi tire dissipates much more and rebounds dead) and capped to m/dt for
+    // Euler stability. It resists both compression and rebound.
+    const C_TIRE_R = Math.min(tireDampCoef(P.k_tire_r), 0.9 * P.m_unsprung_r / dt_s);
+    const v_pen_r  = wheelLeverY * swingRate; // +ve = wheel moving down (compressing tire)
     const f_tire_damp_r = pen_r > 0 ? -C_TIRE_R * v_pen_r : 0;
     f_tire_R = pen_r > 0 ? -P.k_tire_r * pen_r + f_tire_damp_r : 0;
   }
@@ -2878,7 +2895,7 @@ function resetSim() {
   chassisY_m   = 0; vChassis    = 0; vChassisX   = 0;
   pitchAngle   = 0; pitchRate   = 0;
   forkSlide_f  = 0; vForkSlide_f = 0;
-  frontWheelX_m = 0; frontWheelY_m = 0;
+  frontWheelX_m = 0; frontWheelY_m = 0; prevFrontWheelY_m = null;
   rearWheelX_m  = 0; rearWheelY_m  = 0;
   swingAngle   = 0; swingRate   = 0;
   shockLen_cur = 0; shockTravel_r = 0; wheelTravel_r = 0; rearSuspVel = 0;
