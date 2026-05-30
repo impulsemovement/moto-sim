@@ -315,7 +315,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
       </div>
     </div>
     <label>Cruise speed <span id="lspeed">30 km/h</span></label>
-    <input type="range" id="speed" min="5" max="160" value="30">
+    <input type="range" id="speed" min="0" max="160" value="30">
     <label>Time scale <span id="ltimescale">1.00×</span></label>
     <input type="range" id="timescale" min="5" max="150" value="100">
     <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
@@ -423,6 +423,12 @@ const SHOCK_VIS_Y    = 57/200;       // m  visual shock frame mount Y
 const BS_ZONE        = 0.10;         // last 10% of travel
 const BS_STIFF       = 9;            // bump-stop spring stiffness multiplier on K_F
 const BS_DAMP        = 9000;         // N·s/m  hydraulic bump-stop damping at full engagement
+// Hard bottom-out impact handling. The unsprung wheel's inbound momentum is redirected
+// mostly into ROTATION about the CoM (pitch) with only a small vertical (heave) component,
+// and the impact is INELASTIC (the rest is dissipated) — so a bottom-out kicks the bike's
+// nose/tail rather than launching the whole bike up into an infinite vertical bounce.
+const BOTTOM_ROT     = 1.4;          // pitch-impulse gain from a bottom-out impact
+const BOTTOM_HEAVE   = 0.12;         // fraction of impact momentum left as vertical heave
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
 const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
@@ -581,6 +587,15 @@ let P = {
   timeScale:1.0, speed:30
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
+
+// True only for genuine text-entry targets (e.g. the setup-name box). Used so global
+// key shortcuts keep firing while a range slider / dropdown is focused.
+function isTextEntry(el) {
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName === 'INPUT') return /^(text|search|number|email|url|password)$/.test(el.type);
+  return false;
+}
 
 // Gas / brake rates — declared here so bind() callbacks (called immediately) can access them
 let GAS_ACCEL   = 10;   // m/s²  → tractive force target (× total mass) at low speed
@@ -1171,6 +1186,13 @@ function _physicsStep(dt_s) {
   vChassisX += a_x * dt_s;
   if (vChassisX < 0) vChassisX = 0;   // no reverse
 
+  // While the rider is actively on gas/brake, the cruise TARGET follows the actual
+  // speed — so releasing holds the speed you reached instead of the cruise controller
+  // dragging the bike back to the old slider value. The slider UI is synced in draw().
+  if (gasInput > 0.02 || brakeInput > 0.02) {
+    P.speed = Math.max(0, Math.min(160, vChassisX * 3.6));
+  }
+
   // ── Advance world X BEFORE computing wheel positions ─────────────────────
   // Driven by the integrated surge velocity (not the slider). Keeps worldX_m and
   // frontWheelX_m/rearWheelX_m on the same frame so w2sx() stays correct.
@@ -1402,14 +1424,13 @@ function _physicsStep(dt_s) {
   } else if (forkSlide_f < -TRAVEL_MAX) {
     forkSlide_f = -TRAVEL_MAX;
     if (vForkSlide_f < 0) {
-      // Bottom-out: transfer Y-axis momentum from wheel to chassis before zeroing
-      // relative velocity (prevents chassis continuing to compress into the stop).
-      // Δv_chassis = m_uf / (Ms + m_uf) * (vForkSlide_f · cosφ)
-      // vForkSlide_f < 0 and cosφ > 0, so Δv is upward (negative Y) — correct.
-      // Also impart a nose-up pitch impulse: impact at A_FRONT_M ahead of CoM.
-      const delta_v_co = P.m_unsprung_f * vForkSlide_f * cosφ / (Ms + P.m_unsprung_f);
-      vChassis  += delta_v_co;
-      pitchRate += delta_v_co * Ms * A_FRONT_M / I_YY;
+      // Front bottom-out: redirect the wheel's inbound vertical momentum mostly into a
+      // nose-UP rotation about the CoM (impact at A_FRONT_M ahead), with only a small
+      // residual heave. Inelastic — the rest of the energy is dissipated, so the bike
+      // pitches off the stop instead of launching into an endless vertical bounce.
+      const p_imp = P.m_unsprung_f * (-vForkSlide_f) * cosφ;   // inbound vertical momentum (>0)
+      pitchRate -= BOTTOM_ROT   * p_imp * A_FRONT_M / I_YY;     // nose up (negative pitch)
+      vChassis  -= BOTTOM_HEAVE * p_imp / Ms;                   // small upward heave
       vForkSlide_f = 0;
     }
   }
@@ -1422,11 +1443,15 @@ function _physicsStep(dt_s) {
     // the rotational analog of the liftoff-spike fix.
     swingAngle = PHI_FULL_DROOP;
   } else if (swingAngle < PHI_FULL_BUMP) {
-    // Bottom-out (hard bump stop). Transfer the wheel's vertical momentum to the
-    // chassis and arrest the swingarm — real bottoming is an abrupt event.
+    // Bottom-out (hard bump stop). Redirect the rear wheel's inbound vertical momentum
+    // mostly into a nose-DOWN rotation about the CoM (impact at B_REAR_M behind), with
+    // only a small residual heave. Inelastic — the rest is dissipated, so the rear kicks
+    // the tail up instead of bouncing the whole bike vertically forever.
     swingAngle = PHI_FULL_BUMP;
     if (swingRate < 0) {
-      vChassis += P.m_unsprung_r * (wheelLeverY * swingRate) / (Ms + P.m_unsprung_r);
+      const p_imp = P.m_unsprung_r * (-(wheelLeverY * swingRate));   // inbound vertical momentum (>0)
+      pitchRate += BOTTOM_ROT   * p_imp * B_REAR_M / I_YY;           // nose down (positive pitch)
+      vChassis  -= BOTTOM_HEAVE * p_imp / Ms;                        // small upward heave
       swingRate = 0;
     }
   }
@@ -1588,6 +1613,14 @@ function draw(ts) {
   document.getElementById('st-rt').textContent    = travR_mm;
   document.getElementById('st-pitch').textContent = (pitchAngle*180/Math.PI).toFixed(1);
   document.getElementById('st-speed').textContent = Math.round(vChassisX * 3.6);  // emergent speed
+  // Keep the cruise-speed slider in step with the target while gas/brake is held
+  // (the target follows actual speed; see the surge block), so it doesn't snap back.
+  if (gasInput > 0.02 || brakeInput > 0.02) {
+    const sl = document.getElementById('speed');
+    const lb = document.getElementById('lspeed');
+    if (sl) sl.value = Math.round(P.speed);
+    if (lb) lb.textContent = Math.round(P.speed) + ' km/h';
+  }
   document.getElementById('st-fspring').textContent = Math.round(Math.abs(f_spring_F));
   document.getElementById('st-fdamp').textContent   = Math.round(Math.abs(f_damp_F));
 
@@ -2415,9 +2448,12 @@ function setSetupStatus(msg) {
   brakeBtn.addEventListener('touchstart', e => { e.preventDefault(); setBrake(true); }, {passive:false});
   brakeBtn.addEventListener('touchend',   e => { e.preventDefault(); setBrake(false); },{passive:false});
 
-  // Keyboard shortcuts: G / ArrowRight = gas,  B / ArrowLeft = brake
+  // Keyboard shortcuts: G / ArrowRight = gas,  B / ArrowLeft = brake.
+  // Only a TEXT-entry field (the setup-name box) swallows shortcuts — range sliders,
+  // dropdowns, etc. do NOT, so gas/brake/reset always work even with a slider focused
+  // (preventDefault stops a focused slider from also moving on the arrow keys).
   window.addEventListener('keydown', e => {
-    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (isTextEntry(e.target)) return;
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') { e.preventDefault(); setGas(true); }
     if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  { e.preventDefault(); setBrake(true); }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); resetSim(); }
@@ -2919,8 +2955,7 @@ rewindScr.addEventListener('input', () => {
 });
 
 window.addEventListener('keydown', e => {
-  // Ignore when typing in an input (e.g. the setup-name field)
-  if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (isTextEntry(e.target)) return;   // only the setup-name text box swallows shortcuts
   if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePause(); }
   else if (e.key === '.')                  { e.preventDefault(); stepFrame(); }
 });
