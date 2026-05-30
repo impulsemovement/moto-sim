@@ -1194,9 +1194,11 @@ function _physicsStep(dt_s) {
   // is the cruise-control TARGET, and the displayed speed is the emergent vChassisX.
   {
     // Advance each phase linearly toward its target (1 pressed, 0 released) over the
-    // configured ramp time, then shape it with smootherstep (6t⁵−15t⁴+10t³). The zero
-    // end-slopes give a gentle build-up and a gentle, non-abrupt fall-off.
-    const smoother = t => t * t * t * (t * (t * 6 - 15) + 10);
+    // configured ramp time, then shape it with smootheststep (7th-order: 35t⁴−84t⁵+70t⁶
+    // −20t⁷). Zero 1st/2nd/3rd derivatives at both ends → the signal leaves a limit slowly,
+    // accelerates hard through the middle, then eases off slowly before reaching the other
+    // limit: a more pronounced S than 5th-order smootherstep.
+    const smoother = t => { const t4 = t*t*t*t; return t4 * (35 - 84*t + 70*t*t - 20*t*t*t); };
     const advance = (phase, pressed, upT, downT) => {
       const T = pressed ? upT : downT;
       return Math.max(0, Math.min(1, phase + (pressed ? 1 : -1) * dt_s / T));
