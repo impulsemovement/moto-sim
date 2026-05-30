@@ -1655,7 +1655,7 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   ctx.translate(cx, cy);
   ctx.rotate(rotAngle || 0);
   ctx.strokeStyle = '#e11d48';
-  ctx.lineWidth = Math.max(3, r_px * 0.085);
+  ctx.lineWidth = Math.max(12, r_px * 0.34);   // ~4× thicker
   ctx.lineCap = 'round';
   for (let i = 0; i < 6; i++) {
     const a = i / 6 * Math.PI * 2;
