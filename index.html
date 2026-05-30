@@ -1632,33 +1632,18 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   // the open rim, the older 27% band looked like a thin bicycle tire).
   const rimR = r_px - Math.round(r_px * 0.38);
 
-  // Solid tire donut — outer contact edge is clearly the full radius r_px
-  ctx.beginPath();
-  ctx.arc(cx, cy, r_px, 0, Math.PI * 2, false);   // outer circle CW
-  ctx.arc(cx, cy, rimR, 0, Math.PI * 2, true);     // inner cutout CCW → creates donut
-  ctx.fillStyle = '#1c1c1c';
-  ctx.fill();
-  // Tire sidewall highlight ring
-  ctx.beginPath(); ctx.arc(cx, cy, r_px, 0, Math.PI * 2);
-  ctx.strokeStyle = '#b8b8b8'; ctx.lineWidth = 1.5; ctx.stroke();
-  // Inner tire edge
-  ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
-  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.stroke();
+  // Draw order is back→front: SPOKES first, then the TIRE on top, so the tire (and its
+  // inner edge) sits in front of the wheel and tucks the spoke ends under it.
 
-  // Rim ring (NOT filled) — the wheel is open/transparent so the scene shows through
-  // between the spokes.
-  ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
-  ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.stroke();
-
-  // Spokes — thick, high-contrast pink (matches the fork spring & rear shock).
+  // Spokes (behind) — thick, high-contrast pink (matches the fork spring & rear shock).
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(rotAngle || 0);
   ctx.strokeStyle = '#e11d48';
-  ctx.lineWidth = Math.max(12, r_px * 0.34);   // ~4× thicker
+  ctx.lineWidth = Math.max(9, r_px * 0.255);   // ~25% thinner than before
   ctx.lineCap = 'round';
-  for (let i = 0; i < 6; i++) {
-    const a = i / 6 * Math.PI * 2;
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2;
     ctx.beginPath();
     ctx.moveTo(Math.cos(a) * 6, Math.sin(a) * 6);
     ctx.lineTo(Math.cos(a) * rimR, Math.sin(a) * rimR);
@@ -1666,7 +1651,24 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   }
   ctx.restore();
 
-  // Hub (drawn after restore so it's always centered, not rotated)
+  // Rim ring (open — scene shows through between the spokes).
+  ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Tire donut ON TOP — outer contact edge at the full radius; inner cutout at rimR
+  // covers the spoke ends so the tire reads in front of the wheel.
+  ctx.beginPath();
+  ctx.arc(cx, cy, r_px, 0, Math.PI * 2, false);   // outer circle CW
+  ctx.arc(cx, cy, rimR, 0, Math.PI * 2, true);     // inner cutout CCW → donut
+  ctx.fillStyle = '#1c1c1c';
+  ctx.fill();
+  // Tire sidewall highlight ring (outer) + inner tire edge
+  ctx.beginPath(); ctx.arc(cx, cy, r_px, 0, Math.PI * 2);
+  ctx.strokeStyle = '#b8b8b8'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
+  ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Hub (center, on top).
   ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2);
   ctx.fillStyle = '#888'; ctx.fill();
   ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
