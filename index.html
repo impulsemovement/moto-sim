@@ -909,10 +909,10 @@ let gasPhase      = 0;
 let brakePhase    = 0;
 let gasInput      = 0;
 let brakeInput    = 0;
-const GAS_RAMP_UP    = 0.85;  // s  throttle press → full
-const GAS_RAMP_DOWN  = 0.70;  // s  throttle release → zero
-const BRAKE_RAMP_UP  = 0.65;  // s  brake press → full
-const BRAKE_RAMP_DOWN = 0.60; // s  brake release → zero
+const GAS_RAMP_UP    = 0.45;  // s  throttle press → full
+const GAS_RAMP_DOWN  = 0.25;  // s  throttle release → zero (quick let-off for modulation)
+const BRAKE_RAMP_UP  = 0.32;  // s  brake press → full
+const BRAKE_RAMP_DOWN = 0.20; // s  brake release → zero
 const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 class)
 
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
