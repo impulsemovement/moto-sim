@@ -427,8 +427,10 @@ const BS_DAMP        = 9000;         // N·s/m  hydraulic bump-stop damping at f
 // mostly into ROTATION about the CoM (pitch) with only a small vertical (heave) component,
 // and the impact is INELASTIC (the rest is dissipated) — so a bottom-out kicks the bike's
 // nose/tail rather than launching the whole bike up into an infinite vertical bounce.
-const BOTTOM_ROT     = 1.4;          // pitch-impulse gain from a bottom-out impact
-const BOTTOM_HEAVE   = 0.12;         // fraction of impact momentum left as vertical heave
+// Kept small so the kick doesn't set up a front↔rear porpoising oscillation; the actual
+// transmitted impulse is further scaled per wheel by the tire-pressure factor below.
+const BOTTOM_ROT     = 0.30;         // pitch-impulse gain from a bottom-out impact
+const BOTTOM_HEAVE   = 0.05;         // fraction of impact momentum left as vertical heave
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
 const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
@@ -574,7 +576,16 @@ window.addEventListener('resize', resizeMain);
 const PSI_MIN = 28, PSI_MAX = 52;
 const KTIRE_MIN = 200000, KTIRE_MAX = 500000;
 function psiToKtire(psi) {
-  return KTIRE_MIN + (psi - PSI_MIN) / (PSI_MAX - PSI_MIN) * (KTIRE_MAX - KTIRE_MIN);
+  // Linear in the 28–52 psi design range; floored so low slider values (down to 10 psi)
+  // stay a soft-but-POSITIVE spring instead of going negative (which broke the tire model).
+  return Math.max(60000, KTIRE_MIN + (psi - PSI_MIN) / (PSI_MAX - PSI_MIN) * (KTIRE_MAX - KTIRE_MIN));
+}
+const KTIRE_NOMINAL = psiToKtire(36);   // 300 000 N/m reference (36 psi)
+// Per-wheel bottom-out transmission factor: a soft (low-psi) tire deforms and ABSORBS
+// the bottoming impact (heavily damped, small chassis kick); a hard (high-psi) tire is
+// rigid and transmits more of it. 1.0 at the nominal 36 psi.
+function bottomOutFactor(k_tire) {
+  return Math.max(0.15, Math.min(1.6, k_tire / KTIRE_NOMINAL));
 }
 
 let P = {
@@ -1429,8 +1440,9 @@ function _physicsStep(dt_s) {
       // residual heave. Inelastic — the rest of the energy is dissipated, so the bike
       // pitches off the stop instead of launching into an endless vertical bounce.
       const p_imp = P.m_unsprung_f * (-vForkSlide_f) * cosφ;   // inbound vertical momentum (>0)
-      pitchRate -= BOTTOM_ROT   * p_imp * A_FRONT_M / I_YY;     // nose up (negative pitch)
-      vChassis  -= BOTTOM_HEAVE * p_imp / Ms;                   // small upward heave
+      const pf    = bottomOutFactor(P.k_tire_f);               // soft front tire absorbs more
+      pitchRate -= BOTTOM_ROT   * pf * p_imp * A_FRONT_M / I_YY;  // nose up (negative pitch)
+      vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                // small upward heave
       vForkSlide_f = 0;
     }
   }
@@ -1450,8 +1462,9 @@ function _physicsStep(dt_s) {
     swingAngle = PHI_FULL_BUMP;
     if (swingRate < 0) {
       const p_imp = P.m_unsprung_r * (-(wheelLeverY * swingRate));   // inbound vertical momentum (>0)
-      pitchRate += BOTTOM_ROT   * p_imp * B_REAR_M / I_YY;           // nose down (positive pitch)
-      vChassis  -= BOTTOM_HEAVE * p_imp / Ms;                        // small upward heave
+      const pf    = bottomOutFactor(P.k_tire_r);                     // soft rear tire absorbs more
+      pitchRate += BOTTOM_ROT   * pf * p_imp * B_REAR_M / I_YY;       // nose down (positive pitch)
+      vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                    // small upward heave
       swingRate = 0;
     }
   }
