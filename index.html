@@ -202,7 +202,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   </div>
   <button id="btn-step"   class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
   <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
-  <button id="btn-pause"  class="top-btn" title="Pause / play (Space)">⏸</button>
+  <button id="btn-pause"  class="top-btn" title="Pause / play (P)">⏸</button>
   <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
@@ -212,7 +212,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   </div>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
   <div id="key-legend">
-    <span><b>G</b>/→ Gas · <b>B</b>/← Brake · <b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>Space</b> Pause · <b>R</b> Reset</span>
+    <span><b>G</b>/→ Gas · <b>B</b>/← Brake · <b>Space</b>/<b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>P</b> Pause · <b>R</b> Reset</span>
     <span id="key-legend-x" title="Hide">✕</span>
   </div>
 </div>
@@ -2700,7 +2700,7 @@ function setSetupStatus(msg) {
     if (isTextEntry(e.target)) return;
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') { e.preventDefault(); setGas(true); }
     if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  { e.preventDefault(); setBrake(true); }
-    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); setClutch(true); }
+    if (e.key === 'c' || e.key === 'C' || e.key === ' ' || e.code === 'Space') { e.preventDefault(); setClutch(true); }
     if (!e.repeat && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); shiftGear(+1); }
     if (!e.repeat && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); shiftGear(-1); }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); resetSim(); }
@@ -2708,7 +2708,7 @@ function setSetupStatus(msg) {
   window.addEventListener('keyup', e => {
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') setGas(false);
     if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  setBrake(false);
-    if (e.key === 'c' || e.key === 'C') setClutch(false);
+    if (e.key === 'c' || e.key === 'C' || e.key === ' ' || e.code === 'Space') setClutch(false);
   });
 })();
 
@@ -3143,7 +3143,7 @@ function setPaused(on) {
   paused = on;
   const pb = document.getElementById('btn-pause');
   const sb = document.getElementById('btn-step');
-  if (pb) { pb.textContent = paused ? '▶' : '⏸'; pb.title = (paused ? 'Play' : 'Pause') + ' (Space)'; }
+  if (pb) { pb.textContent = paused ? '▶' : '⏸'; pb.title = (paused ? 'Play' : 'Pause') + ' (P)'; }
   if (sb) sb.style.display = paused ? '' : 'none';
 }
 function togglePause() { setPaused(!paused); }
@@ -3205,8 +3205,8 @@ rewindScr.addEventListener('input', () => {
 
 window.addEventListener('keydown', e => {
   if (isTextEntry(e.target)) return;   // only the setup-name text box swallows shortcuts
-  if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePause(); }
-  else if (e.key === '.')                  { e.preventDefault(); stepFrame(); }
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); togglePause(); }
+  else if (e.key === '.')             { e.preventDefault(); stepFrame(); }
 });
 
 // ═══════════════════════════════════════════════════════════
