@@ -314,7 +314,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
         <input type="range" id="duty" min="5" max="60" value="30">
       </div>
     </div>
-    <label>Speed <span id="lspeed">30 km/h</span></label>
+    <label>Cruise speed <span id="lspeed">30 km/h</span></label>
     <input type="range" id="speed" min="5" max="160" value="30">
     <label>Time scale <span id="ltimescale">1.00×</span></label>
     <input type="range" id="timescale" min="5" max="150" value="100">
@@ -565,8 +565,15 @@ let P = {
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
 
 // Gas / brake rates — declared here so bind() callbacks (called immediately) can access them
-let GAS_ACCEL   = 10;   // m/s²
-let BRAKE_DECEL = 10;   // m/s²
+let GAS_ACCEL   = 10;   // m/s²  → tractive force target (× total mass) at low speed
+let BRAKE_DECEL = 10;   // m/s²  → braking force target (× total mass)
+
+// Longitudinal-dynamics constants (3-DOF rigid body: surge + heave + pitch).
+// Speed emerges from these forces; the speed slider is the cruise-control TARGET.
+const RHO_CDA   = 0.30;  // ½·ρ·Cd·A lumped aero drag (N per (m/s)²)
+const C_RR      = 0.015; // rolling-resistance coefficient
+const DRIVE_V0  = 12;    // m/s  below this the drive force is flat; above it is power-limited (∝1/v)
+const K_CRUISE  = 400;   // N per (m/s) — cruise controller gain toward the speed-slider target
 
 function bind(id, lblId, fn) {
   const el  = document.getElementById(id);
@@ -592,7 +599,7 @@ bind('ktire_r',   'lktire_r',   v => { P.k_tire_r = psiToKtire(+v); return v + '
 bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + ' kg'; });
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
-bind('speed',     'lspeed',     v => { P.speed   = v; document.getElementById('st-speed').textContent=v; return v+' km/h'; });
+bind('speed',     'lspeed',     v => { P.speed   = v; return v+' km/h'; });   // slider = cruise TARGET; stat shows emergent speed
 bind('timescale', 'ltimescale', v => { P.timeScale = v/100; return (v/100).toFixed(2)+'×'; });
 bind('gasrate',   'lgasrate',   v => { GAS_ACCEL   = +v; return v + ' m/s²'; });
 bind('brakerate', 'lbrakerate', v => { BRAKE_DECEL = +v; return v + ' m/s²'; });
@@ -777,6 +784,7 @@ function calcNaturalWY_m(wx_m, r_m) {
 // ═══════════════════════════════════════════════════════════
 let chassisY_m    = 0;
 let vChassis      = 0;
+let vChassisX     = 0;   // m/s, longitudinal (surge) velocity of the whole vehicle
 let pitchAngle    = 0;   // rad, positive = nose down
 let pitchRate     = 0;
 
@@ -857,7 +865,7 @@ const hist = { fs:[], fd:[], rs:[], rd:[], fv:[], rv:[] };
 function captureState(dt) {
   return {
     dt,
-    chassisY_m, vChassis, pitchAngle, pitchRate,
+    chassisY_m, vChassis, vChassisX, pitchAngle, pitchRate,
     forkSlide_f, vForkSlide_f, swingAngle, swingRate,
     worldX_m, wheelAngle_f, wheelAngle_r, camY_m, camPanX_m,
     frontWheelX_m, frontWheelY_m, rearWheelX_m, rearWheelY_m,
@@ -868,7 +876,7 @@ function captureState(dt) {
   };
 }
 function applyState(s) {
-  chassisY_m=s.chassisY_m; vChassis=s.vChassis; pitchAngle=s.pitchAngle; pitchRate=s.pitchRate;
+  chassisY_m=s.chassisY_m; vChassis=s.vChassis; vChassisX=s.vChassisX||0; pitchAngle=s.pitchAngle; pitchRate=s.pitchRate;
   forkSlide_f=s.forkSlide_f; vForkSlide_f=s.vForkSlide_f; swingAngle=s.swingAngle; swingRate=s.swingRate;
   worldX_m=s.worldX_m; wheelAngle_f=s.wheelAngle_f; wheelAngle_r=s.wheelAngle_r; camY_m=s.camY_m; camPanX_m=s.camPanX_m;
   frontWheelX_m=s.frontWheelX_m; frontWheelY_m=s.frontWheelY_m; rearWheelX_m=s.rearWheelX_m; rearWheelY_m=s.rearWheelY_m;
@@ -965,6 +973,7 @@ function initPhysics() {
   }
 
   vChassis = 0; pitchRate = 0; vForkSlide_f = 0; swingRate = 0;
+  vChassisX = 0;   // hold the bike stationary during the settle loop
   rearContact = false;
 
   // Settle with terrain FROZEN (speed=0) so bumps don't create transients
@@ -974,6 +983,7 @@ function initPhysics() {
   for (let i = 0; i < 500; i++) simStep(0.005);
   P.speed = savedSpeed;
   vChassis = 0; vForkSlide_f = 0; swingRate = 0; pitchRate = 0;
+  vChassisX = savedSpeed / 3.6;   // launch at the slider's target speed
   rearContact = false;
   initialized = true;
 }
@@ -1046,55 +1056,56 @@ function _physicsStep(dt_s) {
   //   wheel_rate = K_SHOCK / MR_sag²  ⇒  K_SHOCK = K_R · MR_sag².
   const K_SHOCK = K_R * SW_MR_SAG * SW_MR_SAG;
 
-  // ── Gas / brake: ramp inputs then derive a_long from ACTUAL speed change ────
-  // gasInput / brakeInput ramp 0→1 in 1.5 s when held, 1→0 in 0.5 s when released.
-  // Multiplying by the ramp value makes the response feel progressive, not on/off.
+  const M_total = 184 + P.mass;   // total vehicle mass (sprung + unsprung)
+
+  // ── Longitudinal (surge) DOF — real tire contact forces, speed emerges ──────
+  // gasInput / brakeInput ramp 0→1 then back, giving progressive throttle/brake.
+  // Net longitudinal force = tractive (rear) + braking + aero drag + rolling
+  // resistance + cruise assist. Integrating it gives vChassisX; the speed slider
+  // is the cruise-control TARGET, and the displayed speed is the emergent vChassisX.
   {
-    // Sine ease-out ramp: input(t) = sin(π·t / 2T)
-    //   d(input)/dt  = (π/2T) · cos(π·t/2T) = (π/2T) · √(1 − input²)
-    // → rate is highest at the start and smoothly falls to zero at the limit.
-    // The same curve applied to (1 − input) gives an ease-out release:
-    // fast drop immediately, settles gently to zero.
     const K_UP   = (Math.PI / (2 * 0.75)) * dt_s;  // ramp up  in 0.75 s
     const K_DOWN = (Math.PI / (2 * 0.25)) * dt_s;  // ramp down in 0.25 s
-
     function sineRamp(val, k) {
       return Math.min(1, val + k * Math.sqrt(Math.max(0, 1 - val * val)));
     }
-    if (gasPressed) {
-      gasInput = sineRamp(gasInput, K_UP);
-    } else {
-      // ease-out on the inverted axis so release is fast-start, smooth-stop
-      gasInput = 1 - sineRamp(1 - gasInput, K_DOWN);
-    }
-    if (brakePressed) {
-      brakeInput = sineRamp(brakeInput, K_UP);
-    } else {
-      brakeInput = 1 - sineRamp(1 - brakeInput, K_DOWN);
-    }
-
-    const speedBefore = P.speed;
-    const requested   = (GAS_ACCEL * gasInput) - (BRAKE_DECEL * brakeInput);
-    if (gasInput > 0 || brakeInput > 0) {
-      P.speed = Math.max(0, Math.min(160, P.speed + requested * dt_s * 3.6));
-      const sl = document.getElementById('speed');
-      if (sl) sl.value = Math.round(P.speed);
-      const st = document.getElementById('lspeed');
-      if (st) st.textContent = Math.round(P.speed) + ' km/h';
-      const stStat = document.getElementById('st-speed');
-      if (stStat) stStat.textContent = Math.round(P.speed);
-    }
-    // a_long = actual Δv/Δt in m/s² — zero when speed is pegged at min/max
-    a_long = (P.speed - speedBefore) / dt_s / 3.6;
+    gasInput   = gasPressed   ? sineRamp(gasInput,   K_UP) : 1 - sineRamp(1 - gasInput,   K_DOWN);
+    brakeInput = brakePressed ? sineRamp(brakeInput, K_UP) : 1 - sineRamp(1 - brakeInput, K_DOWN);
   }
 
+  // Tractive force: flat at M·GAS_ACCEL below DRIVE_V0, power-limited (∝1/v) above
+  // — gives a realistic, bounded top speed instead of constant force forever.
+  const F_drive_cap = M_total * GAS_ACCEL;
+  const F_drive_pl  = Math.min(F_drive_cap,
+                               F_drive_cap * DRIVE_V0 / Math.max(Math.abs(vChassisX), DRIVE_V0));
+  const F_drive_term = F_drive_pl * gasInput;
+  // Braking opposes forward motion only (no reversing once stopped).
+  const F_brake_term = -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0);
+  // Cruise assist toward the speed-slider target when the rider isn't on gas/brake.
+  let F_cruise = 0;
+  if (gasInput < 0.02 && brakeInput < 0.02) {
+    const v_target = P.speed / 3.6;
+    F_cruise = Math.max(-M_total * BRAKE_DECEL,
+               Math.min(M_total * GAS_ACCEL, K_CRUISE * (v_target - vChassisX)));
+  }
+  // Resistive forces.
+  const F_drag = -RHO_CDA * vChassisX * Math.abs(vChassisX);
+  const F_rr   = Math.abs(vChassisX) > 0.05 ? -Math.sign(vChassisX) * C_RR * M_total * g : 0;
+
+  // Tractive/brake forces act at the contact patches (≈H_COM below CoM) → they
+  // also produce the dive/squat pitch moment (computed in the pitch EOM below).
+  const F_contact_long = F_drive_term + F_brake_term + F_cruise;
+  const a_x = (F_contact_long + F_drag + F_rr) / M_total;
+  a_long = a_x;                       // exposed for reference/telemetry
+  vChassisX += a_x * dt_s;
+  if (vChassisX < 0) vChassisX = 0;   // no reverse
+
   // ── Advance world X BEFORE computing wheel positions ─────────────────────
-  // This keeps worldX_m and frontWheelX_m/rearWheelX_m on the same frame,
-  // so w2sx() gives the correct screen X regardless of speed.
-  const v_ground = P.speed / 3.6;
-  worldX_m     += v_ground * dt_s;
-  wheelAngle_f += (v_ground / WHEEL_R_F) * dt_s;
-  wheelAngle_r += (v_ground / WHEEL_R_R) * dt_s;
+  // Driven by the integrated surge velocity (not the slider). Keeps worldX_m and
+  // frontWheelX_m/rearWheelX_m on the same frame so w2sx() stays correct.
+  worldX_m     += vChassisX * dt_s;
+  wheelAngle_f += (vChassisX / WHEEL_R_F) * dt_s;
+  wheelAngle_r += (vChassisX / WHEEL_R_R) * dt_s;
 
   // ── Fork geometry: axis locked to chassis ─────────────────────────────────
   // Fork axis = RAKE_RAD - pitchAngle from world vertical, always.
@@ -1237,17 +1248,16 @@ function _physicsStep(dt_s) {
     f_tire_R = pen_r > 0 ? -P.k_tire_r * pen_r + f_tire_damp_r : 0;
   }
 
-  // ── Chassis EOM ───────────────────────────────────────────────────────────
-  // Fork force on chassis: the fork is tilted, so only the Y component of the
-  // suspension force acts on chassis heave; the X component is absorbed by the
-  // frame/steering geometry (chassis X isn't a free DOF in this sim).
+  // ── Chassis heave EOM ─────────────────────────────────────────────────────
+  // Fork force on chassis: the fork is tilted, so only the Y component acts on
+  // chassis heave (the X component is part of the whole-vehicle surge DOF above).
   const fsusp_f_y  = fsusp_f * cosφ;            // Y component of fork force on chassis
 
-  // Longitudinal acceleration input (gas / brake)
-  // a_long > 0 = forward acceleration → inertia pushes CoM rearward → nose lifts (neg pitch)
-  // a_long < 0 = braking            → inertia pushes CoM forward  → nose dives (pos pitch)
-  const M_total    = 184 + P.mass;              // total vehicle mass (sprung + unsprung)
-  const tau_long   = -M_total * a_long * H_COM; // pitch moment from long. accel (N·m)
+  // Longitudinal LOAD TRANSFER (now emergent, not a fudge): the tractive/brake
+  // contact forces act ≈H_COM below the CoM, so they produce a real pitch moment.
+  //   forward force (accel) → nose lifts (squat, negative pitch torque)
+  //   rearward force (brake) → nose dives (dive, positive pitch torque)
+  const tau_long   = -F_contact_long * H_COM;   // pitch moment from contact-patch long. force (N·m)
 
   const a_chassis   = g + (fsusp_f_y + fsusp_r) / Ms;
 
@@ -1256,11 +1266,11 @@ function _physicsStep(dt_s) {
   // Front suspension acts at A_FRONT_M ahead of CoM; rear at B_REAR_M behind CoM.
   // Positive tau_susp = nose-up (front pushes chassis up relative to rear).
   const tau_susp  = A_FRONT_M * fsusp_f_y - B_REAR_M * fsusp_r;
-  // Pitch damping: limits pitchRate to physically realistic values.
-  // At 40 N·m·s/rad, pitchRate can reach ~2.4 rad/s (137°/s) over bumps — too high.
-  // Real motorcycles stay below ~1 rad/s in normal riding; 100 N·m·s/rad achieves this
-  // while still allowing meaningful nose-dive under braking and squat under acceleration.
-  const C_PITCH_DRAG = 100; // N·m·s/rad
+  // Residual pitch damping. With load transfer now emergent (tau_long from real
+  // contact forces) and the suspension dampers contributing through tau_susp, the
+  // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
+  // numerics calm and stands in for unmodeled structural/tire-carcass damping.
+  const C_PITCH_DRAG = 40; // N·m·s/rad
   const alpha_pitch = (tau_susp + tau_long - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
@@ -1301,6 +1311,17 @@ function _physicsStep(dt_s) {
   pitchRate    += alpha_pitch * dt_s;
   chassisY_m   += vChassis    * dt_s;
   pitchAngle   += pitchRate   * dt_s;
+
+  // ── Pitch geometric limits ────────────────────────────────────────────────
+  // Pitch is a free DOF; under heavy longitudinal load transfer (e.g. a near-1g
+  // launch) the load transfer can exceed what the front/rear contacts can react,
+  // i.e. a wheelie or a stoppie. The 2-mass suspension model can't self-balance a
+  // rotation about a contact patch, so without a stop the DOF would loop. These
+  // hard limits represent the wheelie / stoppie / fork-bottom geometric bound:
+  // pitch pins at the limit (velocity arrested) instead of running away.
+  const PITCH_LIM = 0.28;   // rad ≈ 16°
+  if (pitchAngle >  PITCH_LIM) { pitchAngle =  PITCH_LIM; if (pitchRate > 0) pitchRate = 0; }
+  else if (pitchAngle < -PITCH_LIM) { pitchAngle = -PITCH_LIM; if (pitchRate < 0) pitchRate = 0; }
 
 
   vForkSlide_f += a_fork      * dt_s;
@@ -1502,6 +1523,7 @@ function draw(ts) {
   document.getElementById('st-ft').textContent    = travF_mm;
   document.getElementById('st-rt').textContent    = travR_mm;
   document.getElementById('st-pitch').textContent = (pitchAngle*180/Math.PI).toFixed(1);
+  document.getElementById('st-speed').textContent = Math.round(vChassisX * 3.6);  // emergent speed
   document.getElementById('st-fspring').textContent = Math.round(Math.abs(f_spring_F));
   document.getElementById('st-fdamp').textContent   = Math.round(Math.abs(f_damp_F));
 
@@ -2740,7 +2762,7 @@ requestAnimationFrame(draw);
 // ═══════════════════════════════════════════════════════════
 function resetSim() {
   // Reset all dynamic physics state, keep P (parameters) intact
-  chassisY_m   = 0; vChassis    = 0;
+  chassisY_m   = 0; vChassis    = 0; vChassisX   = 0;
   pitchAngle   = 0; pitchRate   = 0;
   forkSlide_f  = 0; vForkSlide_f = 0;
   frontWheelX_m = 0; frontWheelY_m = 0;
