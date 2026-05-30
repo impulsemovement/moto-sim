@@ -1526,11 +1526,21 @@ function _physicsStep(dt_s) {
   const dShock        = dShockLength(swingAngle);          // m/rad, >0 (compression shortens shock)
   const wheelLeverY   = dAxleYchassis(swingAngle);         // = L·cosφ, chassis-frame wheel-vertical lever
   // World-frame vertical lever of the rear contact about the pivot: ∂(wheel world Y)/∂φ =
-  // L·cos(φ − pitch). As the chassis pitches into a wheelie/stoppie the contact-patch
-  // (world-vertical) force gets a SMALLER lever on the swingarm, so the spring unloads and
-  // the load transfers straight to the chassis through the pivot. Used for the gravity &
-  // tire (ground) forces; the shock force itself stays in the chassis frame (wheelLeverY).
-  const wheelLeverYw  = SWINGARM_L * Math.cos(swingAngle - pitchAngle);
+  // L·cos(φ − pitch). As the chassis pitches into a wheelie the contact-patch (world-vertical)
+  // force gets a SMALLER lever on the swingarm, so the spring unloads and the load transfers
+  // straight to the chassis through the pivot. The falloff is shaped to be more PROPORTIONAL
+  // to the pitch angle (so the spring sheds load gradually as the angle is approached rather
+  // than staying full then dumping near vertical), and clamped ≥0 so past the point where the
+  // contact force lines up through the pivot it just goes fully unloaded — it does not flip
+  // sign and fling the swingarm out. Used for the world-vertical gravity & tire forces; the
+  // chassis-frame shock force keeps wheelLeverY.
+  const leverAng = swingAngle - pitchAngle;
+  // cos gives the true torque arm but is flat near 0 (load barely sheds early); blend it
+  // mostly toward a linear-in-angle falloff so the spring sheds load roughly PROPORTIONALLY
+  // to the pitch/contact angle (reaching ~0 by ~80°) instead of staying full then dumping.
+  const leverCos  = Math.max(0, Math.cos(leverAng));
+  const leverLin  = Math.max(0, 1 - Math.abs(leverAng) / 1.40);   // 1 at 0°, 0 at ~80°
+  const wheelLeverYw = SWINGARM_L * (0.25 * leverCos + 0.75 * leverLin);
   // Shock spring: K_shock is calibrated (initPhysics) so wheel rate at sag = P.k_r.
   // Preload P.pre_r is a wheel-mm offset; convert to an effective shock-length offset.
   const MR_sag        = SW_MR_SAG;                          // wheel-travel / shock-travel at sag
