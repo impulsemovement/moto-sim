@@ -36,9 +36,12 @@ canvas { display: block; background: #080808; }
 }
 .top-btn:hover  { background: rgba(255,255,255,0.08); color: #ddd; }
 .top-btn:active { background: rgba(255,255,255,0.12); color: #fff; }
-#btn-reset { right: 10px;  width: 52px; }
-#btn-pause { right: 70px;  width: 34px; font-size: 13px; }
-#btn-step  { right: 112px; width: 34px; font-size: 13px; }
+#btn-reset  { right: 10px;  width: 52px; }
+#btn-pause  { right: 70px;  width: 34px; font-size: 13px; }
+#btn-rewind { right: 112px; width: 34px; font-size: 13px; }
+#btn-step   { right: 156px; width: 34px; font-size: 13px; }
+#rewind-bar { display: none; align-items: center; gap: 8px; margin: 6px 0; }
+#rewind-bar input[type=range] { flex: 1; margin: 0; accent-color: #e11d48; }
 .ride-btn {
   position: absolute; bottom: 16px;
   width: 80px; height: 44px;
@@ -167,11 +170,19 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <button id="btn-zoom-in"  title="Zoom in">+</button>
     <button id="btn-zoom-out" title="Zoom out">−</button>
   </div>
-  <button id="btn-step"  class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
-  <button id="btn-pause" class="top-btn" title="Pause / play (Space)">⏸</button>
-  <button id="btn-reset" class="top-btn" title="Reset simulation (R)">RESET</button>
+  <button id="btn-step"   class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
+  <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
+  <button id="btn-pause"  class="top-btn" title="Pause / play (Space)">⏸</button>
+  <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
+</div>
+
+<div id="rewind-bar">
+  <span style="font-size:10px;color:#e11d48;font-weight:700;letter-spacing:0.06em">REWIND</span>
+  <input type="range" id="rewind-scrub" min="0" max="0" value="0" title="Scrub through recorded history">
+  <span id="rewind-time" style="font-size:10px;color:#888;min-width:54px;text-align:right">0.0s</span>
+  <button class="preset-btn" id="btn-resume">Resume ▶</button>
 </div>
 
 <div class="stats">
@@ -770,6 +781,16 @@ let paused        = false;  // true → physics frozen, rendering continues
 let stepRequested = false;  // one-shot: advance a single fixed step while paused
 const FRAME_STEP  = 0.016;  // s  fixed dt used for a manual frame-step
 
+// Rewind recorder — ring buffer of full-state snapshots for scrub/playback.
+// Capped by ELAPSED TIME (not frame count) so ≥REWIND_SECONDS is captured at any
+// framerate. A hard length cap bounds memory on pathological high-fps displays.
+const REWIND_SECONDS = 12;
+const REWIND_MAX_LEN = 6000;
+const recorder       = [];      // snapshots, oldest first
+let   recordedTime   = 0;       // sum of recorder[i].dt, kept in sync on push/shift
+let   rewindMode     = false;   // true → rendering a recorded frame, physics frozen
+let   rewindIndex    = 0;       // scrub position into recorder
+
 // Longitudinal acceleration (gas / brake input), m/s²  positive = forward
 let a_long        = 0;
 let gasPressed    = false;
@@ -795,6 +816,62 @@ let rearContact = false;  // true when rear wheel is on the ground
 const HIST_MAX = 300;
 const hist = { fs:[], fd:[], rs:[], rd:[], fv:[], rv:[] };
 ['fs','fd','rs','rd','fv','rv'].forEach(k => { for(let i=0;i<HIST_MAX;i++) hist[k].push(0); });
+
+// ═══════════════════════════════════════════════════════════
+//  REWIND: STATE CAPTURE / RESTORE
+// ═══════════════════════════════════════════════════════════
+// captureState() snapshots every dynamic var the physics integrates AND every
+// derived scalar the renderer reads, so a recorded frame can be re-rendered
+// faithfully without re-running physics. dt is stored for an accurate timeline.
+function captureState(dt) {
+  return {
+    dt,
+    chassisY_m, vChassis, pitchAngle, pitchRate,
+    forkSlide_f, vForkSlide_f, swingAngle, swingRate,
+    worldX_m, wheelAngle_f, wheelAngle_r, camY_m, camPanX_m,
+    frontWheelX_m, frontWheelY_m, rearWheelX_m, rearWheelY_m,
+    shockLen_cur, shockTravel_r, wheelTravel_r, rearSuspVel,
+    disp_f, disp_r,
+    f_spring_F, f_damp_F, f_spring_R, f_damp_R, f_tire_F, f_tire_R,
+    rearContact, speed: P.speed
+  };
+}
+function applyState(s) {
+  chassisY_m=s.chassisY_m; vChassis=s.vChassis; pitchAngle=s.pitchAngle; pitchRate=s.pitchRate;
+  forkSlide_f=s.forkSlide_f; vForkSlide_f=s.vForkSlide_f; swingAngle=s.swingAngle; swingRate=s.swingRate;
+  worldX_m=s.worldX_m; wheelAngle_f=s.wheelAngle_f; wheelAngle_r=s.wheelAngle_r; camY_m=s.camY_m; camPanX_m=s.camPanX_m;
+  frontWheelX_m=s.frontWheelX_m; frontWheelY_m=s.frontWheelY_m; rearWheelX_m=s.rearWheelX_m; rearWheelY_m=s.rearWheelY_m;
+  shockLen_cur=s.shockLen_cur; shockTravel_r=s.shockTravel_r; wheelTravel_r=s.wheelTravel_r; rearSuspVel=s.rearSuspVel;
+  disp_f=s.disp_f; disp_r=s.disp_r;
+  f_spring_F=s.f_spring_F; f_damp_F=s.f_damp_F; f_spring_R=s.f_spring_R; f_damp_R=s.f_damp_R; f_tire_F=s.f_tire_F; f_tire_R=s.f_tire_R;
+  rearContact=s.rearContact; P.speed=s.speed;
+}
+function recordFrame(dt) {
+  recorder.push(captureState(dt));
+  recordedTime += dt;
+  // Drop oldest frames once we hold more than REWIND_SECONDS of history.
+  while (recorder.length > 1 && (recordedTime - recorder[0].dt) > REWIND_SECONDS) {
+    recordedTime -= recorder.shift().dt;
+  }
+  while (recorder.length > REWIND_MAX_LEN) recordedTime -= recorder.shift().dt;
+}
+function clearRecorder() {
+  recorder.length = 0; recordedTime = 0; rewindMode = false; rewindIndex = 0;
+  const bar = document.getElementById('rewind-bar');
+  if (bar) bar.style.display = 'none';
+}
+// Rebuild the six graph series from the recorded window ending at idx.
+function rebuildHistAt(idx) {
+  ['fs','fd','rs','rd','fv','rv'].forEach(k => hist[k].fill(0));
+  const start = Math.max(0, idx - HIST_MAX + 1);
+  let pos = HIST_MAX - (idx - start + 1);
+  for (let i = start; i <= idx; i++, pos++) {
+    const s = recorder[i];
+    hist.fs[pos]=s.f_spring_F; hist.fd[pos]=s.f_damp_F;
+    hist.rs[pos]=s.f_spring_R; hist.rd[pos]=s.f_damp_R;
+    hist.fv[pos]=s.vForkSlide_f; hist.rv[pos]=s.rearSuspVel;
+  }
+}
 
 // Per-series visibility for the force/velocity graph legends (click to toggle).
 const seriesVisible = { fs:true, fd:true, rs:true, rd:true, fv:true, rv:true };
@@ -1361,22 +1438,30 @@ function draw(ts) {
 
   if (!initialized) { initPhysics(); }
 
-  // Determine this frame's physics step: normal live stepping unless paused;
-  // when paused, advance only if a single frame-step was requested.
-  let dt_s = 0;
-  if (!paused && dt > 0)      dt_s = dt * P.timeScale;
-  else if (stepRequested)     { dt_s = FRAME_STEP * P.timeScale; stepRequested = false; }
+  if (rewindMode) {
+    // Playback: render the recorded frame at the scrub position; physics frozen.
+    const s = recorder[rewindIndex];
+    if (s) { applyState(s); rebuildHistAt(rewindIndex); }
+  } else {
+    // Determine this frame's physics step: normal live stepping unless paused;
+    // when paused, advance only if a single frame-step was requested.
+    let dt_s = 0;
+    if (!paused && dt > 0)      dt_s = dt * P.timeScale;
+    else if (stepRequested)     { dt_s = FRAME_STEP * P.timeScale; stepRequested = false; }
 
-  if (dt_s > 0) {
-    simStep(dt_s);
+    if (dt_s > 0) {
+      simStep(dt_s);
 
-    // Force history
-    hist.fs.push(f_spring_F);   hist.fs.shift();
-    hist.fd.push(f_damp_F);    hist.fd.shift();
-    hist.rs.push(f_spring_R);   hist.rs.shift();
-    hist.rd.push(f_damp_R);    hist.rd.shift();
-    hist.fv.push(vForkSlide_f); hist.fv.shift();
-    hist.rv.push(rearSuspVel);  hist.rv.shift();
+      // Force history
+      hist.fs.push(f_spring_F);   hist.fs.shift();
+      hist.fd.push(f_damp_F);    hist.fd.shift();
+      hist.rs.push(f_spring_R);   hist.rs.shift();
+      hist.rd.push(f_damp_R);    hist.rd.shift();
+      hist.fv.push(vForkSlide_f); hist.fv.shift();
+      hist.rv.push(rearSuspVel);  hist.rv.shift();
+
+      recordFrame(dt_s);
+    }
   }
 
   // ── Stats ─────────────────────────────────────────────────
@@ -2524,6 +2609,7 @@ function resetSim() {
   initialized  = false;
   // Clear force/velocity history
   ['fs','fd','rs','rd','fv','rv'].forEach(k => { for(let i=0;i<HIST_MAX;i++) hist[k][i]=0; });
+  clearRecorder();
   // Re-solve static equilibrium with current parameters
   initPhysics();
 }
@@ -2544,6 +2630,46 @@ function stepFrame()  { if (!paused) setPaused(true); stepRequested = true; }
 
 document.getElementById('btn-pause').addEventListener('click', togglePause);
 document.getElementById('btn-step').addEventListener('click', stepFrame);
+
+// ── Rewind / scrub ──────────────────────────────────────────
+const rewindBar  = document.getElementById('rewind-bar');
+const rewindScr  = document.getElementById('rewind-scrub');
+const rewindTime = document.getElementById('rewind-time');
+
+function fmtRewindTime(idx) {
+  // Seconds from idx to the live end (negative offset into the past).
+  let t = 0;
+  for (let i = idx + 1; i < recorder.length; i++) t += recorder[i].dt;
+  return (t > 0 ? '-' : '') + t.toFixed(1) + 's';
+}
+function enterRewind() {
+  if (recorder.length === 0) return;
+  rewindMode  = true;
+  rewindIndex = recorder.length - 1;
+  rewindScr.min = 0;
+  rewindScr.max = recorder.length - 1;
+  rewindScr.value = rewindIndex;
+  rewindTime.textContent = fmtRewindTime(rewindIndex);
+  rewindBar.style.display = 'flex';
+}
+function resumeFromRewind() {
+  if (!rewindMode) return;
+  // Drop everything after the chosen frame and continue live from here.
+  recorder.length = rewindIndex + 1;
+  recordedTime = recorder.reduce((t, s) => t + s.dt, 0);
+  rewindMode = false;
+  rewindBar.style.display = 'none';
+  setPaused(false);
+  lastTs = null;   // avoid a large dt spike on the first live frame
+}
+document.getElementById('btn-rewind').addEventListener('click', () => {
+  rewindMode ? resumeFromRewind() : enterRewind();
+});
+document.getElementById('btn-resume').addEventListener('click', resumeFromRewind);
+rewindScr.addEventListener('input', () => {
+  rewindIndex = Math.min(recorder.length - 1, Math.max(0, +rewindScr.value));
+  rewindTime.textContent = fmtRewindTime(rewindIndex);
+});
 
 window.addEventListener('keydown', e => {
   // Ignore when typing in an input (e.g. the setup-name field)
