@@ -50,7 +50,23 @@ canvas { display: block; background: #080808; }
   cursor: pointer; user-select: none; -webkit-user-select: none;
   transition: filter 0.1s, transform 0.1s;
 }
+.ride-btn:hover { filter: brightness(1.15); }
 .ride-btn:active, .ride-btn.held { filter: brightness(1.35); transform: scale(0.96); }
+
+#key-legend {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 9; max-width: calc(100% - 220px);
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: 6px;
+  background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.08);
+  color: #999; font-size: 10px; letter-spacing: 0.02em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  user-select: none; -webkit-user-select: none;
+}
+#key-legend b { color: #ccc; font-weight: 700; }
+#key-legend-x { cursor: pointer; color: #777; font-weight: 700; padding: 0 2px; }
+#key-legend-x:hover { color: #fff; }
+@media (max-width: 640px) { #key-legend { display: none; } }
 #btn-brake {
   left: 20px;
   background: rgba(220,38,38,0.18); color: #ef4444;
@@ -176,6 +192,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
+  <div id="key-legend">
+    <span><b>G</b>/→ Gas · <b>B</b>/← Brake · <b>Space</b> Pause · <b>.</b> Step · <b>R</b> Reset · drag to pan</span>
+    <span id="key-legend-x" title="Hide">✕</span>
+  </div>
 </div>
 
 <div id="rewind-bar">
@@ -2760,6 +2780,17 @@ function stepFrame()  { if (!paused) setPaused(true); stepRequested = true; }
 
 document.getElementById('btn-pause').addEventListener('click', togglePause);
 document.getElementById('btn-step').addEventListener('click', stepFrame);
+
+// ── Key legend dismiss (persisted) ──────────────────────────
+(function() {
+  const legend = document.getElementById('key-legend');
+  if (!legend) return;
+  if (localStorage.getItem('motosim-hidelegend') === '1') legend.style.display = 'none';
+  document.getElementById('key-legend-x').addEventListener('click', () => {
+    legend.style.display = 'none';
+    try { localStorage.setItem('motosim-hidelegend', '1'); } catch {}
+  });
+})();
 
 // ── Rewind / scrub ──────────────────────────────────────────
 const rewindBar  = document.getElementById('rewind-bar');
