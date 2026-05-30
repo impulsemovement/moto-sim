@@ -434,6 +434,21 @@ const BOTTOM_HEAVE   = 0.05;         // fraction of impact momentum left as vert
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
 const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
+
+// ── Wheel rotational dynamics & engine/brake torque-reaction on pitch ────────
+// Wheels carry angular momentum. Engine torque (gas, rear only) and brake torque spin
+// them up/down; tire grip resyncs spin to the rolling speed on the ground. By
+// conservation of angular momentum the chassis feels the OPPOSITE of the wheels'
+// angular acceleration: spinning a wheel up pitches the nose UP (wheelie / air blip),
+// braking a spinning wheel pitches it DOWN — even airborne.
+const I_WHEEL_F     = 0.50;      // kg·m²  front wheel+tire rotational inertia
+const I_WHEEL_R     = 0.75;      // kg·m²  rear  wheel+tire rotational inertia
+const ENG_TORQUE_R  = 290;       // N·m   engine torque available to spin the free rear wheel (gas)
+const BRAKE_TORQUE_F = 150;      // N·m   front brake torque on a spinning wheel
+const BRAKE_TORQUE_R = 120;      // N·m   rear  brake torque on a spinning wheel
+const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
+const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
+const TAU_REACT_MAX = 300;       // N·m   clamp on the chassis reaction torque (tames landing resync)
 const WHEELBASE  = 1.400;        // m  → 280 px
 
 const A_FRONT_M  = 0.714;        // m  CoM from front axle (49/51 split)
@@ -903,6 +918,10 @@ const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 cla
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
 let wheelAngle_f  = 0;
 let wheelAngle_r  = 0;
+// Wheel angular velocities (rad/s) — dynamic, so they can differ from rolling speed
+// when airborne (engine/brake spin them) and drive the torque-reaction pitch effect.
+let omega_f       = 0;
+let omega_r       = 0;
 
 // Cached forces for display
 let f_spring_F=0, f_damp_F=0, f_spring_R=0, f_damp_R=0;
@@ -929,7 +948,7 @@ function captureState(dt) {
     dt,
     chassisY_m, vChassis, vChassisX, pitchAngle, pitchRate,
     forkSlide_f, vForkSlide_f, swingAngle, swingRate,
-    worldX_m, wheelAngle_f, wheelAngle_r, camY_m, camPanX_m,
+    worldX_m, wheelAngle_f, wheelAngle_r, omega_f, omega_r, camY_m, camPanX_m,
     frontWheelX_m, frontWheelY_m, rearWheelX_m, rearWheelY_m,
     shockLen_cur, shockTravel_r, wheelTravel_r, rearSuspVel,
     disp_f, disp_r,
@@ -940,7 +959,8 @@ function captureState(dt) {
 function applyState(s) {
   chassisY_m=s.chassisY_m; vChassis=s.vChassis; vChassisX=s.vChassisX||0; pitchAngle=s.pitchAngle; pitchRate=s.pitchRate;
   forkSlide_f=s.forkSlide_f; vForkSlide_f=s.vForkSlide_f; swingAngle=s.swingAngle; swingRate=s.swingRate;
-  worldX_m=s.worldX_m; wheelAngle_f=s.wheelAngle_f; wheelAngle_r=s.wheelAngle_r; camY_m=s.camY_m; camPanX_m=s.camPanX_m;
+  worldX_m=s.worldX_m; wheelAngle_f=s.wheelAngle_f; wheelAngle_r=s.wheelAngle_r;
+  omega_f=s.omega_f||0; omega_r=s.omega_r||0; camY_m=s.camY_m; camPanX_m=s.camPanX_m;
   frontWheelX_m=s.frontWheelX_m; frontWheelY_m=s.frontWheelY_m; rearWheelX_m=s.rearWheelX_m; rearWheelY_m=s.rearWheelY_m;
   shockLen_cur=s.shockLen_cur; shockTravel_r=s.shockTravel_r; wheelTravel_r=s.wheelTravel_r; rearSuspVel=s.rearSuspVel;
   disp_f=s.disp_f; disp_r=s.disp_r;
@@ -1046,6 +1066,7 @@ function initPhysics() {
   P.speed = savedSpeed;
   vChassis = 0; vForkSlide_f = 0; swingRate = 0; pitchRate = 0;
   vChassisX = savedSpeed / 3.6;   // launch at the slider's target speed
+  omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;   // wheels rolling at speed
   rearContact = false;
   initialized = true;
 }
@@ -1230,9 +1251,41 @@ function _physicsStep(dt_s) {
   // ── Advance world X BEFORE computing wheel positions ─────────────────────
   // Driven by the integrated surge velocity (not the slider). Keeps worldX_m and
   // frontWheelX_m/rearWheelX_m on the same frame so w2sx() stays correct.
-  worldX_m     += vChassisX * dt_s;
-  wheelAngle_f += (vChassisX / WHEEL_R_F) * dt_s;
-  wheelAngle_r += (vChassisX / WHEEL_R_R) * dt_s;
+  worldX_m += vChassisX * dt_s;
+
+  // ── Wheel spin dynamics + engine/brake torque reaction on pitch ──────────────
+  // On the ground, tire grip relaxes each wheel's spin to the rolling speed (no slip).
+  // In the air, engine torque (gas, rear only) spins the rear wheel up to a rev limit
+  // and the brakes slow both wheels. The chassis feels MINUS the wheels' angular
+  // acceleration (conservation of angular momentum): wheels speeding up ⇒ nose up;
+  // wheels braking ⇒ nose down — works airborne, which is how riders adjust attitude.
+  let tau_react = 0;
+  {
+    const og_f = omega_f, og_r = omega_r;
+    const gripK = Math.min(1, GRIP_LAMBDA * dt_s);
+    // Rear wheel
+    if (onGroundRear) {
+      omega_r += (vChassisX / WHEEL_R_R - omega_r) * gripK;
+    } else {
+      const tau = ENG_TORQUE_R * gasInput * (omega_r < OMEGA_MAX ? 1 : 0)
+                - BRAKE_TORQUE_R * brakeInput * Math.tanh(omega_r / 3);
+      omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
+    }
+    // Front wheel (no drive)
+    if (onGroundFront) {
+      omega_f += (vChassisX / WHEEL_R_F - omega_f) * gripK;
+    } else {
+      const tau = -BRAKE_TORQUE_F * brakeInput * Math.tanh(omega_f / 3);
+      omega_f = Math.max(0, omega_f + (tau / I_WHEEL_F) * dt_s);
+    }
+    // Reaction torque on the chassis = −d(wheel angular momentum)/dt. Clamped so a
+    // big landing resync (sudden grip) can't deliver a violent one-step kick.
+    const dLf = I_WHEEL_F * (omega_f - og_f) / dt_s;
+    const dLr = I_WHEEL_R * (omega_r - og_r) / dt_s;
+    tau_react = Math.max(-TAU_REACT_MAX, Math.min(TAU_REACT_MAX, -(dLf + dLr)));
+    wheelAngle_f += omega_f * dt_s;
+    wheelAngle_r += omega_r * dt_s;
+  }
 
   // ── Fork geometry: axis locked to chassis ─────────────────────────────────
   // Fork axis = RAKE_RAD - pitchAngle from world vertical, always.
@@ -1406,7 +1459,15 @@ function _physicsStep(dt_s) {
   // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
   // numerics calm and stands in for unmodeled structural/tire-carcass damping.
   const C_PITCH_DRAG = 40; // N·m·s/rad
-  const alpha_pitch = (tau_susp + tau_long - C_PITCH_DRAG * pitchRate) / I_YY;
+  // When FULLY airborne the bike should hold its attitude (conservation of angular
+  // momentum) and only the wheel torque-reaction should change pitch. The drooped/topped
+  // suspension would otherwise apply a spurious pitch moment to a free-flying bike, so
+  // suppress tau_susp here. On the ground or one wheel down (wheelie/stoppie) it's normal.
+  const fullyAir = !onGroundFront && !onGroundRear;
+  const tau_susp_eff = fullyAir ? tau_susp * 0.1 : tau_susp;
+  // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
+  // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
@@ -2914,7 +2975,7 @@ function resetSim() {
   swingAngle   = 0; swingRate   = 0;
   shockLen_cur = 0; shockTravel_r = 0; wheelTravel_r = 0; rearSuspVel = 0;
   worldX_m     = 0;
-  wheelAngle_f = 0; wheelAngle_r = 0;
+  wheelAngle_f = 0; wheelAngle_r = 0; omega_f = 0; omega_r = 0;
   disp_f = 0; disp_r = 0;
   a_long = 0; gasInput = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
   gasPressed = false; brakePressed = false;
