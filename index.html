@@ -456,23 +456,30 @@ const B_REAR_M   = 0.686;        // m  CoM from rear  axle
 
 const I_YY       = 90;           // kg·m²  pitch inertia
 
-// ── Chassis body ground-contact points (chassis frame, m from CoM, +x fwd/+y down) ──
-// When the bike pitches far enough to wheelie-flip or endo, these body points strike
-// the ground and get an INELASTIC (dead, no-bounce) contact — like a steel block
-// hitting dirt. Chosen to wrap the bike silhouette (tail, top, nose, belly) so any
-// orientation lands on something. They sit well clear of the ground when upright, so
-// normal riding never triggers them.
+// ── Chassis body VISUAL offset (chassis-local px, PM=200) ───────────────────
+// Shifts only the DRAWN frame body (and its collision points) relative to the CoM/wheels,
+// without touching the physics CoM. Negative X = rearward; positive Y = down.
+const CHASSIS_VIS_DX_PX = -25;   // move frame body back so the fork sits at its front edge
+const CHASSIS_VIS_DY_PX = 10;    // drop frame body ~50 mm (it sat too high)
+
+// ── Chassis body ground-contact points ───────────────────────────────────────
+// Collision points are the actual frame SILHOUETTE tips (same outline you see), shifted
+// by the visual offset above, so the box matches the drawing and only the real pointy
+// chassis tips can touch the ground — no invisible point sticking out behind/below it.
+// Contact is INELASTIC (dead, no-bounce) when the bike flips/endos onto its body.
 const CHASSIS_CONTACTS = [
-  [-0.685, -0.430],   // tail top
-  [-0.550,  0.050],   // tail / subframe low
-  [ 0.460, -0.520],   // tank / bar top (front-upper)
-  [ 0.715, -0.200],   // steer head / nose
-  [ 0.475,  0.285],   // belly (engine, right)
-  [ 0.045,  0.285],   // belly (engine, left)
-];
+  [-137, -86],   // A: rear tail tip
+  [  92,-104],   // F: tank / bar top
+  [ 119, -90],   // G: head-tube upper
+  [ 143, -40],   // H: nose / fork crown
+  [  95,  57],   // I: gearbox bottom (front)
+  [   9,  57],   // J: gearbox bottom (rear)
+].map(([x, y]) => [ (x + CHASSIS_VIS_DX_PX) / 200, (y + CHASSIS_VIS_DY_PX) / 200 ]);
 const BODY_RESTITUTION = 0.0;   // 0 = fully dead, no bounce
-const BODY_FRICTION    = 1.2;   // Coulomb-ish ground friction (high → skids stop fast)
+const BODY_FRICTION    = 0.6;   // Coulomb-ish ground friction at the contact patch
 const BODY_POS_CORRECT = 0.8;   // Baumgarte penetration push-out fraction
+const BODY_TANGENT_DV  = 0.35;  // m/s  max surge change per contact resolution — stops a fast
+                                //       tip-clip from instantly arresting the bike (no fling)
 
 // Unsprung masses and tire spring rates are runtime parameters (P.m_unsprung_f etc.)
 // Default values live in the P object below.
@@ -1153,8 +1160,10 @@ function resolveChassisGroundContacts(Ms, M_total) {
         const Jn = -(1 + BODY_RESTITUTION) * vptY / w;   // momentum impulse (N·s), negative = upward
         vChassis  += Jn / Ms;
         pitchRate += Jn * armX / I_YY;
-        // Tangential (horizontal) friction on the whole-vehicle surge DOF.
-        const maxJt = BODY_FRICTION * Math.abs(Jn);
+        // Tangential (horizontal) friction on the whole-vehicle surge DOF. Limited both by
+        // Coulomb's μ·|Jn| AND by a per-resolution surge-change cap, so a fast tip-clip
+        // (large Jn from high pitch-rate) can't yank the bike to a stop in one step.
+        const maxJt = Math.min(BODY_FRICTION * Math.abs(Jn), BODY_TANGENT_DV * M_total);
         let Jt = -vChassisX * M_total;
         Jt = Math.max(-maxJt, Math.min(maxJt, Jt));
         vChassisX += Jt / M_total;
@@ -1635,9 +1644,9 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
   ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.stroke();
 
-  // Rim face (filled silver-grey)
+  // Rim ring (NOT filled) — the wheel is open/transparent so the scene shows through
+  // between the spokes.
   ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
-  ctx.fillStyle = '#4e4e4e'; ctx.fill();
   ctx.strokeStyle = '#888'; ctx.lineWidth = 2; ctx.stroke();
 
   // Spokes — rotated by rolling angle
@@ -1811,6 +1820,7 @@ function draw(ts) {
   ctx.translate(comX, comY);
   ctx.rotate(angle);
   ctx.scale(sc, sc);   // chassis vertices are in PM=200 local-px; scale to current PM
+  ctx.translate(CHASSIS_VIS_DX_PX, CHASSIS_VIS_DY_PX);   // visual offset (frame body only)
 
   // Frame vertices in chassis-local px (CoM=0,0, +x=forward/right, +y=down).
   // Derived from user SVG (viewBox 0 0 2194 1256).
