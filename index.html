@@ -1459,6 +1459,18 @@ function _physicsStep(dt_s) {
   const cosφ = Math.cos(φ_f);
   const sinφ = Math.sin(φ_f);
   const s_f  = REST_F_M + forkSlide_f;          // current fork length along axis
+  // Projection of the (world-vertical) contact/gravity force onto the fork axis = the
+  // fraction that loads the SPRING (the rest is reacted by the fork structure → chassis).
+  // True value is cos(φ_f); it's kept exact up to the rest rake (so the static stance and
+  // heavy stoppie loading are unchanged), then falls off LINEARLY to zero as the fork-to-
+  // vertical angle approaches 90° — so as the contact patch nears perpendicular to the fork
+  // the spring is progressively (proportionally) unloaded, reaching zero at 90°.
+  const forkProj = (() => {
+    const a = Math.abs(φ_f);
+    if (a <= RAKE_RAD) return Math.cos(a);                      // ≤ rest rake: true cos
+    const t = (a - RAKE_RAD) / (Math.PI / 2 - RAKE_RAD);        // 0 at rake → 1 at 90°
+    return Math.max(0, Math.cos(RAKE_RAD) * (1 - t));           // linear cos(RAKE) → 0
+  })();
 
   // Steer head: full 2D rotation of chassis axis from CoM
   const cosP   = Math.cos(pitchAngle), sinP = Math.sin(pitchAngle);
@@ -1650,9 +1662,9 @@ function _physicsStep(dt_s) {
   // Fork EOM: unsprung wheel mass along fork axis (chassis-relative DOF).
   // Use simple uncoupled form — the chassis inertial coupling term caused the
   // fork to appear to rotate opposite the chassis during pitch events.
-  const a_fork = g * cosφ
+  const a_fork = g * forkProj
                - fsusp_f / P.m_unsprung_f
-               + f_tire_F * cosφ / P.m_unsprung_f;
+               + f_tire_F * forkProj / P.m_unsprung_f;
 
   // ── Rear swingarm rotational EOM (about the pivot) ──────────────────────
   // The wheel is a point mass at the swingarm tip. We sum generalized forces
