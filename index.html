@@ -2057,6 +2057,20 @@ function draw(ts) {
   ctx.fillStyle='#444'; ctx.font='9px sans-serif'; ctx.textAlign='center';
   ctx.fillText('R', bx2+6, bTop-5);
 
+  // ── Gas / brake input bars (far left, mirror of the travel bars) ─────────
+  // Same track geometry as the right-side bars; fill from the bottom up by input level.
+  function inputBar(x, frac, fillColor, label) {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.roundRect(x, bTop, 12, bHt, 6); ctx.fill();
+    const h = Math.max(0, Math.min(1, frac)) * bHt;
+    ctx.fillStyle = fillColor;
+    ctx.beginPath(); ctx.roundRect(x, bBot - h, 12, h, 6); ctx.fill();
+    ctx.fillStyle = '#444'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(label, x + 6, bTop - 5);
+  }
+  inputBar(10, brakeInput, '#ef4444', 'B');   // far-left: brake (red)
+  inputBar(26, gasInput,   '#22c55e', 'G');   // next in:  gas   (green)
+
   drawForceGraph();
   drawVelocityGraph();
 }
