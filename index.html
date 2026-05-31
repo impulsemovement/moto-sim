@@ -724,6 +724,8 @@ const CLUTCH_ENGAGE_TIME = 0.13; // s  to engage (release / dump)
 const CLUTCH_MAX_TORQUE  = 85;   // N·m  max torque the clutch can transmit (engine side)
 const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)
+const GRIP_LONG_K  = 2500;  // N per m/s of contact longitudinal slip (capped by friction)
+const GRIP_MU      = 0.5;   // longitudinal grip coefficient (× tire normal force)
 const ANTI_SQUAT_SCALE   = 0.4;  // how much the rear longitudinal (drive/brake) force torques the
                                  // swingarm via geometry (anti-squat / clutch-up suspension load)
 const RPM2RADS = 2 * Math.PI / 60;   // RPM → rad/s
@@ -1399,7 +1401,7 @@ function _physicsStep(dt_s) {
   const a_x = (F_contact_long + F_drag + F_rr) / M_total;
   a_long = a_x;                       // exposed for reference/telemetry
   vChassisX += a_x * dt_s;
-  if (vChassisX < 0) vChassisX = 0;   // no reverse
+  if (vChassisX < -1) vChassisX = -1;   // allow a small backward roll (e.g. rear falling from a stoppie)
 
   // While the rider is actively on gas/brake, the cruise TARGET follows the actual
   // speed — so releasing holds the speed you reached instead of the cruise controller
@@ -1665,6 +1667,25 @@ function _physicsStep(dt_s) {
   // P.pitchMoment (slider) scales how much the suspension forces pitch the chassis;
   // 0 = bumps cause no pitch (heave only), 1 = full effect.
   const tau_susp_eff = (fullyAir ? tau_susp * 0.1 : tau_susp) * P.pitchMoment;
+  // ── Longitudinal tire grip (planted-contact rolling) ──────────────────────
+  // Pitching the chassis moves a contact patch horizontally (≈ -pitchRate·H_COM). A planted
+  // tire's static friction resists that slip, turning pitch-about-a-planted-wheel into ROLLING:
+  // so when a stoppie's rear falls (or a wheelie's front drops) the bike rolls instead of the
+  // contact sliding, and at a stop the rear falling back rolls the bike rearward a little.
+  // Gated to the balance regime (pitch >~15°) so normal riding is untouched; capped by μ·normal.
+  {
+    const gripGate = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.26) / (0.70 - 0.26)));
+    if (gripGate > 0) {
+      const contactSlip = -pitchRate * H_COM;     // horizontal velocity of a contact from pitch
+      const want = -GRIP_LONG_K * contactSlip * gripGate;
+      let F_grip = 0;
+      if (onGroundFront) { const cap = GRIP_MU * Math.abs(f_tire_F); F_grip += Math.max(-cap, Math.min(cap, want)); }
+      if (onGroundRear)  { const cap = GRIP_MU * Math.abs(f_tire_R); F_grip += Math.max(-cap, Math.min(cap, want)); }
+      vChassisX += (F_grip / M_total) * dt_s;       // grip rolls the bike (no reaction pitch moment —
+      if (vChassisX < -1) vChassisX = -1;           // it would hold the bike pitched up). Small reverse roll.
+    }
+  }
+
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
   const alpha_pitch = (tau_susp_eff + tau_long + tau_react - C_PITCH_DRAG * pitchRate) / I_YY;
