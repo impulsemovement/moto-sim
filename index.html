@@ -1660,14 +1660,15 @@ function _physicsStep(dt_s) {
   // Positive tau_susp = nose-up (front pushes chassis up relative to rear). Each force's
   // contribution is passed through digMoment() so large wheel forces apply a digressively
   // smaller moment (softer pitch jolt) while small forces stay near-linear.
-  // The moment ARM of each (world-vertical) support force is the WORLD-horizontal distance from
-  // the CoM to that contact, which rotates with pitch: lever = ±A·cos(pitch) − H_COM·sin(pitch).
-  // So as the bike pitches toward a balance point the support force's restoring moment shrinks
-  // to zero (CoM over the contact ≈ atan(A/H_COM) ≈ 47°) and REVERSES past it — letting the bike
-  // actually tip over a wheelie/stoppie instead of being pinned upright by a fixed lever.
-  const cP_s = Math.cos(pitchAngle), sP_s = Math.sin(pitchAngle);
-  const leverFront =  A_FRONT_M * cP_s - H_COM * sP_s;   // +ve = front contact ahead of CoM
-  const leverRear  = -B_REAR_M  * cP_s - H_COM * sP_s;   // -ve = rear contact behind CoM
+  // The moment ARM of each (world-vertical) support force is the EXACT world-horizontal distance
+  // from the CoM to that wheel's contact (using the live wheel positions, not an approximation).
+  // So the restoring moment shrinks to zero precisely when the CoM is over the contact (true
+  // top-dead-centre balance) and REVERSES past it — the bike tips over a wheelie/stoppie only
+  // once the CoM has actually crossed the contact, and near balance the (small) arm makes the
+  // tip gentle rather than snapping over early.
+  const comX_arm   = worldX_m - A_FRONT_M;               // CoM world X
+  const leverFront = frontWheelX_m - comX_arm;           // +ve = front contact ahead of CoM
+  const leverRear  = rearWheelX_m  - comX_arm;           // -ve = rear contact behind CoM
   const tau_susp  = leverFront * digMoment(fsusp_f_y_eff) + leverRear * digMoment(fsusp_r_eff);
   // Residual pitch damping. With load transfer now emergent (tau_long from real
   // contact forces) and the suspension dampers contributing through tau_susp, the
