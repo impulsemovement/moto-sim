@@ -340,18 +340,18 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
       <div>
-        <label>Gas rate <span id="lgasrate">10 m/s²</span></label>
-        <input type="range" id="gasrate" min="1" max="20" value="10" step="0.5">
+        <label>Gas rate <span id="lgasrate">7 m/s²</span></label>
+        <input type="range" id="gasrate" min="1" max="9.5" value="7" step="0.5">
       </div>
       <div>
-        <label>Brake rate <span id="lbrakerate">10 m/s²</span></label>
-        <input type="range" id="brakerate" min="1" max="25" value="10" step="0.5">
+        <label>Brake rate <span id="lbrakerate">7 m/s²</span></label>
+        <input type="range" id="brakerate" min="1" max="9.5" value="7" step="0.5">
       </div>
     </div>
     <label>Rider mass <span id="lmass">75 kg</span></label>
     <input type="range" id="mass" min="40" max="140" value="75">
-    <label>Bump pitch effect <span id="lpitchmom">25%</span></label>
-    <input type="range" id="pitchmom" min="0" max="100" value="25">
+    <label>Bump pitch effect <span id="lpitchmom">70%</span></label>
+    <input type="range" id="pitchmom" min="0" max="100" value="70">
     <label>F bottom-out bounce <span id="lbounceF">35%</span></label>
     <input type="range" id="bounceF" min="0" max="100" value="35">
     <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
@@ -471,6 +471,7 @@ const I_WHEEL_R     = 0.75;      // kg·m²  rear  wheel+tire rotational inertia
 const ENG_TORQUE_R  = 290;       // N·m   engine torque available to spin the free rear wheel (gas)
 const BRAKE_TORQUE_F = 150;      // N·m   front brake torque on a spinning wheel
 const BRAKE_TORQUE_R = 120;      // N·m   rear  brake torque on a spinning wheel
+const REAR_BRAKE_LEVER = 0.22;   // m   effective lever for the rear-brake anti-wheelie nose-down moment
 const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
 const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
 const TAU_REACT_MAX = 300;       // N·m   clamp on the chassis reaction torque (tames landing resync)
@@ -682,7 +683,7 @@ let P = {
   mass:75,
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
   timeScale:1.0, speed:30,
-  pitchMoment:0.25,  // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
+  pitchMoment:0.70,  // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
   bottomBounceF:0.35, bottomBounceR:0.20   // 0 = dead bottom-out, →1 = bouncy (front/rear)
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
@@ -697,8 +698,8 @@ function isTextEntry(el) {
 }
 
 // Gas / brake rates — declared here so bind() callbacks (called immediately) can access them
-let GAS_ACCEL   = 10;   // m/s²  → tractive force target (× total mass) at low speed
-let BRAKE_DECEL = 10;   // m/s²  → braking force target (× total mass)
+let GAS_ACCEL   = 7;    // m/s²  → tractive force target (× total mass) at low speed (slider, max 9.5)
+let BRAKE_DECEL = 7;    // m/s²  → braking force target (× total mass) (slider, max 9.5)
 
 // Longitudinal-dynamics constants (3-DOF rigid body: surge + heave + pitch).
 // Speed emerges from these forces; the speed slider is the cruise-control TARGET.
@@ -1706,9 +1707,16 @@ function _physicsStep(dt_s) {
     }
   }
 
+  // Rear-brake anti-wheelie: the rear brake is very effective at bringing a wheelie down (it
+  // doesn't depend on forward speed like the load-transfer dive does). Apply a nose-down pitch
+  // moment when braking with the rear planted during a wheelie. Gated to nose-up pitch so it
+  // doesn't add to normal braking dive. Scales with the brake-rate slider.
+  const wheelieAmt = Math.max(0, Math.min(1, (-pitchAngle - 0.15) / 0.35));   // 0 at ~8.5° up → 1 at ~28° up
+  const tau_rearbrake = (onGroundRear ? 1 : 0) * REAR_BRAKE_LEVER * M_total * BRAKE_DECEL * brakeInput * wheelieAmt;
+
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react - C_PITCH_DRAG * pitchRate) / I_YY;
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
