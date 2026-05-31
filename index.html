@@ -352,6 +352,10 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <input type="range" id="mass" min="40" max="140" value="75">
     <label>Bump pitch effect <span id="lpitchmom">25%</span></label>
     <input type="range" id="pitchmom" min="0" max="100" value="25">
+    <label>F bottom-out bounce <span id="lbounceF">35%</span></label>
+    <input type="range" id="bounceF" min="0" max="100" value="35">
+    <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
+    <input type="range" id="bounceR" min="0" max="100" value="20">
     <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
     <label>Setups <span id="lsetup-status" style="color:#555;font-weight:400"></span></label>
     <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
@@ -678,7 +682,8 @@ let P = {
   mass:75,
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
   timeScale:1.0, speed:30,
-  pitchMoment:0.25   // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
+  pitchMoment:0.25,  // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
+  bottomBounceF:0.35, bottomBounceR:0.20   // 0 = dead bottom-out, →1 = bouncy (front/rear)
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
 
@@ -757,6 +762,8 @@ bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + 
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
 bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; });
+bind('bounceF',   'lbounceF',   v => { P.bottomBounceF = v/100; return v + '%'; });
+bind('bounceR',   'lbounceR',   v => { P.bottomBounceR = v/100; return v + '%'; });
 bind('speed',     'lspeed',     v => { P.speed = v; return v+' km/h'; });   // launch/target speed (seeds vChassisX on reset)
 // Dragging the speed slider while running sets the speed directly (replaces the old cruise
 // hold). Separate listener so it only runs on user input — never during init (avoids TDZ).
@@ -1672,9 +1679,13 @@ function _physicsStep(dt_s) {
   // tire's static friction resists that slip, turning pitch-about-a-planted-wheel into ROLLING:
   // so when a stoppie's rear falls (or a wheelie's front drops) the bike rolls instead of the
   // contact sliding, and at a stop the rear falling back rolls the bike rearward a little.
-  // Gated to the balance regime (pitch >~15°) so normal riding is untouched; capped by μ·normal.
+  // Gated to the balance regime (pitch >~15°) AND to LOW SPEED (<~2 m/s) — it's only for the
+  // come-to-a-stop case (don't-slide / roll-back). At speed it must NOT act, or it couples
+  // pitch↔roll and acts like a balance assist (over-restoring the wheelie/stoppie).
   {
-    const gripGate = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.26) / (0.70 - 0.26)));
+    const pitchGate = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.26) / (0.70 - 0.26)));
+    const speedGate = Math.max(0, 1 - Math.abs(vChassisX) / 2);   // 1 at a stop → 0 by 2 m/s
+    const gripGate  = pitchGate * speedGate;
     if (gripGate > 0) {
       const contactSlip = -pitchRate * H_COM;     // horizontal velocity of a contact from pitch
       const want = -GRIP_LONG_K * contactSlip * gripGate;
@@ -1768,11 +1779,14 @@ function _physicsStep(dt_s) {
       // nose-UP rotation about the CoM (impact at A_FRONT_M ahead), with only a small
       // residual heave. Inelastic — the rest of the energy is dissipated, so the bike
       // pitches off the stop instead of launching into an endless vertical bounce.
-      const p_imp = P.m_unsprung_f * (-vForkSlide_f) * cosφ;   // inbound vertical momentum (>0)
+      // Bounce slider: 0 = dead (redirect all momentum, zero rebound), →1 = bouncy (less
+      // redirect, the fork springs back). Front tends to feel too dead at 0.
+      const eF    = P.bottomBounceF;
+      const p_imp = P.m_unsprung_f * (-vForkSlide_f) * cosφ * (1 - eF);  // momentum redirected (less when bouncy)
       const pf    = bottomOutFactor(P.k_tire_f);               // soft front tire absorbs more
       pitchRate -= BOTTOM_ROT   * pf * P.pitchMoment * p_imp * A_FRONT_M / I_YY;  // nose up (negative pitch)
       vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                // small upward heave
-      vForkSlide_f = 0;
+      vForkSlide_f = -eF * vForkSlide_f;                          // rebound fraction (0 = dead)
     }
   }
 
@@ -1790,11 +1804,12 @@ function _physicsStep(dt_s) {
     // the tail up instead of bouncing the whole bike vertically forever.
     swingAngle = PHI_FULL_BUMP;
     if (swingRate < 0) {
-      const p_imp = P.m_unsprung_r * (-(wheelLeverY * swingRate));   // inbound vertical momentum (>0)
+      const eR    = P.bottomBounceR;   // 0 = dead, →1 = bouncy
+      const p_imp = P.m_unsprung_r * (-(wheelLeverY * swingRate)) * (1 - eR);  // momentum redirected
       const pf    = bottomOutFactor(P.k_tire_r);                     // soft rear tire absorbs more
       pitchRate += BOTTOM_ROT   * pf * P.pitchMoment * p_imp * B_REAR_M / I_YY;       // nose down (positive pitch)
       vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                    // small upward heave
-      swingRate = 0;
+      swingRate = -eR * swingRate;                                   // rebound fraction (0 = dead)
     }
   }
 
@@ -2703,7 +2718,7 @@ const SETUP_SLIDERS = [
   'k_f','air_f','pre_f','damp_f','ktire_f','munsp_f',
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
-  'terrain','amp','freq','rough','duty','pitchmom'
+  'terrain','amp','freq','rough','duty','pitchmom','bounceF','bounceR'
 ];
 
 function loadSetups() {
