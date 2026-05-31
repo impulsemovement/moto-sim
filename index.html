@@ -333,7 +333,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
         <input type="range" id="duty" min="5" max="60" value="30">
       </div>
     </div>
-    <label>Cruise speed <span id="lspeed">30 km/h</span></label>
+    <label>Speed <span id="lspeed">30 km/h</span></label>
     <input type="range" id="speed" min="0" max="160" value="30">
     <label>Time scale <span id="ltimescale">1.00×</span></label>
     <input type="range" id="timescale" min="5" max="150" value="100">
@@ -723,7 +723,7 @@ const CLUTCH_PULL_TIME   = 0.06; // s  to disengage (pull in)
 const CLUTCH_ENGAGE_TIME = 0.13; // s  to engage (release / dump)
 const CLUTCH_MAX_TORQUE  = 85;   // N·m  max torque the clutch can transmit (engine side)
 const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
-const ENGINE_BRAKE_K     = 14;   // N·m crank-side engine-braking torque at redline (off-throttle)
+const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)
 const ANTI_SQUAT_SCALE   = 0.4;  // how much the rear longitudinal (drive/brake) force torques the
                                  // swingarm via geometry (anti-squat / clutch-up suspension load)
 const RPM2RADS = 2 * Math.PI / 60;   // RPM → rad/s
@@ -755,7 +755,12 @@ bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + 
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
 bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; });
-bind('speed',     'lspeed',     v => { P.speed   = v; return v+' km/h'; });   // slider = cruise TARGET; stat shows emergent speed
+bind('speed',     'lspeed',     v => { P.speed = v; return v+' km/h'; });   // launch/target speed (seeds vChassisX on reset)
+// Dragging the speed slider while running sets the speed directly (replaces the old cruise
+// hold). Separate listener so it only runs on user input — never during init (avoids TDZ).
+document.getElementById('speed').addEventListener('input', () => {
+  if (initialized) { vChassisX = P.speed / 3.6; omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R; }
+});
 bind('timescale', 'ltimescale', v => { P.timeScale = v/100; return (v/100).toFixed(2)+'×'; });
 bind('gasrate',   'lgasrate',   v => { GAS_ACCEL   = +v; return v + ' m/s²'; });
 bind('brakerate', 'lbrakerate', v => { BRAKE_DECEL = +v; return v + ' m/s²'; });
@@ -1368,25 +1373,22 @@ function _physicsStep(dt_s) {
     F_clutch  = clutchT * ratio / WHEEL_R_R;                       // extra wheel drive force
     engineRPM = Math.max(lockedRPM, engineRPM - (clutchT / I_ENGINE) * RADS2RPM * dt_s);
   }
-  // Engine braking: closed-throttle pumping/friction torque at the crank (∝ RPM), sent
-  // through the gear to the wheel — strong in low gears (high ratio), weak in high. Only
-  // with the clutch engaged, rolling forward, and above idle.
+  // Engine braking: closed-throttle pumping/friction torque at the crank, sent through the
+  // gear to the wheel — strong in low gears (high ratio), weak in high. Scales from ZERO at
+  // idle up to full near redline (more aggressive the higher the revs), so releasing the
+  // clutch at idle with the wheel speed matched produces no braking force (no pitch).
   const offThr     = Math.max(0, 1 - gasInput / 0.15);   // 1 fully off-throttle, 0 above ~15%
-  const engBrakeT  = ENGINE_BRAKE_K * (engineRPM / RPM_REDLINE) * offThr * clutchEngage;
-  const F_engbrake = (vChassisX > 0.1 && engineRPM > RPM_IDLE * 1.05)
-                   ? engBrakeT * ratio / WHEEL_R_R : 0;
+  const revFrac    = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)); // 0 idle → 1 redline
+  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage;
+  const F_engbrake = (vChassisX > 0.1) ? engBrakeT * ratio / WHEEL_R_R : 0;
   const F_drive_term = onGroundRear ? (F_throttle + F_clutch - F_engbrake) : 0;
   // Braking opposes forward motion only (no reversing once stopped); needs a wheel down.
   const F_brake_term = anyGround ? -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0) : 0;
-  // Cruise assist toward the speed-slider target — only with the CLUTCH IN (disengaged).
-  // With the clutch engaged, closing the throttle gives real engine braking instead of a
-  // speed hold, so the cruise controller must not fight it.
-  let F_cruise = 0;
-  if (onGroundRear && clutchEngage < 0.5 && gasInput < 0.02 && brakeInput < 0.02) {
-    const v_target = P.speed / 3.6;
-    F_cruise = Math.max(-M_total * BRAKE_DECEL,
-               Math.min(M_total * GAS_ACCEL, K_CRUISE * (v_target - vChassisX)));
-  }
+  // No cruise/auto-speed-hold: the bike is ridden manually with throttle, clutch, gears and
+  // engine braking. (A cruise assist would either fight engine braking or — when gated to
+  // clutch-in — wrongly accelerate the bike with the clutch pulled.) The speed slider sets
+  // the speed directly (see its bind) and seeds the launch speed on reset.
+  const F_cruise = 0;
   // Resistive forces. Aero drag acts always; rolling resistance only when a wheel is down.
   const F_drag = -RHO_CDA * vChassisX * Math.abs(vChassisX);
   const F_rr   = (anyGround && Math.abs(vChassisX) > 0.05) ? -Math.sign(vChassisX) * C_RR * M_total * g : 0;
