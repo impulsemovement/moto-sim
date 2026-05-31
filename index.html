@@ -1624,7 +1624,20 @@ function _physicsStep(dt_s) {
   //   rearward force (brake) → nose dives (dive, positive pitch torque)
   const tau_long   = -F_contact_long * H_COM;   // pitch moment from contact-patch long. force (N·m)
 
-  const a_chassis   = g + (fsusp_f_y + fsusp_r) / Ms;
+  // Rigid "through-the-pivot" path at the wheelie balance point. As the swingarm approaches
+  // vertical (world) its lever cos(θ)→0: the wheel is geometrically locked to the chassis
+  // vertically, so a bump can't be absorbed by the swingarm and must drive the chassis
+  // directly. Blend the rear chassis force from the shock (normal riding) toward the tire
+  // force acting DIRECTLY on the chassis (rigid) as the swingarm stands up — so bumps pop the
+  // bike at balance (rigid-unicycle feel) instead of the force being lost. ~0 in normal riding.
+  const thetaSwWorld = swingAngle - pitchAngle;
+  // Gate on pitch so it only engages in the wheelie/balance regime (~15°→40°); normal riding
+  // keeps the usual shock-isolated behaviour, the steep wheelie gets the rigid coupling.
+  const pivotGate    = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.26) / (0.70 - 0.26)));
+  const pivotFrac    = Math.sin(thetaSwWorld) ** 2 * pivotGate;   // 0 normal → toward 1 at balance
+  const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac;
+
+  const a_chassis   = g + (fsusp_f_y + fsusp_r_eff) / Ms;
 
   // ── Pitch EOM ─────────────────────────────────────────────────────────────
   // Suspension pitch moment: each wheel's vertical force × its moment arm from CoM.
@@ -1632,7 +1645,7 @@ function _physicsStep(dt_s) {
   // Positive tau_susp = nose-up (front pushes chassis up relative to rear). Each force's
   // contribution is passed through digMoment() so large wheel forces apply a digressively
   // smaller moment (softer pitch jolt) while small forces stay near-linear.
-  const tau_susp  = A_FRONT_M * digMoment(fsusp_f_y) - B_REAR_M * digMoment(fsusp_r);
+  const tau_susp  = A_FRONT_M * digMoment(fsusp_f_y) - B_REAR_M * digMoment(fsusp_r_eff);
   // Residual pitch damping. With load transfer now emergent (tau_long from real
   // contact forces) and the suspension dampers contributing through tau_susp, the
   // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
