@@ -456,6 +456,7 @@ const BS_DAMP        = 9000;         // N·s/m  hydraulic bump-stop damping at f
 // transmitted impulse is further scaled per wheel by the tire-pressure factor below.
 const BOTTOM_ROT     = 0.30;         // pitch-impulse gain from a bottom-out impact
 const BOTTOM_HEAVE   = 0.05;         // fraction of impact momentum left as vertical heave
+const BOTTOM_BOUNCE  = 0.60;         // chassis up-launch gain per unit restitution (bounce slider)
 
 const WHEEL_R_F  = 0.300;        // m  front tyre radius → 60 px
 const WHEEL_R_R  = 0.315;        // m  rear  tyre radius → 63 px
@@ -684,7 +685,7 @@ let P = {
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
   timeScale:1.0, speed:30,
   pitchMoment:0.70,  // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
-  bottomBounceF:0.35, bottomBounceR:0.20   // 0 = dead bottom-out, →1 = bouncy (front/rear)
+  bottomBounceF:3.5, bottomBounceR:2.0   // bottom-out restitution (0 = dead … up to 10× super-elastic)
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
 
@@ -763,8 +764,8 @@ bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + 
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
 bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; });
-bind('bounceF',   'lbounceF',   v => { P.bottomBounceF = v/100; return v + '%'; });
-bind('bounceR',   'lbounceR',   v => { P.bottomBounceR = v/100; return v + '%'; });
+bind('bounceF',   'lbounceF',   v => { P.bottomBounceF = v/10; return v + '%'; });   // 100% = 10× restitution
+bind('bounceR',   'lbounceR',   v => { P.bottomBounceR = v/10; return v + '%'; });
 bind('speed',     'lspeed',     v => { P.speed = v; return v+' km/h'; });   // launch/target speed (seeds vChassisX on reset)
 // Dragging the speed slider while running sets the speed directly (replaces the old cruise
 // hold). Separate listener so it only runs on user input — never during init (avoids TDZ).
@@ -1796,14 +1797,18 @@ function _physicsStep(dt_s) {
       // nose-UP rotation about the CoM (impact at A_FRONT_M ahead), with only a small
       // residual heave. Inelastic — the rest of the energy is dissipated, so the bike
       // pitches off the stop instead of launching into an endless vertical bounce.
-      // Bounce slider: 0 = dead (redirect all momentum, zero rebound), →1 = bouncy (less
-      // redirect, the fork springs back). Front tends to feel too dead at 0.
-      const eF    = P.bottomBounceF;
-      const p_imp = P.m_unsprung_f * (-vForkSlide_f) * cosφ * (1 - eF);  // momentum redirected (less when bouncy)
-      const pf    = bottomOutFactor(P.k_tire_f);               // soft front tire absorbs more
-      pitchRate -= BOTTOM_ROT   * pf * P.pitchMoment * p_imp * A_FRONT_M / I_YY;  // nose up (negative pitch)
-      vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                // small upward heave
-      vForkSlide_f = -eF * vForkSlide_f;                          // rebound fraction (0 = dead)
+      // Bounce slider: 0 = dead (redirect all momentum into pitch, no rebound), higher =
+      // the chassis pops up off the stop. Rebounding the fork itself just slams it into
+      // the top-out and dies internally — so the bounce launches the *chassis* upward
+      // (that's what the rider feels). Scales up to 10× (super-elastic) for a hard pop.
+      const eF     = P.bottomBounceF;   // 0 = dead … up to 10× (super-elastic) rebound
+      const pf     = bottomOutFactor(P.k_tire_f);              // soft front tire absorbs more
+      const p_raw  = P.m_unsprung_f * (-vForkSlide_f) * cosφ;  // inbound impact momentum (>0)
+      const p_dead = p_raw * Math.max(0, 1 - eF);              // dead-block redirect (fades out by 1×)
+      pitchRate -= BOTTOM_ROT    * pf * P.pitchMoment * p_dead * A_FRONT_M / I_YY;  // nose up (negative pitch)
+      vChassis  -= BOTTOM_HEAVE  * pf * p_dead / Ms;            // small dead-block heave
+      vChassis  -= eF * BOTTOM_BOUNCE * pf * p_raw / Ms;        // bounce: launch chassis up
+      vForkSlide_f = 0;                                         // fork stops at the stop (no internal rebound)
     }
   }
 
@@ -1821,12 +1826,14 @@ function _physicsStep(dt_s) {
     // the tail up instead of bouncing the whole bike vertically forever.
     swingAngle = PHI_FULL_BUMP;
     if (swingRate < 0) {
-      const eR    = P.bottomBounceR;   // 0 = dead, →1 = bouncy
-      const p_imp = P.m_unsprung_r * (-(wheelLeverY * swingRate)) * (1 - eR);  // momentum redirected
-      const pf    = bottomOutFactor(P.k_tire_r);                     // soft rear tire absorbs more
-      pitchRate += BOTTOM_ROT   * pf * P.pitchMoment * p_imp * B_REAR_M / I_YY;       // nose down (positive pitch)
-      vChassis  -= BOTTOM_HEAVE * pf * p_imp / Ms;                    // small upward heave
-      swingRate = -eR * swingRate;                                   // rebound fraction (0 = dead)
+      const eR     = P.bottomBounceR;   // 0 = dead … up to 10× (super-elastic) rebound
+      const pf     = bottomOutFactor(P.k_tire_r);                    // soft rear tire absorbs more
+      const p_raw  = P.m_unsprung_r * (-(wheelLeverY * swingRate));  // inbound impact momentum (>0)
+      const p_dead = p_raw * Math.max(0, 1 - eR);                    // dead-block redirect (fades out by 1×)
+      pitchRate += BOTTOM_ROT    * pf * P.pitchMoment * p_dead * B_REAR_M / I_YY;     // nose down (positive pitch)
+      vChassis  -= BOTTOM_HEAVE  * pf * p_dead / Ms;                 // small dead-block heave
+      vChassis  -= eR * BOTTOM_BOUNCE * pf * p_raw / Ms;             // bounce: launch chassis up
+      swingRate = 0;                                                 // swingarm stops at the stop
     }
   }
 
