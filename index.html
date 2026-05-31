@@ -1637,7 +1637,13 @@ function _physicsStep(dt_s) {
   const pivotFrac    = Math.sin(thetaSwWorld) ** 2 * pivotGate;   // 0 normal → toward 1 at balance
   const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac;
 
-  const a_chassis   = g + (fsusp_f_y + fsusp_r_eff) / Ms;
+  // Same rigid coupling on the FRONT for a stoppie: balanced nose-down on the front wheel, a
+  // bump should pop the bike rather than be soaked by the fork. Gated on nose-DOWN pitch, so
+  // it engages in the stoppie regime and is ~0 in normal riding/wheelies (front airborne).
+  const frontPivotFrac = Math.max(0, Math.min(1, (pitchAngle - 0.26) / (0.70 - 0.26)));
+  const fsusp_f_y_eff  = fsusp_f_y * (1 - frontPivotFrac) + f_tire_F * frontPivotFrac;
+
+  const a_chassis   = g + (fsusp_f_y_eff + fsusp_r_eff) / Ms;
 
   // ── Pitch EOM ─────────────────────────────────────────────────────────────
   // Suspension pitch moment: each wheel's vertical force × its moment arm from CoM.
@@ -1645,7 +1651,7 @@ function _physicsStep(dt_s) {
   // Positive tau_susp = nose-up (front pushes chassis up relative to rear). Each force's
   // contribution is passed through digMoment() so large wheel forces apply a digressively
   // smaller moment (softer pitch jolt) while small forces stay near-linear.
-  const tau_susp  = A_FRONT_M * digMoment(fsusp_f_y) - B_REAR_M * digMoment(fsusp_r_eff);
+  const tau_susp  = A_FRONT_M * digMoment(fsusp_f_y_eff) - B_REAR_M * digMoment(fsusp_r_eff);
   // Residual pitch damping. With load transfer now emergent (tau_long from real
   // contact forces) and the suspension dampers contributing through tau_susp, the
   // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
