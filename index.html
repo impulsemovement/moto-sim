@@ -1672,11 +1672,13 @@ function _physicsStep(dt_s) {
   // chassis heave (the X component is part of the whole-vehicle surge DOF above).
   const fsusp_f_y  = fsusp_f * cosφ;            // Y component of fork force on chassis
 
-  // Longitudinal LOAD TRANSFER (now emergent, not a fudge): the tractive/brake
-  // contact forces act ≈H_COM below the CoM, so they produce a real pitch moment.
-  //   forward force (accel) → nose lifts (squat, negative pitch torque)
-  //   rearward force (brake) → nose dives (dive, positive pitch torque)
-  const tau_long   = -F_contact_long * H_COM * P.drivePitch;  // pitch moment from contact-patch long. force (slider-scaled)
+  // Longitudinal LOAD TRANSFER: weight shifts because the whole bike ACCELERATES, so the
+  // moment is M·a·H (net longitudinal accel × CoM height), NOT the raw drive force. This
+  // matters at terminal speed: at redline the engine still makes torque (F_drive ≠ 0) but
+  // drag cancels it (a ≈ 0), so a force-based moment would wrongly hold the nose up forever.
+  // Using net accel, steady speed → no pitch; only real accel lifts and real decel dives.
+  //   forward accel → nose lifts (negative pitch torque); braking/decel → nose dives.
+  const tau_long   = -M_total * a_long * H_COM * P.drivePitch;
 
   // Rigid "through-the-pivot" path at the wheelie balance point. As the swingarm approaches
   // vertical (world) its lever cos(θ)→0: the wheel is geometrically locked to the chassis
