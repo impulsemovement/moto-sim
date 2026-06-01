@@ -420,6 +420,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
 let PM           = 200;          // pixels per meter — updated by resizeMain()
 let PM_base      = 200;          // base PM before user zoom
 let userZoom     = 1.0;          // zoom multiplier from +/- buttons
+let groundBaseY  = 291;          // screen Y of the ground line (set in resizeMain)
 let camPanX_m    = 0;            // camera pan offset (meters, +ve = look right/ahead)
 const g          = 9.81;         // m/s²
 const RAKE_RAD   = 24.83 * Math.PI / 180;
@@ -625,7 +626,8 @@ function resizeMain() {
   const mobile  = window.innerWidth < 641;
   const pad     = mobile ? 4 : 20;
   canvas.width  = window.innerWidth - pad;
-  canvas.height = Math.round(mobile ? 260 : 416);
+  canvas.height = Math.round(mobile ? 325 : 520);   // +25% headroom (more sky for jumps/wheelies)
+  groundBaseY   = canvas.height - (mobile ? 78 : 125); // ground fixed near bottom; extra height = sky
   PM_base       = mobile ? 100 : 200;
   PM            = PM_base * userZoom;
 }
@@ -2055,8 +2057,9 @@ let camY_m = 0;   // smoothed camera Y reference — follows terrain, not the bi
 
 function screenY(y_m) {
   // Camera tracks X only; Y is fixed to camY_m so the bike's heave is visible on screen.
-  // Ground reference sits at 70% down the canvas; bike floats above it.
-  return (y_m - camY_m) * PM + canvas.height * 0.70;
+  // Ground reference sits a fixed distance from the BOTTOM (groundBaseY), so growing the
+  // canvas height adds sky on top (extra headroom) while the bike stays put near the bottom.
+  return (y_m - camY_m) * PM + groundBaseY;
 }
 function screenLen(d_m) { return d_m * PM; }
 
@@ -2488,6 +2491,14 @@ function draw(ts) {
   }
   inputBar(10, brakeInput, '#ef4444', 'B');   // far-left: brake (red)
   inputBar(26, gasInput,   '#22c55e', 'G');   // next in:  gas   (green)
+  // Engine RPM bar — fills with revs; color blends clutch-blue (idle) → redline-red, matching
+  // the gear indicator. Above redline (limiter) it pins full/red.
+  {
+    const rpmFrac = Math.max(0, Math.min(1, engineRPM / RPM_REDLINE));
+    const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+    const rpmColor = `rgb(${lerp(59,225,rpmFrac)},${lerp(130,29,rpmFrac)},${lerp(246,72,rpmFrac)})`;
+    inputBar(42, rpmFrac, rpmColor, 'RPM');
+  }
 
   drawForceGraph();
   drawVelocityGraph();
