@@ -352,6 +352,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <input type="range" id="mass" min="40" max="140" value="75">
     <label>Bump pitch effect <span id="lpitchmom">70%</span></label>
     <input type="range" id="pitchmom" min="0" max="100" value="70">
+    <label>Throttle/brake pitch <span id="ldrivepitch">100%</span></label>
+    <input type="range" id="drivepitch" min="0" max="150" value="100">
     <label>F bottom-out bounce <span id="lbounceF">35%</span></label>
     <input type="range" id="bounceF" min="0" max="100" value="35">
     <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
@@ -685,6 +687,7 @@ let P = {
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
   timeScale:1.0, speed:30,
   pitchMoment:0.70,  // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
+  drivePitch:1.0,    // scale on the throttle/brake load-transfer pitch moment (wheelie/dive tendency)
   bottomBounceF:3.5, bottomBounceR:2.0   // bottom-out restitution (0 = dead … up to 10× super-elastic)
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
@@ -764,6 +767,7 @@ bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + 
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
 bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; });
+bind('drivepitch','ldrivepitch', v => { P.drivePitch = v/100; return v + '%'; });
 bind('bounceF',   'lbounceF',   v => { P.bottomBounceF = v/10; return v + '%'; });   // 100% = 10× restitution
 bind('bounceR',   'lbounceR',   v => { P.bottomBounceR = v/10; return v + '%'; });
 bind('speed',     'lspeed',     v => { P.speed = v; return v+' km/h'; });   // launch/target speed (seeds vChassisX on reset)
@@ -1633,7 +1637,7 @@ function _physicsStep(dt_s) {
   // contact forces act ≈H_COM below the CoM, so they produce a real pitch moment.
   //   forward force (accel) → nose lifts (squat, negative pitch torque)
   //   rearward force (brake) → nose dives (dive, positive pitch torque)
-  const tau_long   = -F_contact_long * H_COM;   // pitch moment from contact-patch long. force (N·m)
+  const tau_long   = -F_contact_long * H_COM * P.drivePitch;  // pitch moment from contact-patch long. force (slider-scaled)
 
   // Rigid "through-the-pivot" path at the wheelie balance point. As the swingarm approaches
   // vertical (world) its lever cos(θ)→0: the wheel is geometrically locked to the chassis
@@ -2758,7 +2762,7 @@ const SETUP_SLIDERS = [
   'k_f','air_f','pre_f','damp_f','ktire_f','munsp_f',
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
-  'terrain','amp','freq','rough','duty','pitchmom','bounceF','bounceR'
+  'terrain','amp','freq','rough','duty','pitchmom','drivepitch','bounceF','bounceR'
 ];
 
 function loadSetups() {
