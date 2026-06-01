@@ -354,6 +354,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <input type="range" id="pitchmom" min="0" max="100" value="70">
     <label>Throttle/brake pitch <span id="ldrivepitch">100%</span></label>
     <input type="range" id="drivepitch" min="0" max="150" value="100">
+    <label>Tire grip (surface) <span id="ltiregrip">100%</span></label>
+    <input type="range" id="tiregrip" min="10" max="120" value="100">
     <label>F bottom-out bounce <span id="lbounceF">35%</span></label>
     <input type="range" id="bounceF" min="0" max="100" value="35">
     <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
@@ -639,6 +641,9 @@ function psiToKtire(psi) {
   return Math.max(60000, KTIRE_MIN + (psi - PSI_MIN) / (PSI_MAX - PSI_MIN) * (KTIRE_MAX - KTIRE_MIN));
 }
 const KTIRE_NOMINAL = psiToKtire(36);   // 300 000 N/m reference (36 psi)
+// Grip vs. tire pressure: a lower-pressure tire deforms into a bigger contact patch and
+// grips more (to a point); a hard tire grips less. Gentle, clamped, ref = 36 psi.
+function gripPressure(psi) { return Math.max(0.8, Math.min(1.25, 1 + (36 - psi) * 0.006)); }
 // Per-wheel bottom-out transmission factor: a soft (low-psi) tire deforms and ABSORBS
 // the bottoming impact (heavily damped, small chassis kick); a hard (high-psi) tire is
 // rigid and transmits more of it. 1.0 at the nominal 36 psi.
@@ -680,14 +685,15 @@ function tireForce(pen, v, k_tire, m_unsprung, dt, travel) {
 
 let P = {
   k_f:18, pre_f:0, damp_f:0.5, air_f:0.15,
-  k_tire_f: psiToKtire(36), m_unsprung_f: 13,   // front tire / wheel
+  k_tire_f: psiToKtire(36), m_unsprung_f: 13, psi_f: 36,   // front tire / wheel (psi kept for grip)
   k_r:18, pre_r:0, damp_r:0.5,
-  k_tire_r: psiToKtire(36), m_unsprung_r: 17,   // rear  tire / wheel
+  k_tire_r: psiToKtire(36), m_unsprung_r: 17, psi_r: 36,   // rear  tire / wheel
   mass:75,
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,
   timeScale:1.0, speed:30,
   pitchMoment:0.70,  // 0–1 scale on bump-induced pitch (suspension-force moment + bottom-out kick)
   drivePitch:1.0,    // scale on the throttle/brake load-transfer pitch moment (wheelie/dive tendency)
+  tireGrip:1.0,      // 0–1+ surface grip (1 = asphalt, lower = dirt/loose); friction-limits drive/brake
   bottomBounceF:3.5, bottomBounceR:2.0   // bottom-out restitution (0 = dead … up to 10× super-elastic)
 };
 const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
@@ -736,6 +742,9 @@ const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)
 const GRIP_LONG_K  = 2500;  // N per m/s of contact longitudinal slip (capped by friction)
 const GRIP_MU      = 0.5;   // longitudinal grip coefficient (× tire normal force)
+const MU_BASE      = 1.3;   // peak longitudinal grip coeff at 100% grip slider / 36 psi (asphalt)
+const GRIP_CURVE   = 1.6;   // expands the usable dirt range across the slider (load transfer
+                            // otherwise keeps the μ·N cap above demand until grip is very low)
 const ANTI_SQUAT_SCALE   = 0.4;  // how much the rear longitudinal (drive/brake) force torques the
                                  // swingarm via geometry (anti-squat / clutch-up suspension load)
 const RPM2RADS = 2 * Math.PI / 60;   // RPM → rad/s
@@ -760,14 +769,15 @@ bind('k_r',       'lk_r',       v => { P.k_r    = v;       return v + ' N/mm'; }
 bind('pre_r',     'lpre_r',     v => { P.pre_r   = v/1000;  return v + ' mm'; });
 bind('damp_r',    'ldamp_r',    v => { P.damp_r  = v/100;   return (v/100).toFixed(2)+'×'; });
 
-bind('ktire_f',   'lktire_f',   v => { P.k_tire_f = psiToKtire(+v); return v + ' psi'; });
+bind('ktire_f',   'lktire_f',   v => { P.k_tire_f = psiToKtire(+v); P.psi_f = +v; return v + ' psi'; });
 bind('munsp_f',   'lmunsp_f',   v => { P.m_unsprung_f = +v;          return v + ' kg'; });
-bind('ktire_r',   'lktire_r',   v => { P.k_tire_r = psiToKtire(+v); return v + ' psi'; });
+bind('ktire_r',   'lktire_r',   v => { P.k_tire_r = psiToKtire(+v); P.psi_r = +v; return v + ' psi'; });
 bind('munsp_r',   'lmunsp_r',   v => { P.m_unsprung_r = +v;          return v + ' kg'; });
 
 bind('mass',      'lmass',      v => { P.mass    = v;       return v + ' kg'; });
 bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; });
 bind('drivepitch','ldrivepitch', v => { P.drivePitch = v/100; return v + '%'; });
+bind('tiregrip',  'ltiregrip',  v => { P.tireGrip = v/100; return v + '%'; });
 bind('bounceF',   'lbounceF',   v => { P.bottomBounceF = v/10; return v + '%'; });   // 100% = 10× restitution
 bind('bounceR',   'lbounceR',   v => { P.bottomBounceR = v/10; return v + '%'; });
 bind('speed',     'lspeed',     v => { P.speed = v; return v+' km/h'; });   // launch/target speed (seeds vChassisX on reset)
@@ -1396,9 +1406,21 @@ function _physicsStep(dt_s) {
   const revFrac    = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)); // 0 idle → 1 redline
   const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage;
   const F_engbrake = (vChassisX > 0.1) ? engBrakeT * ratio / WHEEL_R_R : 0;
-  const F_drive_term = onGroundRear ? (F_throttle + F_clutch - F_engbrake) : 0;
+  // ── Tire friction limit (grip slider × pressure × normal load) ──────────────
+  // Each tire can only transmit so much longitudinal force before it slides: μ·N, where
+  // N is the (previous-frame) tire normal load and μ scales with the surface (grip slider)
+  // and tire pressure. Low grip = dirt: weak drive (rear spins), long braking, no big wheelie.
+  const gripCurve = Math.pow(Math.max(0, P.tireGrip), GRIP_CURVE);
+  const muRear   = MU_BASE * gripCurve * gripPressure(P.psi_r);
+  const muFront  = MU_BASE * gripCurve * gripPressure(P.psi_f);
+  const capRear  = muRear  * Math.abs(f_tire_R);   // max rear  longitudinal force (N)
+  const capFront = muFront * Math.abs(f_tire_F);   // max front longitudinal force (N)
+  const F_drive_raw  = onGroundRear ? (F_throttle + F_clutch - F_engbrake) : 0;
+  const F_drive_term = Math.max(-capRear, Math.min(capRear, F_drive_raw));   // rear traction-limited
   // Braking opposes forward motion only (no reversing once stopped); needs a wheel down.
-  const F_brake_term = anyGround ? -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0) : 0;
+  const F_brake_raw  = anyGround ? -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0) : 0;
+  const brakeCap     = capFront + capRear;          // both wheels share the braking grip budget
+  const F_brake_term = Math.max(-brakeCap, Math.min(brakeCap, F_brake_raw));
   // No cruise/auto-speed-hold: the bike is ridden manually with throttle, clutch, gears and
   // engine braking. (A cruise assist would either fight engine braking or — when gated to
   // clutch-in — wrongly accelerate the bike with the clutch pulled.) The speed slider sets
@@ -1705,8 +1727,8 @@ function _physicsStep(dt_s) {
       const contactSlip = -pitchRate * H_COM;     // horizontal velocity of a contact from pitch
       const want = -GRIP_LONG_K * contactSlip * gripGate;
       let F_grip = 0;
-      if (onGroundFront) { const cap = GRIP_MU * Math.abs(f_tire_F); F_grip += Math.max(-cap, Math.min(cap, want)); }
-      if (onGroundRear)  { const cap = GRIP_MU * Math.abs(f_tire_R); F_grip += Math.max(-cap, Math.min(cap, want)); }
+      if (onGroundFront) { const cap = GRIP_MU * P.tireGrip * Math.abs(f_tire_F); F_grip += Math.max(-cap, Math.min(cap, want)); }
+      if (onGroundRear)  { const cap = GRIP_MU * P.tireGrip * Math.abs(f_tire_R); F_grip += Math.max(-cap, Math.min(cap, want)); }
       vChassisX += (F_grip / M_total) * dt_s;       // grip rolls the bike (no reaction pitch moment —
       if (vChassisX < -1) vChassisX = -1;           // it would hold the bike pitched up). Small reverse roll.
     }
@@ -2762,7 +2784,7 @@ const SETUP_SLIDERS = [
   'k_f','air_f','pre_f','damp_f','ktire_f','munsp_f',
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
-  'terrain','amp','freq','rough','duty','pitchmom','drivepitch','bounceF','bounceR'
+  'terrain','amp','freq','rough','duty','pitchmom','drivepitch','tiregrip','bounceF','bounceR'
 ];
 
 function loadSetups() {
