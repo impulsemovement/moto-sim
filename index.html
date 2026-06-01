@@ -358,6 +358,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
     <input type="range" id="tiregrip" min="10" max="120" value="100">
     <label>Terrain bite (slope) <span id="lterrainbite">100%</span></label>
     <input type="range" id="terrainbite" min="0" max="150" value="100">
+    <label>Terrain pitch (slope) <span id="lterrainpitch">50%</span></label>
+    <input type="range" id="terrainpitch" min="0" max="150" value="50">
     <label>F bottom-out bounce <span id="lbounceF">35%</span></label>
     <input type="range" id="bounceF" min="0" max="100" value="35">
     <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
@@ -718,7 +720,9 @@ let BRAKE_DECEL = 7;    // m/s²  → braking force target (× total mass) (slid
 const RHO_CDA   = 0.30;  // ½·ρ·Cd·A lumped aero drag (N per (m/s)²)
 const C_RR      = 0.015; // rolling-resistance coefficient
 const SLOPE_CLAMP = 1.5; // max |wheel-path slope| used for the terrain-normal force (~56°)
-let TERRAIN_BITE = 1.0;  // slider-scaled gain on the terrain-normal horizontal contact force
+let TERRAIN_BITE  = 1.0; // slider gain: terrain-normal horizontal force → SPEED (scrub/launch)
+let TERRAIN_PITCH = 0.5; // slider gain: terrain-normal horizontal force → PITCH (nose kick)
+const TERRAIN_PITCH_CAP = 450; // N·m  cap on the terrain pitch moment (anti-resonance on bumps)
 const DRIVE_V0  = 12;    // m/s  below this the drive force is flat; above it is power-limited (∝1/v)
 const K_CRUISE  = 400;   // N per (m/s) — cruise controller gain toward the speed-slider target
 
@@ -800,6 +804,7 @@ bind('pitchmom',  'lpitchmom',  v => { P.pitchMoment = v/100; return v + '%'; })
 bind('drivepitch','ldrivepitch', v => { P.drivePitch = v/100; return v + '%'; });
 bind('tiregrip',  'ltiregrip',  v => { P.tireGrip = v/100; return v + '%'; });
 bind('terrainbite','lterrainbite', v => { TERRAIN_BITE = v/100; return v + '%'; });
+bind('terrainpitch','lterrainpitch', v => { TERRAIN_PITCH = v/100; return v + '%'; });
 bind('bounceF',   'lbounceF',   v => { P.bottomBounceF = v/10; return v + '%'; });   // 100% = 10× restitution
 bind('bounceR',   'lbounceR',   v => { P.bottomBounceR = v/10; return v + '%'; });
 bind('speed',     'lspeed',     v => { P.speed = v; return v+' km/h'; });   // launch/target speed (seeds vChassisX on reset)
@@ -1464,7 +1469,8 @@ function _physicsStep(dt_s) {
   // slope (calcNaturalWY_m is already rounded by the wheel radius) so sharp edges don't spike;
   // the slope is clamped. Prev-frame tire loads/positions (1-step lag, like the friction caps).
   // F_x = −F_y·slope with F_y = f_tire (negative = up), slope = d(pathY)/dx (Y-down: +=downhill
-  // ahead). Affects SPEED only for now — kept out of the load-transfer pitch moment (a_long).
+  // ahead). This RAW force feeds two independent sliders below: TERRAIN_BITE → speed (here) and
+  // TERRAIN_PITCH → pitch moment (in the pitch EOM), so the contact below the CoM kicks the nose.
   let F_x_terrain = 0;
   {
     // Wheel-scale finite difference (≈0.8·wheel radius): the tire bridges texture finer than
@@ -1477,15 +1483,14 @@ function _physicsStep(dt_s) {
     };
     if (onGroundFront) F_x_terrain += -f_tire_F * slopeAt(frontWheelX_m, WHEEL_R_F);
     if (onGroundRear)  F_x_terrain += -f_tire_R * slopeAt(rearWheelX_m,  WHEEL_R_R);
-    F_x_terrain *= TERRAIN_BITE;
   }
 
   // Tractive/brake forces act at the contact patches (≈H_COM below CoM) → they
   // also produce the dive/squat pitch moment (computed in the pitch EOM below).
   const F_contact_long = F_drive_term + F_brake_term + F_cruise;
   const a_x = (F_contact_long + F_drag + F_rr) / M_total;
-  a_long = a_x;                       // load-transfer pitch source (terrain force excluded for now)
-  vChassisX += (a_x + F_x_terrain / M_total) * dt_s;
+  a_long = a_x;                       // load-transfer pitch source (terrain pitch handled separately)
+  vChassisX += (a_x + F_x_terrain * TERRAIN_BITE / M_total) * dt_s;
   if (vChassisX < -1) vChassisX = -1;   // allow a small backward roll (e.g. rear falling from a stoppie)
 
   // While the rider is actively on gas/brake, the cruise TARGET follows the actual
@@ -1793,9 +1798,18 @@ function _physicsStep(dt_s) {
   const wheelieAmt = Math.max(0, Math.min(1, (-pitchAngle - 0.15) / 0.35));   // 0 at ~8.5° up → 1 at ~28° up
   const tau_rearbrake = (onGroundRear ? 1 : 0) * REAR_BRAKE_LEVER * M_total * BRAKE_DECEL * brakeInput * wheelieAmt;
 
+  // Terrain-normal PITCH (pass 2): the horizontal terrain force acts at the contact ≈H_COM
+  // below the CoM, so it pitches the bike — front into a bump face kicks the nose DOWN (endo
+  // over the bars), the back of a bump/ramp pitches it UP. Same lever form as tau_long
+  // (height × horizontal force); independent slider so it's tunable apart from the speed scrub.
+  // CLAMPED: f_tire spikes on impact would otherwise let it pump the pitch into resonance over
+  // repeated bumps (30°+ swings). The cap keeps single kicks bounded so the slider stays sane.
+  const tau_terrain = Math.max(-TERRAIN_PITCH_CAP, Math.min(TERRAIN_PITCH_CAP,
+                               -F_x_terrain * TERRAIN_PITCH * H_COM));
+
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake - C_PITCH_DRAG * pitchRate) / I_YY;
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
@@ -2836,7 +2850,7 @@ const SETUP_SLIDERS = [
   'k_f','air_f','pre_f','damp_f','ktire_f','munsp_f',
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
-  'terrain','amp','freq','rough','duty','pitchmom','drivepitch','tiregrip','terrainbite','bounceF','bounceR'
+  'terrain','amp','freq','rough','duty','pitchmom','drivepitch','tiregrip','terrainbite','terrainpitch','bounceF','bounceR'
 ];
 
 function loadSetups() {
