@@ -731,8 +731,25 @@ const GEAR_REF     = 2;                                    // ratio that ≈ mat
 const RPM_IDLE     = 1500;
 const RPM_REDLINE  = 10000;
 const RPM_LIMIT    = 10800;   // hard rev limiter
-const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider
+const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
 const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side)
+// Normalized MT-07 (CP2 689 cc) crank-torque curve vs RPM. 1.0 = peak (~68 N·m near 6 000).
+// Modeled on published dyno sheets: strong low-end, broad flat plateau 4 000–7 500, gentle
+// taper to redline, dropping off hard into the limiter. F_throttle = PEAK·this(rpm).
+const MT07_TORQUE = [ // [rpm, factor]
+  [1500,0.74],[2500,0.82],[3500,0.90],[4500,0.96],[5500,0.99],[6000,1.00],
+  [6500,1.00],[7000,0.98],[7500,0.95],[8000,0.92],[9000,0.85],[10000,0.73],[10800,0.55],
+];
+function engTorqueFac(rpm) {
+  const T = MT07_TORQUE, n = T.length;
+  if (rpm <= T[0][0])   return T[0][1];
+  if (rpm >= T[n-1][0]) return T[n-1][1];
+  for (let i = 1; i < n; i++) if (rpm <= T[i][0]) {
+    const a = T[i-1], b = T[i];
+    return a[1] + (b[1] - a[1]) * (rpm - a[0]) / (b[0] - a[0]);
+  }
+  return 1;
+}
 const ENGINE_REV_RATE   = 12000; // RPM/s free-rev spin-up at full gas (clutch in)
 const ENGINE_DECAY_RATE = 8000;  // RPM/s decay toward idle off-gas (clutch in)
 const CLUTCH_PULL_TIME   = 0.06; // s  to disengage (pull in)
@@ -1385,9 +1402,9 @@ function _physicsStep(dt_s) {
     engineRPM += (gasInput * ENGINE_REV_RATE - (1 - gasInput) * ENGINE_DECAY_RATE) * dt_s;
     engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
   }
-  // Engine crank torque (falls off toward redline) → wheel torque via the gear.
+  // Engine crank torque follows the MT-07 dyno curve → wheel torque via the gear.
   const T_eng_peak  = GAS_ACCEL * ENGINE_K;
-  const torqueFac   = Math.max(0, Math.min(1, 1 - (engineRPM / RPM_REDLINE - 0.9) / 0.1));
+  const torqueFac   = engTorqueFac(engineRPM);
   const F_throttle  = T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage;
   // Clutch slip: engine spinning faster than the wheel transmits a big torque while the
   // clutch is engaging — this is the clutch-up wheelie. It also sheds engine RPM.
