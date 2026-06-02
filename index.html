@@ -1389,7 +1389,11 @@ function _physicsStep(dt_s) {
     // curve over the ramp time.) This makes the brake progressive instead of grabby.
     const rampUp   = (x, T) => Math.min(1, x + (2.5 / T) * Math.pow(1 - x, 0.6) * dt_s);
     const rampDown = (x, T) => Math.max(0, x - (2.5 / T) * Math.pow(x,     0.6) * dt_s);
-    gasInput   = gasPressed   ? rampUp(gasInput,   GAS_RAMP_UP)   : rampDown(gasInput,   GAS_RAMP_DOWN);
+    // Brake overrides throttle: you can't drive and brake at once. While braking, the gas is
+    // released and decays fast (instead of the slow ride-feel ramp) so the throttle stops
+    // fighting the brake — otherwise the lingering ramp keeps spinning the wheel under braking.
+    gasInput   = (gasPressed && !brakePressed) ? rampUp(gasInput, GAS_RAMP_UP)
+                                               : rampDown(gasInput, brakePressed ? GAS_RAMP_DOWN * 0.3 : GAS_RAMP_DOWN);
     brakeInput = brakePressed ? rampUp(brakeInput, BRAKE_RAMP_UP) : rampDown(brakeInput, BRAKE_RAMP_DOWN);
   }
 
@@ -1521,23 +1525,36 @@ function _physicsStep(dt_s) {
     const og_f = omega_f, og_r = omega_r;
     const gripK = Math.min(1, GRIP_LAMBDA * dt_s);
     // Rear wheel
+    const I_eff_r = I_WHEEL_R + I_ENGINE * ratio * ratio * SPIN_I_FRAC;  // wheel + engine reflected
+    const T_brake_r = BRAKE_TORQUE_R * brakeInput * Math.tanh(omega_r / 3);  // ≥0, opposes spin
     if (onGroundRear) {
       const omega_roll = vChassisX / WHEEL_R_R;
       // Traction is force-limited (capRear = μ·|tire normal load|). If the engine demands more
-      // than the tyre can hold, the SURPLUS torque spins the wheel faster than rolling — the
-      // tyre breaks loose, the wheel slides and the revs climb. Clutch is locked here, so the
-      // wheel and engine co-rotate: spin-up is resisted by their combined (reflected) inertia.
+      // than the tyre can hold, the SURPLUS torque spins the wheel faster than rolling — it
+      // breaks loose and the revs climb. When NOT over-driven, kinetic friction PLUS the brake
+      // and engine braking pull the spinning wheel back down to rolling (so it doesn't spin on
+      // forever and the brake actually slows it). The clutch is locked, so the wheel + engine
+      // co-rotate (combined reflected inertia).
       const surplus = F_drive_raw - capRear;        // N at the contact; >0 = tyre can't hold
-      if (surplus > 0 || omega_r > omega_roll + 1e-3) {
-        const I_eff = I_WHEEL_R + I_ENGINE * ratio * ratio * SPIN_I_FRAC;   // wheel + engine reflected
-        omega_r += (surplus * WHEEL_R_R / I_eff) * dt_s;      // wheelspin up (or wind back down)
-        if (omega_r < omega_roll) omega_r = omega_roll;       // kinetic friction caught up → regrip
+      if (surplus > 0) {
+        omega_r += (surplus * WHEEL_R_R - T_brake_r) / I_eff_r * dt_s;  // wheelspin up (brake fights it)
+        if (omega_r < omega_roll) omega_r = omega_roll;
+      } else if (omega_r > omega_roll + 1e-3) {
+        // Spinning but no longer over-driven (off-throttle / braking): kinetic friction + brake
+        // pull it back toward rolling. Relax at a prompt rate (so it doesn't spin on forever),
+        // much faster while braking — so the wheel regrips instead of spinning as the bike stops.
+        const regrip = (6 + 30 * brakeInput) * dt_s;   // 1/s; brake regrips hard
+        omega_r += (omega_roll - omega_r) * Math.min(1, regrip);
       } else {
         omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
       }
     } else {
+      // Airborne: the wheel spins freely on its own (light) inertia. Engine drives it on the
+      // gas; the brake (and engine braking when off-throttle) slow it — so a brake tap in the
+      // air actually stops the wheel instead of it coasting on.
+      const engBrakeAir = ENGINE_BRAKE_K * 8 * (1 - gasInput) * clutchEngage * Math.tanh(omega_r / 3);
       const tau = ENG_TORQUE_R * gasInput * clutchEngage * (omega_r < OMEGA_MAX ? 1 : 0)
-                - BRAKE_TORQUE_R * brakeInput * Math.tanh(omega_r / 3);
+                - T_brake_r - engBrakeAir;
       omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
     }
     // Front wheel (no drive)
