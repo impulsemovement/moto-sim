@@ -724,6 +724,9 @@ const C_RR      = 0.015; // rolling-resistance coefficient
 const SLOPE_CLAMP = 1.5; // max |wheel-path slope| used for the terrain-normal force (~56°)
 let TERRAIN_BITE  = 1.0; // slider gain: terrain-normal horizontal force → SPEED (scrub/launch)
 let TERRAIN_PITCH = 0.5; // slider gain: terrain-normal horizontal force → PITCH (nose kick)
+const SPIN_I_FRAC = 0.1; // fraction of engine-reflected inertia resisting wheelspin. The rigid
+                         // (1.0) value makes the drivetrain too "heavy" to break loose in low
+                         // gears; 0.1 (clutch compliance / slip) gives visible, graded wheelspin.
 const TERRAIN_PITCH_CAP = 450; // N·m  cap on the terrain pitch moment (anti-resonance on bumps)
 const DRIVE_V0  = 12;    // m/s  below this the drive force is flat; above it is power-limited (∝1/v)
 const K_CRUISE  = 400;   // N per (m/s) — cruise controller gain toward the speed-slider target
@@ -1519,7 +1522,19 @@ function _physicsStep(dt_s) {
     const gripK = Math.min(1, GRIP_LAMBDA * dt_s);
     // Rear wheel
     if (onGroundRear) {
-      omega_r += (vChassisX / WHEEL_R_R - omega_r) * gripK;
+      const omega_roll = vChassisX / WHEEL_R_R;
+      // Traction is force-limited (capRear = μ·|tire normal load|). If the engine demands more
+      // than the tyre can hold, the SURPLUS torque spins the wheel faster than rolling — the
+      // tyre breaks loose, the wheel slides and the revs climb. Clutch is locked here, so the
+      // wheel and engine co-rotate: spin-up is resisted by their combined (reflected) inertia.
+      const surplus = F_drive_raw - capRear;        // N at the contact; >0 = tyre can't hold
+      if (surplus > 0 || omega_r > omega_roll + 1e-3) {
+        const I_eff = I_WHEEL_R + I_ENGINE * ratio * ratio * SPIN_I_FRAC;   // wheel + engine reflected
+        omega_r += (surplus * WHEEL_R_R / I_eff) * dt_s;      // wheelspin up (or wind back down)
+        if (omega_r < omega_roll) omega_r = omega_roll;       // kinetic friction caught up → regrip
+      } else {
+        omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
+      }
     } else {
       const tau = ENG_TORQUE_R * gasInput * clutchEngage * (omega_r < OMEGA_MAX ? 1 : 0)
                 - BRAKE_TORQUE_R * brakeInput * Math.tanh(omega_r / 3);
@@ -3308,7 +3323,9 @@ function drawFarMountains(W, H, horizY, scrollOff) {
 
 // ── Main draw function ──────────────────────────────────────
 function drawParallaxBackground(W, H) {
-  const horizY = H * 0.70;
+  // Align the decorative horizon to the real ground line (screenY of world-Y 0 = groundBaseY),
+  // so sky, mesas and plants sit ON the road instead of floating above it after the canvas grew.
+  const horizY = groundBaseY;
   const comX = COM_SX();
 
   // Zoom scale factors for sizing scene elements
