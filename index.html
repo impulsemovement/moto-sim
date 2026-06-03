@@ -1611,19 +1611,19 @@ function _physicsStep(dt_s) {
 
   // ── Front fork spring & damper (along fork axis) ──────────────────────────
   // forkSlide_f < 0 → compressed → spring pushes wheel out (extends fork)
-  let df   = forkSlide_f - P.pre_f;             // effective spring displacement
-  let rv_f = vForkSlide_f;                       // relative velocity along fork axis
-
-  if (df > TRAVEL_EXT)  { df = TRAVEL_EXT;  if (rv_f > 0) rv_f = 0; }
-  if (df < -TRAVEL_MAX) { df = -TRAVEL_MAX; if (rv_f < 0) rv_f = 0; }
+  const df   = forkSlide_f - P.pre_f;            // spring displacement; preload offsets the curve
+  const rv_f = vForkSlide_f;                      // relative velocity along fork axis
+  // NOTE: mechanical travel is limited on the PHYSICAL forkSlide_f DOF (see the fork-limit
+  // block below), NOT on df. So preload only shifts ride height / sag and the force curve — it
+  // does NOT change how far the fork can compress or extend.
 
   // Linear coil rate.
   let f_spring_lin = K_F * df;                   // neg = compressed → pushes wheel out
   // Air-spring progression: deeper compression ramps up the effective rate (like an
   // air gap / progressive spring). 0% = pure linear; 100% = strong rising rate near bottom.
-  // Modeled as an added rising force that grows with compression cubed.
-  if (df < 0 && P.air_f > 0) {
-    const xn = -df / TRAVEL_MAX;                  // 0..1 compression fraction
+  // Based on PHYSICAL compression so it ramps near the real bottom regardless of preload.
+  if (forkSlide_f < 0 && P.air_f > 0) {
+    const xn = -forkSlide_f / TRAVEL_MAX;         // 0..1 physical compression fraction
     f_spring_lin += -K_F * P.air_f * TRAVEL_MAX * 2.0 * (xn * xn * xn);
   }
   f_spring_F = f_spring_lin;
@@ -1636,7 +1636,7 @@ function _physicsStep(dt_s) {
   // A stiff progressive spring plus velocity-dependent hydraulic damping that only
   // resists further compression — models the fork's end-stroke hydraulic lock.
   {
-    const comp   = -df;                            // compression (m), >0
+    const comp   = -forkSlide_f;                   // PHYSICAL compression (m), >0
     const thresh = TRAVEL_MAX * (1 - BS_ZONE);
     if (comp > thresh) {
       const e = (comp - thresh) / (TRAVEL_MAX * BS_ZONE);  // 0..1 engagement
@@ -1969,8 +1969,10 @@ function _physicsStep(dt_s) {
   // Wheel vertical travel from the unloaded rest angle (+ = compressed).
   wheelTravel_r = SWINGARM_L * (Math.sin(PHI_REST) - Math.sin(swingAngle));
 
-  // Save display forces (disp_f negative = compressed = travel used)
-  disp_f = df;
+  // Save display travel (negative = compressed). Use the PHYSICAL fork position (not the
+  // preload-offset spring displacement) so the gauge/bars read true travel and the full
+  // range is fixed regardless of preload (preload only moves the resting sag within it).
+  disp_f = forkSlide_f;
   disp_r = -wheelTravel_r;   // negative = compressed (same display convention as before)
 
   // ── Recompute derived front wheel world position after all corrections ─────
