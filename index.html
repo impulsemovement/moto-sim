@@ -552,6 +552,9 @@ const _SAG_NOM       = 0.033;                                                   
 const PHI_REST       = Math.asin(Math.sin(SW_PHI_SAG) + _SAG_NOM / SWINGARM_L);             // unloaded
 const PHI_FULL_DROOP = Math.asin(Math.sin(SW_PHI_SAG) + (_SAG_NOM + TRAVEL_EXT) / SWINGARM_L); // topped
 const PHI_FULL_BUMP  = Math.asin(Math.sin(SW_PHI_SAG) - (TRAVEL_MAX - _SAG_NOM) / SWINGARM_L); // bottomed
+// Rear wheel travel (m) at full droop, relative to PHI_REST — the gauge's zero reference so it
+// reads 0 at full extension and never goes negative.
+const WT_DROOP = SWINGARM_L * (Math.sin(PHI_REST) - Math.sin(PHI_FULL_DROOP));   // <0
 // ── Rising-rate rocker linkage (Pro-Link / Monocross style) ─────────────────
 // Force path: swingarm → tie-rod → rocker (bell crank on the frame) → shock → frame.
 // All points in the chassis frame (m from CoM). The linkage makes shock travel a
@@ -1617,8 +1620,10 @@ function _physicsStep(dt_s) {
   // block below), NOT on df. So preload only shifts ride height / sag and the force curve — it
   // does NOT change how far the fork can compress or extend.
 
-  // Linear coil rate.
-  let f_spring_lin = K_F * df;                   // neg = compressed → pushes wheel out
+  // Linear coil rate. Clamped to push-OUT only (≤0): a preloaded coil can never pull the fork
+  // back IN. Without this, at low preload the spring's neutral falls inside the travel and the
+  // fork gets held there (tension) instead of extending to the top-out stop when unloaded.
+  let f_spring_lin = Math.min(0, K_F * df);      // neg = compressed → pushes wheel out
   // Air-spring progression: deeper compression ramps up the effective rate (like an
   // air gap / progressive spring). 0% = pure linear; 100% = strong rising rate near bottom.
   // Based on PHYSICAL compression so it ramps near the real bottom regardless of preload.
@@ -1679,7 +1684,11 @@ function _physicsStep(dt_s) {
   const MR_sag        = SW_MR_SAG;                          // wheel-travel / shock-travel at sag
   const preShockLen   = P.pre_r / MR_sag;                    // m of extra shock compression from preload
   shockTravel_r       = (SHOCK_REST_LEN - shockLen_cur) + preShockLen;  // + = compressed
-  const F_shock_sprg  = K_SHOCK * shockTravel_r;            // N along shock, + = compressed (pushes out)
+  // Support-direction only: in this linkage sign convention the loaded (compressed) shock force
+  // is NEGATIVE, so clamp to ≤0 — the preloaded spring can push the wheel out but never PULL it
+  // back in. Without this, at low preload it goes into tension past PHI_REST and the wheel won't
+  // extend to the droop stop (gets stuck partway).
+  const F_shock_sprg  = Math.min(0, K_SHOCK * shockTravel_r);  // N along shock (neg = supports/extends)
   // Spring force referred to the wheel (chassis +y = down): compressed pushes wheel DOWN.
   const F_spring_wheel = F_shock_sprg * dShock / wheelLeverY;   // N, + = pushes wheel down (extends)
 
@@ -2137,8 +2146,10 @@ function draw(ts) {
 
   // ── Stats ─────────────────────────────────────────────────
   // Travel used = compression amount (negative disp = compressed, show as positive mm)
-  const travF_mm = Math.round(-disp_f * 1000);
-  const travR_mm = Math.round(-disp_r * 1000);
+  // Travel USED, measured from full extension (top-out / droop) so it reads 0 fully extended,
+  // ~140mm fully compressed, and is never negative. disp_f = forkSlide_f, disp_r = -wheelTravel_r.
+  const travF_mm = Math.round((TRAVEL_EXT - disp_f) * 1000);   // front: 0 at top-out
+  const travR_mm = Math.round((-disp_r - WT_DROOP) * 1000);    // rear:  0 at full droop
   document.getElementById('st-ft').textContent    = travF_mm;
   document.getElementById('st-rt').textContent    = travR_mm;
   document.getElementById('st-pitch').textContent = (pitchAngle*180/Math.PI).toFixed(1);
