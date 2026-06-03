@@ -1389,11 +1389,10 @@ function _physicsStep(dt_s) {
     // curve over the ramp time.) This makes the brake progressive instead of grabby.
     const rampUp   = (x, T) => Math.min(1, x + (2.5 / T) * Math.pow(1 - x, 0.6) * dt_s);
     const rampDown = (x, T) => Math.max(0, x - (2.5 / T) * Math.pow(x,     0.6) * dt_s);
-    // Brake overrides throttle: you can't drive and brake at once. While braking, the gas is
-    // released and decays fast (instead of the slow ride-feel ramp) so the throttle stops
-    // fighting the brake — otherwise the lingering ramp keeps spinning the wheel under braking.
-    gasInput   = (gasPressed && !brakePressed) ? rampUp(gasInput, GAS_RAMP_UP)
-                                               : rampDown(gasInput, brakePressed ? GAS_RAMP_DOWN * 0.3 : GAS_RAMP_DOWN);
+    // Throttle and brake are INDEPENDENT — you can hold both (brake-torque / burnout / slide).
+    // The wheel responds to net torque (engine drive vs brake + friction), so whichever wins
+    // wins; the brake never disables the throttle.
+    gasInput   = gasPressed   ? rampUp(gasInput,   GAS_RAMP_UP)   : rampDown(gasInput,   GAS_RAMP_DOWN);
     brakeInput = brakePressed ? rampUp(brakeInput, BRAKE_RAMP_UP) : rampDown(brakeInput, BRAKE_RAMP_DOWN);
   }
 
