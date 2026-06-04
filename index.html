@@ -639,8 +639,15 @@ function resizeMain() {
   const mobile  = window.innerWidth < 641;
   const pad     = mobile ? 4 : 20;
   canvas.width  = window.innerWidth - pad;
-  canvas.height = Math.round(mobile ? 260 : 520);   // +25% sky headroom on DESKTOP only; mobile stays compact
-  groundBaseY   = canvas.height - (mobile ? 78 : 125); // ground fixed near bottom; extra height = sky
+  // Target height: compact on mobile, +25% sky on desktop. But NEVER taller than the viewport,
+  // so the whole sim window (RESET at top + bike at bottom) fits without scrolling — important
+  // in landscape on a phone, which is WIDE (so not "mobile" by width) yet SHORT.
+  const target  = mobile ? 260 : 520;
+  canvas.height = Math.round(Math.max(200, Math.min(target, window.innerHeight - 24)));
+  // Ground sits a fixed distance from the bottom; shrink that offset if the canvas got capped
+  // short so the bike still has room above the ground line.
+  const groundOffset = Math.min(mobile ? 78 : 125, canvas.height * 0.34);
+  groundBaseY   = canvas.height - groundOffset;
   PM_base       = mobile ? 100 : 200;
   PM            = PM_base * userZoom;
 }
