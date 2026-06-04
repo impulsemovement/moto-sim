@@ -82,6 +82,14 @@ canvas { display: block; background: #080808; }
   background: rgba(59,130,246,0.18); color: #3b82f6;
   border: 1px solid rgba(59,130,246,0.4);
 }
+/* Shift buttons sit just above the brake/clutch row (gives mobile a way to change gears) */
+.shift-btn {
+  bottom: 68px; height: 30px;
+  background: rgba(255,255,255,0.06); color: #d0d0d0;
+  border: 1px solid rgba(255,255,255,0.22); font-size: 12px;
+}
+#btn-shift-dn { left: 20px; }
+#btn-shift-up { left: 112px; }
 #gear-box {
   position: absolute; right: 112px; bottom: 16px; z-index: 10;
   width: 64px; height: 44px; border-radius: 8px;
@@ -206,6 +214,8 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
   <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
+  <button class="ride-btn shift-btn" id="btn-shift-dn" title="Downshift (A)">GEAR ▼</button>
+  <button class="ride-btn shift-btn" id="btn-shift-up" title="Upshift (D)">GEAR ▲</button>
   <div id="gear-box" title="Gear (A down / D up)">
     <div id="gear-num">1</div>
     <div id="gear-rpm">0 rpm</div>
@@ -629,7 +639,7 @@ function resizeMain() {
   const mobile  = window.innerWidth < 641;
   const pad     = mobile ? 4 : 20;
   canvas.width  = window.innerWidth - pad;
-  canvas.height = Math.round(mobile ? 325 : 520);   // +25% headroom (more sky for jumps/wheelies)
+  canvas.height = Math.round(mobile ? 260 : 520);   // +25% sky headroom on DESKTOP only; mobile stays compact
   groundBaseY   = canvas.height - (mobile ? 78 : 125); // ground fixed near bottom; extra height = sky
   PM_base       = mobile ? 100 : 200;
   PM            = PM_base * userZoom;
@@ -2485,9 +2495,13 @@ function draw(ts) {
   }
 
   // ── Travel bars (right edge, below reset button) ─────────
-  const bHt  = H*0.50;
-  const bx   = W-22, bTop = (H - bHt) * 0.5;
-  const bBot = bTop + bHt;  // bottom edge of track
+  // Fit the bars between the zoom buttons (top, ~78px) and the shift/ride buttons (bottom,
+  // ~98px) so on a short (mobile) canvas they don't run into the −/+ or shift buttons.
+  // On desktop this resolves to the original centred 50%-height bars.
+  const bTop = Math.max(84, H * 0.25);
+  const bBot = Math.min(H - 104, bTop + H * 0.50);
+  const bHt  = bBot - bTop;
+  const bx   = W - 22;
 
   // Color: white at midtravel, red at extremes
   function travelBarColor(frac) {
@@ -3044,6 +3058,15 @@ function setSetupStatus(msg) {
   brakeBtn.addEventListener('touchend',    e => { e.preventDefault(); setBrake(false); }, {passive:false});
   clutchBtn.addEventListener('touchstart', e => { e.preventDefault(); setClutch(true); }, {passive:false});
   clutchBtn.addEventListener('touchend',   e => { e.preventDefault(); setClutch(false); },{passive:false});
+
+  // Shift buttons (mobile-friendly gear change). Click for desktop; touchstart + preventDefault
+  // for touch (which also suppresses the synthesized click, so each tap shifts exactly once).
+  const shiftUpBtn = document.getElementById('btn-shift-up');
+  const shiftDnBtn = document.getElementById('btn-shift-dn');
+  shiftUpBtn.addEventListener('click', () => shiftGear(+1));
+  shiftDnBtn.addEventListener('click', () => shiftGear(-1));
+  shiftUpBtn.addEventListener('touchstart', e => { e.preventDefault(); shiftGear(+1); }, {passive:false});
+  shiftDnBtn.addEventListener('touchstart', e => { e.preventDefault(); shiftGear(-1); }, {passive:false});
 
   // Keyboard: G/→ gas, B/← brake, C clutch (hold), A downshift, D upshift, R reset.
   // Only a TEXT-entry field (the setup-name box) swallows shortcuts — range sliders,
