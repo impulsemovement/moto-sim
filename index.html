@@ -53,11 +53,11 @@
 
   <!-- TOP-LEFT: Suspension card -->
   <div class="card card-susp">
-    <div class="card-title" onclick="toggleCard(this)">SUSPENSION<span class="card-arrow">▼</span></div>
+    <div class="card-title">SUSPENSION<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div class="toggle-group">
-      <button class="toggle-btn active" id="btn-front" onclick="setWheelMode('front')">FRONT</button>
-      <button class="toggle-btn"        id="btn-rear"  onclick="setWheelMode('rear')">REAR</button>
+      <button class="toggle-btn active" id="btn-front">FRONT</button>
+      <button class="toggle-btn"        id="btn-rear" >REAR</button>
     </div>
 
     <!-- Front sliders (shown when FRONT active) -->
@@ -94,22 +94,22 @@
 
   <!-- TOP-RIGHT: Damping curve card -->
   <div class="card card-curve" id="curve-card">
-    <div class="card-title" onclick="toggleCard(this)">DAMPING CURVES<span class="card-arrow">▼</span></div>
+    <div class="card-title">DAMPING CURVES<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="toggle-group" style="margin-bottom:0">
-          <button class="toggle-btn active" id="btn-comp" onclick="setCurveMode('comp')">COMP</button>
-          <button class="toggle-btn"        id="btn-reb"  onclick="setCurveMode('reb')">REB</button>
+          <button class="toggle-btn active" id="btn-comp">COMP</button>
+          <button class="toggle-btn"        id="btn-reb" >REB</button>
         </div>
         <span id="curve-label" style="font-size:10px;color:#e11d48;font-weight:700">FRONT</span>
         <span style="font-size:10px;color:#333">click=add · right-click=remove</span>
       </div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="preset-btn" onclick="applyPreset('linear')">Linear</button>
-        <button class="preset-btn" onclick="applyPreset('progressive')">Prog</button>
-        <button class="preset-btn" onclick="applyPreset('digressive')">Dig</button>
-        <button class="preset-btn" onclick="applyPreset('quadratic')">Quad</button>
+        <button class="preset-btn" data-preset="linear">Linear</button>
+        <button class="preset-btn" data-preset="progressive">Prog</button>
+        <button class="preset-btn" data-preset="digressive">Dig</button>
+        <button class="preset-btn" data-preset="quadratic">Quad</button>
       </div>
     </div>
     <canvas id="curve-canvas" height="170"></canvas>
@@ -120,7 +120,7 @@
 
   <!-- BOTTOM-LEFT: Terrain card -->
   <div class="card card-terrain">
-    <div class="card-title" onclick="toggleCard(this)">TERRAIN AND CHASSIS<span class="card-arrow">▼</span></div>
+    <div class="card-title">TERRAIN AND CHASSIS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <label>Terrain <span id="lterrain">Bumps</span></label>
     <input type="range" id="terrain" min="0" max="4" value="0" step="1">
@@ -196,7 +196,7 @@
 
   <!-- BOTTOM-RIGHT: Force history graph -->
   <div class="card card-fhist">
-    <div class="card-title" onclick="toggleCard(this)">FORCE GRAPHS<span class="card-arrow">▼</span></div>
+    <div class="card-title">FORCE GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <canvas id="fgraph" height="255" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div class="graph-yscale-wrap right" style="top:36px;height:255px;">
@@ -213,7 +213,7 @@
 
   <!-- BOTTOM-LEFT: Suspension velocity history graph -->
   <div class="card card-vhist">
-    <div class="card-title" onclick="toggleCard(this)">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
+    <div class="card-title">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <canvas id="vgraph" height="180" style="display:block;width:100%;border-radius:4px;"></canvas>
     <div class="graph-yscale-wrap right" style="top:36px;height:180px;">
@@ -2931,6 +2931,15 @@ function toggleCard(titleEl) {
     card.classList.toggle('collapsed-curve', collapsed);
   }
 }
+
+// Wire the card/toggle/preset controls (was inline onclick=, which doesn't work in module
+// scope — these are bound here instead).
+document.querySelectorAll('.card-title').forEach(t => t.addEventListener('click', () => toggleCard(t)));
+document.getElementById('btn-front').addEventListener('click', () => setWheelMode('front'));
+document.getElementById('btn-rear') .addEventListener('click', () => setWheelMode('rear'));
+document.getElementById('btn-comp') .addEventListener('click', () => setCurveMode('comp'));
+document.getElementById('btn-reb')  .addEventListener('click', () => setCurveMode('reb'));
+document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
 
 // ═══════════════════════════════════════════════════════════
 //  ARIZONA PARALLAX BACKGROUND
