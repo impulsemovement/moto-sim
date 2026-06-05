@@ -270,6 +270,13 @@ function bottomOutFactor(k_tire) {
 // slowly/deadly, instead of springing back. Scales inversely with pressure: ~1500 at
 // nominal 36 psi, up to ~5000 when soft, down to ~900 when hard.
 const C_TIRE_BASE = 1500;
+// Rear tire runs MORE carcass damping than the front (front stays at the stable baseline). The
+// rear gets damped harder (up to the explicit-stability cap) so small bumps don't set it
+// oscillating down the road; the front is left alone.
+const REAR_TIRE_DAMP_MULT = 1.75;
+// Load-scaled rear regrip: a spinning rear wheel that lands or hits a bump (big |f_tire_R| normal
+// load) bites and snaps back to rolling instead of spinning on forever. (1/s per N of load.)
+const REGRIP_LOAD_K = 0.008;
 function tireDampCoef(k_tire) {
   return Math.max(600, Math.min(5000, C_TIRE_BASE * KTIRE_NOMINAL / Math.max(k_tire, 1)));
 }
@@ -287,12 +294,13 @@ const TIRE_FORCE_MAX = 30000;  // N  hard ceiling on the carcass spring force (s
 // The carcass SPRING saturates at the travel limit (it can't push harder once the rim is
 // down — the rigid rim stop is handled inelastically in resolveTireBottom). pen = tire
 // deflection (m); v = wheel velocity into the ground (m/s, + = compressing).
-function tireForce(pen, v, k_tire, m_unsprung, dt, travel) {
+function tireForce(pen, v, k_tire, m_unsprung, dt, travel, dampScale) {
   if (pen <= 0) return 0;
   const bottomed = pen > travel;
   let Fup = k_tire * Math.min(pen, travel);       // spring capped at the rim limit
   // Carcass hysteresis damping; DEAD (max stable) once bottomed (resists both directions).
-  const C = Math.min(bottomed ? Infinity : tireDampCoef(k_tire), 0.9 * m_unsprung / dt);
+  // dampScale (default 1) lets one tire run more carcass damping than the other (rear > front).
+  const C = Math.min(bottomed ? Infinity : tireDampCoef(k_tire) * (dampScale || 1), 0.9 * m_unsprung / dt);
   Fup += C * v;
   Fup = Math.max(0, Math.min(TIRE_FORCE_MAX, Fup));
   return -Fup;                                    // negative = upward

@@ -390,9 +390,10 @@ function _physicsStep(dt_s) {
         if (omega_r < omega_roll) omega_r = omega_roll;
       } else if (omega_r > omega_roll + 1e-3) {
         // Spinning but no longer over-driven (off-throttle / braking): kinetic friction + brake
-        // pull it back toward rolling. Relax at a prompt rate (so it doesn't spin on forever),
-        // much faster while braking — so the wheel regrips instead of spinning as the bike stops.
-        const regrip = (6 + 30 * brakeInput) * dt_s;   // 1/s; brake regrips hard
+        // pull it back toward rolling. The regrip rate scales with the tire NORMAL LOAD, so a
+        // wheel that lands or hits a bump (load spike, big |f_tire_R|) bites hard and snaps back
+        // to rolling instead of spinning on forever; brake regrips hard too.
+        const regrip = (6 + 30 * brakeInput + REGRIP_LOAD_K * Math.abs(f_tire_R)) * dt_s;
         omega_r += (omega_roll - omega_r) * Math.min(1, regrip);
       } else {
         omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
@@ -585,7 +586,7 @@ function _physicsStep(dt_s) {
   {
     const pen_r = Math.max(0, rearWheelY_m - nat_r);
     const v_pen_r = wheelLeverYw * swingRate;  // world-vertical contact velocity (+ve = compressing)
-    f_tire_R = tireForce(pen_r, v_pen_r, P.k_tire_r, P.m_unsprung_r, dt_s, TIRE_TRAVEL_R);
+    f_tire_R = tireForce(pen_r, v_pen_r, P.k_tire_r, P.m_unsprung_r, dt_s, TIRE_TRAVEL_R, REAR_TIRE_DAMP_MULT);
   }
 
   // ── Chassis heave EOM ─────────────────────────────────────────────────────
