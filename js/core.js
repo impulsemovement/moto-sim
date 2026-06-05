@@ -210,6 +210,20 @@ const COM_SX = () => canvas.width * 0.40;       // chassis CoM screen X
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
+// Real browser viewport height. When embedded in a SAME-ORIGIN iframe — especially an
+// auto-height embed that inflates our own innerHeight to the full content height — read the
+// parent page's viewport instead, so the canvas still fits the actual screen (e.g. a phone in
+// landscape). Falls back to our own window when standalone or cross-origin.
+function viewportHeight() {
+  try {
+    if (window.parent && window.parent !== window) {
+      const ph = window.parent.innerHeight;
+      if (ph) return ph;
+    }
+  } catch (e) { /* cross-origin — fall through */ }
+  return window.innerHeight;
+}
+
 function resizeMain() {
   const mobile  = window.innerWidth < 641;
   const pad     = mobile ? 4 : 20;
@@ -218,7 +232,7 @@ function resizeMain() {
   // so the whole sim window (RESET at top + bike at bottom) fits without scrolling — important
   // in landscape on a phone, which is WIDE (so not "mobile" by width) yet SHORT.
   const target  = mobile ? 260 : 520;
-  canvas.height = Math.round(Math.max(200, Math.min(target, window.innerHeight - 24)));
+  canvas.height = Math.round(Math.max(200, Math.min(target, viewportHeight() - 24)));
   // Ground sits a fixed distance from the bottom; shrink that offset if the canvas got capped
   // short so the bike still has room above the ground line.
   const groundOffset = Math.min(mobile ? 78 : 125, canvas.height * 0.34);
