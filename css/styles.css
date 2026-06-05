@@ -8,10 +8,9 @@ canvas { display: block; background: #080808; }
   position: absolute; top: 10px; left: 10px;
   display: flex; flex-direction: row; gap: 4px; z-index: 10;
 }
-#btn-mute { display: flex; align-items: center; justify-content: center; padding: 0; }
-#btn-mute .mute-slash { display: none; }
-#btn-mute.muted { color: #6b6b6b; }            /* dim the bars when muted */
-#btn-mute.muted .mute-slash { display: block; } /* and show the slash */
+#btn-mute { display: flex; align-items: center; justify-content: center; padding: 0; color: #f0f0f0; }
+#btn-mute.muted { color: #6b6b6b; }                 /* gray the speaker when muted */
+#btn-mute.muted .mute-waves { display: none; }      /* and drop the sound-wave arcs */
 #zoom-btns button {
   width: 32px; height: 32px;
   border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
