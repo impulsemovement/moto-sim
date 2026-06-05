@@ -43,8 +43,8 @@ document.getElementById('btn-reset').addEventListener('click', resetSim);
 {
   const mb = document.getElementById('btn-mute');
   if (mb) {
-    const sync = () => { mb.textContent = soundMuted ? '🔇' : '🔊'; };
-    sync();   // reflect the saved preference
+    const sync = () => { mb.classList.toggle('muted', soundMuted); };
+    sync();   // reflect the saved preference (dim + slash when muted)
     mb.addEventListener('click', () => { initAudio(); setMuted(!soundMuted); sync(); });
   }
 }

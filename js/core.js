@@ -269,7 +269,12 @@ function bottomOutFactor(k_tire) {
 // dissipates much more energy (hysteresis) — so it compresses further AND rebounds
 // slowly/deadly, instead of springing back. Scales inversely with pressure: ~1500 at
 // nominal 36 psi, up to ~5000 when soft, down to ~900 when hard.
-const C_TIRE_BASE = 1500;
+const C_TIRE_BASE = 2600;   // raised: more carcass damping (up to the explicit-stability cap) so
+                            // small bumps don't set the tire oscillating down the road
+// Rigid-contact damping: in the wheelie/stoppie "rigid" regime the swingarm/fork is bypassed and
+// the whole bike bobs on the lightly-damped tire spring. This damps the chassis vertical velocity
+// directly (sized for the sprung mass, so a big value is stable) — only while rigidly coupled.
+const C_RIGID_DAMP = 9000;
 function tireDampCoef(k_tire) {
   return Math.max(600, Math.min(5000, C_TIRE_BASE * KTIRE_NOMINAL / Math.max(k_tire, 1)));
 }
@@ -356,8 +361,8 @@ const RPM_LIMIT    = 10800;   // hard rev limiter
 // Bouncing rev limiter: a fuel cut with hysteresis. Cuts at RPM_LIMIT, stays cut until revs
 // fall LIMITER_BAND below it, then fires again → the revs bounce off the top (seen + heard).
 const LIMITER_BAND       = 350;  // RPM hysteresis band when free-revving (clutch in) — dramatic bounce
-const LIMITER_BAND_GEAR  = 130;  // tighter band in gear → the bike re-accelerates the gap faster,
-                                 // so it bounces quicker (esp. low gears) instead of a slow surge
+const LIMITER_BAND_GEAR  = 200;  // tighter band in gear (vs the 350 free-rev band) → bounces faster
+                                 // than a slow surge, but enough swing to read clearly on gauge/sound
 const LIMITER_DROP_RATE  = 16000; // RPM/s the (free) revs fall while the fuel is cut
 const LIMITER_BRAKE_BOOST = 4;   // ×engine-braking while cutting in gear → fast bounce in low gears
 const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)

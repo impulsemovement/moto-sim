@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=6">
+<link rel="stylesheet" href="css/styles.css?v=8">
 </head>
 <body>
 
@@ -13,7 +13,15 @@
   <div id="zoom-btns">
     <button id="btn-zoom-in"  title="Zoom in">+</button>
     <button id="btn-zoom-out" title="Zoom out">−</button>
-    <button id="btn-mute" title="Toggle engine sound">🔊</button>
+    <button id="btn-mute" title="Toggle engine sound" aria-label="Toggle engine sound">
+      <svg viewBox="0 0 22 16" width="20" height="15" fill="currentColor" aria-hidden="true">
+        <rect x="1"    y="11"  width="3" height="4"    rx="1"></rect>
+        <rect x="6.5"  y="8"   width="3" height="7"    rx="1"></rect>
+        <rect x="12"   y="4.5" width="3" height="10.5" rx="1"></rect>
+        <rect x="17.5" y="1"   width="3" height="14"   rx="1"></rect>
+        <line class="mute-slash" x1="1" y1="15.5" x2="21" y2="0.5" stroke="currentColor" stroke-width="2.2"></line>
+      </svg>
+    </button>
   </div>
   <button id="btn-step"   class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
   <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
@@ -244,13 +252,13 @@
 
 </div><!-- .ui -->
 
-<script src="js/core.js?v=6"></script>
-<script src="js/physics.js?v=6"></script>
-<script src="js/render.js?v=6"></script>
-<script src="js/graphs.js?v=6"></script>
-<script src="js/ui.js?v=6"></script>
-<script src="js/background.js?v=6"></script>
-<script src="js/audio.js?v=6"></script>
-<script src="js/main.js?v=6"></script>
+<script src="js/core.js?v=8"></script>
+<script src="js/physics.js?v=8"></script>
+<script src="js/render.js?v=8"></script>
+<script src="js/graphs.js?v=8"></script>
+<script src="js/ui.js?v=8"></script>
+<script src="js/background.js?v=8"></script>
+<script src="js/audio.js?v=8"></script>
+<script src="js/main.js?v=8"></script>
 </body>
 </html>
