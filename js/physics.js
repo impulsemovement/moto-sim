@@ -640,13 +640,11 @@ function _physicsStep(dt_s) {
   const rearBounceDamp = -C_BOUNCE_TIRE * vRearContact * pivotFrac;
   const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac + rearBounceDamp;
 
-  // FRONT: the fork stays a NORMAL suspension element in a stoppie — no rigid coupling and no
-  // extra heave/bounce damper. (Those made the fork feel rigid and added heavy heave damping as
-  // the CoM balanced over the front wheel.) The front tire's own carcass damping (in tireForce
-  // above) is the only damping here, which is all that's wanted. The REAR keeps its rigid
-  // coupling because the swingarm lever genuinely collapses at the wheelie balance point — the
-  // telescopic fork has no such geometric singularity, so the front needs no equivalent.
-  const fsusp_f_y_eff  = fsusp_f_y;
+  // Same rigid coupling on the FRONT for a stoppie: balanced nose-down on the front wheel, a
+  // bump should pop the bike rather than be soaked by the fork. Gated on nose-DOWN pitch, so
+  // it engages in the stoppie regime and is ~0 in normal riding/wheelies (front airborne).
+  const frontPivotFrac = Math.max(0, Math.min(1, (pitchAngle - 0.26) / (0.70 - 0.26)));
+  const fsusp_f_y_eff  = fsusp_f_y * (1 - frontPivotFrac) + f_tire_F * frontPivotFrac;
 
   const a_chassis   = g + (fsusp_f_y_eff + fsusp_r_eff) / Ms;
 
