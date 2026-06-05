@@ -70,10 +70,9 @@ const REAR_BRAKE_LEVER = 0.22;   // m   effective lever for the rear-brake anti-
 const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
 const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
 const TAU_REACT_MAX = 300;       // N·m   clamp on the chassis reaction torque (tames landing resync)
-const WHEELBASE  = 1.400;        // m  → 280 px
-
-const A_FRONT_M  = 0.714;        // m  CoM from front axle (49/51 split)
-const B_REAR_M   = 0.686;        // m  CoM from rear  axle
+let WHEELBASE    = 1.400;        // m  (live — Bike Geometry slider; front axle moves, rear fixed)
+const B_REAR_M   = 0.686;        // m  CoM from rear axle (fixed — anchors the swingarm geometry)
+let A_FRONT_M    = WHEELBASE - B_REAR_M;  // m  CoM from front axle (= 0.714 at default 1.40 wheelbase)
 
 let I_YY         = 90;           // kg·m²  pitch inertia (live — Bike Geometry slider)
 let H_COM        = 0.65;         // m  CoM height above ground (live — Bike Geometry slider)
@@ -427,6 +426,7 @@ bind('duty',      'lduty',      v => { P.duty    = v/100;   return v+'%'; });
 bind('comheight',    'lcomheight',    v => { H_COM    = v/100;          return (v/100).toFixed(2)+' m'; });
 bind('pitchinertia', 'lpitchinertia', v => { I_YY     = +v;             return v+' kg·m²'; });
 bind('rake',         'lrake',         v => { RAKE_RAD = +v*Math.PI/180; return (+v).toFixed(1)+'°'; });
+bind('wheelbase',    'lwheelbase',    v => { WHEELBASE = v/100; A_FRONT_M = WHEELBASE - B_REAR_M; return (v/100).toFixed(2)+' m'; });
 
 // Wheel toggle
 let wheelMode = 'front';

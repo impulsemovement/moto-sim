@@ -10,7 +10,7 @@ const SETUP_SLIDERS = [
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
   'terrain','amp','freq','rough','duty','pitchmom','drivepitch','tiregrip','terrainbite','terrainpitch','bounceF','bounceR',
-  'comheight','pitchinertia','rake'
+  'comheight','pitchinertia','rake','wheelbase'
 ];
 
 function loadSetups() {
