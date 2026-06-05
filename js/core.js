@@ -271,10 +271,11 @@ function bottomOutFactor(k_tire) {
 // nominal 36 psi, up to ~5000 when soft, down to ~900 when hard.
 const C_TIRE_BASE = 2600;   // raised: more carcass damping (up to the explicit-stability cap) so
                             // small bumps don't set the tire oscillating down the road
-// Rigid-contact damping: in the wheelie/stoppie "rigid" regime the swingarm/fork is bypassed and
-// the whole bike bobs on the lightly-damped tire spring. This damps the chassis vertical velocity
-// directly (sized for the sprung mass, so a big value is stable) — only while rigidly coupled.
-const C_RIGID_DAMP = 9000;
+// Wheelie/stoppie bounce damper: in the rigid regime the suspension is bypassed and the bike bobs
+// on the tire. Damp the CONTACT-patch vertical velocity (high while bobbing, ~0 during a come-down
+// since the wheel stays planted) so the bounce dies WITHOUT slowing the come-down. Scaled by the
+// rigidity; applied to the chassis, so a big value is stable.
+const C_BOUNCE_TIRE = 6000;
 function tireDampCoef(k_tire) {
   return Math.max(600, Math.min(5000, C_TIRE_BASE * KTIRE_NOMINAL / Math.max(k_tire, 1)));
 }
@@ -643,6 +644,7 @@ let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = exten
 let frontWheelX_m = 0;
 let frontWheelY_m = 0;
 let prevFrontWheelY_m = null;   // previous-substep front-wheel Y, for tire-damping velocity
+let prevRearWheelY_m  = null;   // previous-substep rear-wheel Y, for the wheelie bounce damper
 
 // Rear suspension: primary DOF is the SWINGARM ANGLE (chassis-relative rotation).
 // The wheel is a point mass at the swingarm tip; it follows an arc about the pivot.

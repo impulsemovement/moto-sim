@@ -14,7 +14,7 @@ function resetSim() {
   chassisY_m   = 0; vChassis    = 0; vChassisX   = 0;
   pitchAngle   = 0; pitchRate   = 0;
   forkSlide_f  = 0; vForkSlide_f = 0;
-  frontWheelX_m = 0; frontWheelY_m = 0; prevFrontWheelY_m = null;
+  frontWheelX_m = 0; frontWheelY_m = 0; prevFrontWheelY_m = null; prevRearWheelY_m = null;
   rearWheelX_m  = 0; rearWheelY_m  = 0;
   swingAngle   = 0; swingRate   = 0;
   shockLen_cur = 0; shockTravel_r = 0; wheelTravel_r = 0; rearSuspVel = 0;

@@ -619,19 +619,22 @@ function _physicsStep(dt_s) {
   // keeps the usual shock-isolated behaviour, the steep wheelie gets the rigid coupling.
   const pivotGate    = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.26) / (0.70 - 0.26)));
   const pivotFrac    = Math.sin(thetaSwWorld) ** 2 * pivotGate;   // 0 normal → toward 1 at balance
-  const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac;
+  // Bounce damper: damp the rear CONTACT vertical velocity (≈0 during a come-down with the wheel
+  // planted, but high while the bike bobs on the tire) so the wheelie stops bouncing without
+  // damping the come-down. Only in the rigid regime where the tire's own damper goes blind.
+  const vRearContact = (prevRearWheelY_m === null) ? 0 : (rearWheelY_m - prevRearWheelY_m) / dt_s;
+  prevRearWheelY_m   = rearWheelY_m;
+  const rearBounceDamp = -C_BOUNCE_TIRE * vRearContact * pivotFrac;
+  const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac + rearBounceDamp;
 
   // Same rigid coupling on the FRONT for a stoppie: balanced nose-down on the front wheel, a
   // bump should pop the bike rather than be soaked by the fork. Gated on nose-DOWN pitch, so
   // it engages in the stoppie regime and is ~0 in normal riding/wheelies (front airborne).
   const frontPivotFrac = Math.max(0, Math.min(1, (pitchAngle - 0.26) / (0.70 - 0.26)));
-  const fsusp_f_y_eff  = fsusp_f_y * (1 - frontPivotFrac) + f_tire_F * frontPivotFrac;
+  const frontBounceDamp = -C_BOUNCE_TIRE * v_tire_f * frontPivotFrac;   // same bounce damper for stoppies
+  const fsusp_f_y_eff  = fsusp_f_y * (1 - frontPivotFrac) + f_tire_F * frontPivotFrac + frontBounceDamp;
 
-  // Rigid-contact damping: while wheelie/stoppie-rigid, the tire's own damper is near-blind
-  // (it reads swing/fork rate, which is ~0 when rigid), so the bike bobs on the tire spring.
-  // Damp the chassis vertical velocity directly, scaled by how rigid the coupling is.
-  const rigidDampF  = -C_RIGID_DAMP * vChassis * Math.max(pivotFrac, frontPivotFrac);
-  const a_chassis   = g + (fsusp_f_y_eff + fsusp_r_eff + rigidDampF) / Ms;
+  const a_chassis   = g + (fsusp_f_y_eff + fsusp_r_eff) / Ms;
 
   // ── Pitch EOM ─────────────────────────────────────────────────────────────
   // Suspension pitch moment: each wheel's vertical force × its moment arm from CoM.
@@ -703,11 +706,7 @@ function _physicsStep(dt_s) {
 
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  // Extra pitch damping while wheelie/stoppie-rigid: the bike also ROCKS on the tire (not just
-  // heaves), so damp pitchRate harder in the rigid regime to kill the coupled bounce.
-  const C_PITCH_RIGID = 900;   // N·m·s/rad, scaled by how rigid the contact is
-  const pitchDampEff  = C_PITCH_DRAG + C_PITCH_RIGID * Math.max(pivotFrac, frontPivotFrac);
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain - pitchDampEff * pitchRate) / I_YY;
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
