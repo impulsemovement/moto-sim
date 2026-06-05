@@ -111,14 +111,15 @@ canvas { display: block; background: #080808; }
 .card-terrain{ grid-area: terrain; }
 .card-fhist  { grid-area: fhist; }
 .card-vhist  { grid-area: vhist; }
-.ui { grid-template-areas: "susp curve" "terrain fhist" "vhist ."; }
+.card-geom   { grid-area: geom; }
+.ui { grid-template-areas: "susp curve" "terrain fhist" "vhist geom"; }
 
 /* Mobile: single column, curve + fhist drop below terrain */
 @media (max-width: 640px) {
   body { padding: 2px; }
   .ui {
     grid-template-columns: 1fr;
-    grid-template-areas: "susp" "terrain" "curve" "fhist" "vhist";
+    grid-template-areas: "susp" "terrain" "geom" "curve" "fhist" "vhist";
   }
   .stats { grid-template-columns: repeat(3,1fr); }
   .stat-n { font-size: 14px; }

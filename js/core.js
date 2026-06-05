@@ -8,7 +8,7 @@ let userZoom     = 1.0;          // zoom multiplier from +/- buttons
 let groundBaseY  = 291;          // screen Y of the ground line (set in resizeMain)
 let camPanX_m    = 0;            // camera pan offset (meters, +ve = look right/ahead)
 const g          = 9.81;         // m/s²
-const RAKE_RAD   = 24.83 * Math.PI / 180;
+let RAKE_RAD     = 24.83 * Math.PI / 180;   // fork rake (live — Bike Geometry slider)
 
 // Swingarm geometry (all in meters, chassis-frame offsets from CoM)
 // Pivot is behind and below CoM; SWINGARM_L chosen so rear axle lands at B_REAR_M behind CoM
@@ -75,7 +75,8 @@ const WHEELBASE  = 1.400;        // m  → 280 px
 const A_FRONT_M  = 0.714;        // m  CoM from front axle (49/51 split)
 const B_REAR_M   = 0.686;        // m  CoM from rear  axle
 
-const I_YY       = 90;           // kg·m²  pitch inertia
+let I_YY         = 90;           // kg·m²  pitch inertia (live — Bike Geometry slider)
+let H_COM        = 0.65;         // m  CoM height above ground (live — Bike Geometry slider)
 // Digressive pitch-moment response: a suspension force contributes to the pitch moment
 // near-linearly when small, but saturates as it grows, so big wheel forces (bumps,
 // landings) don't deliver a harsh pitch jolt. MOMENT_FCHAR is the characteristic force —
@@ -422,6 +423,11 @@ bind('freq',      'lfreq',      v => { P.freq    = v/100;   return (v/100).toFix
 bind('rough',     'lrough',     v => { P.rough   = v/100;   return v+'%'; });
 bind('duty',      'lduty',      v => { P.duty    = v/100;   return v+'%'; });
 
+// ── Bike geometry (live) ────────────────────────────────────────────────────
+bind('comheight',    'lcomheight',    v => { H_COM    = v/100;          return (v/100).toFixed(2)+' m'; });
+bind('pitchinertia', 'lpitchinertia', v => { I_YY     = +v;             return v+' kg·m²'; });
+bind('rake',         'lrake',         v => { RAKE_RAD = +v*Math.PI/180; return (+v).toFixed(1)+'°'; });
+
 // Wheel toggle
 let wheelMode = 'front';
 function setWheelMode(m) {
@@ -665,7 +671,7 @@ const GAS_RAMP_UP    = 0.85;  // s  throttle press → full (slow climb so it do
 const GAS_RAMP_DOWN  = 0.50;  // s  throttle release → zero (gentle drop for consistent wheelies)
 const BRAKE_RAMP_UP  = 0.85;  // s  brake press → full (same ease-out feel as the throttle)
 const BRAKE_RAMP_DOWN = 0.50; // s  brake release → zero
-const H_COM       = 0.65; // m     — approx CoM height above ground (MT-07 class)
+// (H_COM is declared up with the geometry constants — it's a live Bike Geometry slider.)
 
 // Wheel rotation angles (radians, positive = clockwise = forward rolling)
 let wheelAngle_f  = 0;
