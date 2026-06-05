@@ -593,7 +593,15 @@ function _physicsStep(dt_s) {
   const pen_f = Math.max(0, frontWheelY_m - nat_f);
   const v_tire_f = (prevFrontWheelY_m === null) ? 0 : (frontWheelY_m - prevFrontWheelY_m) / dt_s;
   prevFrontWheelY_m = frontWheelY_m;
-  f_tire_F = tireForce(pen_f, v_tire_f, P.k_tire_f, P.m_unsprung_f, dt_s, TIRE_TRAVEL_F);
+  // In the rigid STOPPIE regime the fork is bypassed and the bike rocks on the front tire. The
+  // tire's carcass damper reads the TRUE contact velocity, so it would also heavily damp the
+  // PITCH — making the stoppie unnaturally stable ("rises to balance and parks there"). Fade the
+  // carcass damper out as the front goes rigid, exactly as the REAR tire damper naturally goes
+  // blind there (it reads the swingarm rate, ≈0 when rigid). Spring force is untouched; the
+  // dedicated frontBounceDamp still tames pure vertical bounce. Symmetric with the rear now.
+  const frontRigid_dampGate = Math.max(0, Math.min(1, (pitchAngle - 0.26) / (0.70 - 0.26)));
+  const v_tire_f_damp = v_tire_f * (1 - frontRigid_dampGate);
+  f_tire_F = tireForce(pen_f, v_tire_f_damp, P.k_tire_f, P.m_unsprung_f, dt_s, TIRE_TRAVEL_F);
 
   // Rear tire spring — now safe to include in a_susp_r (see EOM below).
   // In the new chassis-relative DOF architecture, rv_r = vSuspR (not derived from
