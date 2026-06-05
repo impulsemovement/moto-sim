@@ -69,6 +69,8 @@ const BRAKE_TORQUE_R = 120;      // N·m   rear  brake torque on a spinning whee
 const REAR_BRAKE_LEVER = 0.22;   // m   effective lever for the rear-brake anti-wheelie nose-down moment
 const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
 const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
+const REGRIP_LOAD_K = 0.008;     // (1/s per N) extra regrip rate per N of tire normal load — a
+                                 // spinning wheel that hits a bump (load spike) bites and slows fast
 const TAU_REACT_MAX = 300;       // N·m   clamp on the chassis reaction torque (tames landing resync)
 let WHEELBASE    = 1.400;        // m  (live — Bike Geometry slider; front axle moves, rear fixed)
 const B_REAR_M   = 0.686;        // m  CoM from rear axle (fixed — anchors the swingarm geometry)

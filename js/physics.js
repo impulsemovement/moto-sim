@@ -397,9 +397,10 @@ function _physicsStep(dt_s) {
         if (omega_r < omega_roll) omega_r = omega_roll;
       } else if (omega_r > omega_roll + 1e-3) {
         // Spinning but no longer over-driven (off-throttle / braking): kinetic friction + brake
-        // pull it back toward rolling. Relax at a prompt rate (so it doesn't spin on forever),
-        // much faster while braking — so the wheel regrips instead of spinning as the bike stops.
-        const regrip = (6 + 30 * brakeInput) * dt_s;   // 1/s; brake regrips hard
+        // pull it back toward rolling. The regrip rate scales with the tire NORMAL LOAD, so a
+        // wheel that lands or hits a bump (load spike, big |f_tire_R|) bites hard and snaps back
+        // to rolling instead of spinning on forever; brake regrips hard too.
+        const regrip = (6 + 30 * brakeInput + REGRIP_LOAD_K * Math.abs(f_tire_R)) * dt_s;
         omega_r += (omega_roll - omega_r) * Math.min(1, regrip);
       } else {
         omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
@@ -413,9 +414,21 @@ function _physicsStep(dt_s) {
                 - T_brake_r - engBrakeAir;
       omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
     }
-    // Front wheel (no drive)
+    // Front wheel (no drive). The brake can lock it on low grip: friction can only hold the
+    // wheel to rolling speed up to capFront·R of torque. If the brake torque exceeds that, the
+    // wheel skids/locks (omega_f → 0) instead of magically rolling at vehicle speed — so on
+    // dirt/gravel a hard squeeze locks the front and it slides.
     if (onGroundFront) {
-      omega_f += (vChassisX / WHEEL_R_F - omega_f) * gripK;
+      const omega_roll_f = vChassisX / WHEEL_R_F;
+      const T_brake_f    = BRAKE_TORQUE_F * brakeInput * Math.tanh(omega_f / 3);  // ≥0, opposes spin
+      const gripHoldT_f  = capFront * WHEEL_R_F;          // torque grip can supply to keep it rolling
+      if (T_brake_f > gripHoldT_f && omega_f > 0.05) {
+        // Brake overcomes available grip → the wheel decelerates by the NET (brake − grip) torque
+        // and skids; it can lock fully (omega_f = 0) and slide while the bike still moves.
+        omega_f = Math.max(0, omega_f + (gripHoldT_f - T_brake_f) / I_WHEEL_F * dt_s);
+      } else {
+        omega_f += (omega_roll_f - omega_f) * gripK;      // within grip → rolls at vehicle speed
+      }
     } else {
       const tau = -BRAKE_TORQUE_F * brakeInput * Math.tanh(omega_f / 3);
       omega_f = Math.max(0, omega_f + (tau / I_WHEEL_F) * dt_s);
