@@ -254,10 +254,15 @@ function drawParallaxBackground(W, H) {
   const horizY = groundBaseY;
   const comX = COM_SX();
 
-  // Zoom scale factors for sizing scene elements
-  const pz  = PM / PM_base;               // foreground plants  (full zoom scale)
-  const pzD = Math.sqrt(pz);              // distant plants     (half-power scale)
-  const pzM = Math.pow(pz, 0.25);         // mesas              (gentle scale)
+  // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
+  // 200 desktop) makes the scenery shrink WITH the bike on a small canvas; without it the
+  // cacti/mesas stayed full-size and looked oversized next to the half-scale bike. The zoom
+  // response is full for foreground and damped for distant/mesas to give parallax depth.
+  const base = PM_base / 200;             // 0.5 on mobile, 1.0 on desktop
+  const zoom = PM / PM_base;              // user-zoom factor (1.0 by default)
+  const pz  = base * zoom;                // foreground plants  (full zoom scale)
+  const pzD = base * Math.sqrt(zoom);     // distant plants     (half-power zoom)
+  const pzM = base * Math.pow(zoom, 0.25);// mesas              (gentle zoom)
 
   // Pan offset in screen pixels — applied uniformly to all layers (camera pan)
   const panPx = camPanX_m * PM;
@@ -294,7 +299,7 @@ function drawParallaxBackground(W, H) {
   }
   eachSlot(3.0, 0.025, 2.5, (n, sx) => {
     const cy = horizY * (0.15 + bgH(n, 5) * 0.30);
-    const r  = 18 + bgH(n, 6) * 28;
+    const r  = (18 + bgH(n, 6) * 28) * pzD;
     drawCloud(sx + bgH(n, 7) * 40, cy, r);
   });
 

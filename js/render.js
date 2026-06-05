@@ -15,12 +15,13 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   ctx.translate(cx, cy);
   ctx.rotate(rotAngle || 0);
   ctx.strokeStyle = '#e11d48';
-  ctx.lineWidth = Math.max(9, r_px * 0.255);   // ~25% thinner than before
+  ctx.lineWidth = Math.max(2, r_px * 0.255);   // scales with wheel size (no fixed-px floor)
   ctx.lineCap = 'round';
+  const spokeInner = r_px * 0.10;              // spoke start radius — scales with the wheel
   for (let i = 0; i < 5; i++) {
     const a = i / 5 * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * 6, Math.sin(a) * 6);
+    ctx.moveTo(Math.cos(a) * spokeInner, Math.sin(a) * spokeInner);
     ctx.lineTo(Math.cos(a) * rimR, Math.sin(a) * rimR);
     ctx.stroke();
   }
@@ -43,10 +44,10 @@ function drawWheel(cx, cy, r_px, rotAngle) {
   ctx.beginPath(); ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
   ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 1; ctx.stroke();
 
-  // Hub (center, on top).
-  ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+  // Hub (center, on top) — scales with the wheel so it doesn't balloon on a small canvas.
+  ctx.beginPath(); ctx.arc(cx, cy, r_px * 0.11, 0, Math.PI * 2);
   ctx.fillStyle = '#888'; ctx.fill();
-  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(cx, cy, r_px * 0.048, 0, Math.PI * 2);
   ctx.fillStyle = '#ccc'; ctx.fill();
 }
 
