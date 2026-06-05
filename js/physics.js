@@ -271,9 +271,11 @@ function _physicsStep(dt_s) {
   // Rev-limiter hysteresis: cut at the ceiling, release once revs drop a band below it. Use the
   // UNCLAMPED locked rpm when engaged (engineRPM is pinned to RPM_LIMIT) so the cut still fires
   // and bounces the bike at top speed in gear too.
-  const rpmForLimiter = (clutchEngage >= 0.999) ? lockedRPM : engineRPM;
-  if (rpmForLimiter >= RPM_LIMIT)               revLimiterCut = true;
-  else if (rpmForLimiter <= RPM_LIMIT - LIMITER_BAND) revLimiterCut = false;
+  const inGear = (clutchEngage >= 0.999);
+  const rpmForLimiter = inGear ? lockedRPM : engineRPM;
+  const limBand = inGear ? LIMITER_BAND_GEAR : LIMITER_BAND;   // tighter (faster) bounce in gear
+  if (rpmForLimiter >= RPM_LIMIT)             revLimiterCut = true;
+  else if (rpmForLimiter <= RPM_LIMIT - limBand) revLimiterCut = false;
   // Engine crank torque follows the MT-07 dyno curve → wheel torque via the gear. The limiter is
   // a hard fuel cut: zero drive while cutting, so the bike can't push past it (and bounces).
   const T_eng_peak  = GAS_ACCEL * ENGINE_K;
@@ -294,7 +296,12 @@ function _physicsStep(dt_s) {
   // clutch at idle with the wheel speed matched produces no braking force (no pitch).
   const offThr     = Math.max(0, 1 - gasInput / 0.15);   // 1 fully off-throttle, 0 above ~15%
   const revFrac    = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)); // 0 idle → 1 redline
-  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage;
+  // A rev-limiter fuel cut IS engine braking even at WOT (no combustion), and boosted so the
+  // drivetrain sheds revs fast → the in-gear limiter bounces quickly. Because engine braking
+  // scales with the gear ratio, this bounces hard in 1st and gently in 6th, as it should.
+  const offThrEff  = revLimiterCut ? 1 : offThr;
+  const brakeBoost = revLimiterCut ? LIMITER_BRAKE_BOOST : 1;
+  const engBrakeT  = ENGINE_BRAKE_K * brakeBoost * revFrac * offThrEff * clutchEngage;
   const F_engbrake = (vChassisX > 0.1) ? engBrakeT * ratio / WHEEL_R_R : 0;
   // ── Tire friction limit (grip slider × pressure × normal load) ──────────────
   // Each tire can only transmit so much longitudinal force before it slides: μ·N, where

@@ -355,8 +355,11 @@ const RPM_REDLINE  = 10000;
 const RPM_LIMIT    = 10800;   // hard rev limiter
 // Bouncing rev limiter: a fuel cut with hysteresis. Cuts at RPM_LIMIT, stays cut until revs
 // fall LIMITER_BAND below it, then fires again → the revs bounce off the top (seen + heard).
-const LIMITER_BAND      = 350;   // RPM hysteresis band (bounce depth)
-const LIMITER_DROP_RATE = 16000; // RPM/s the (free) revs fall while the fuel is cut
+const LIMITER_BAND       = 350;  // RPM hysteresis band when free-revving (clutch in) — dramatic bounce
+const LIMITER_BAND_GEAR  = 130;  // tighter band in gear → the bike re-accelerates the gap faster,
+                                 // so it bounces quicker (esp. low gears) instead of a slow surge
+const LIMITER_DROP_RATE  = 16000; // RPM/s the (free) revs fall while the fuel is cut
+const LIMITER_BRAKE_BOOST = 4;   // ×engine-braking while cutting in gear → fast bounce in low gears
 const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
 const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side)
 // Normalized MT-07 (CP2 689 cc) crank-torque curve vs RPM. 1.0 = peak (~68 N·m near 6 000).
