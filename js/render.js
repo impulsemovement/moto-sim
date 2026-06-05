@@ -136,6 +136,9 @@ function draw(ts) {
     if (gr) gr.textContent = Math.round(engineRPM) + ' rpm';
   }
 
+  // Engine sound: pitch tracks the live RPM (throttle 0 when paused → just idle).
+  if (typeof updateEngineSound === 'function') updateEngineSound(engineRPM, paused ? 0 : gasInput);
+
   // ── Clear & sky ───────────────────────────────────────────
   drawParallaxBackground(W, H);
 

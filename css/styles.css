@@ -6,8 +6,9 @@ canvas { display: block; background: #080808; }
 #sim-wrap { position: relative; display: inline-block; width: 100%; }
 #zoom-btns {
   position: absolute; top: 10px; left: 10px;
-  display: flex; flex-direction: column; gap: 4px; z-index: 10;
+  display: flex; flex-direction: row; gap: 4px; z-index: 10;
 }
+#btn-mute { font-size: 15px; }
 #zoom-btns button {
   width: 32px; height: 32px;
   border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;

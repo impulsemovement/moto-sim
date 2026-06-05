@@ -38,6 +38,18 @@ function resetSim() {
 document.getElementById('btn-reset').addEventListener('click', resetSim);
 
 // ═══════════════════════════════════════════════════════════
+//  MUTE / ENGINE SOUND TOGGLE
+// ═══════════════════════════════════════════════════════════
+{
+  const mb = document.getElementById('btn-mute');
+  if (mb) {
+    const sync = () => { mb.textContent = soundMuted ? '🔇' : '🔊'; };
+    sync();   // reflect the saved preference
+    mb.addEventListener('click', () => { initAudio(); setMuted(!soundMuted); sync(); });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 //  PAUSE / PLAY + FRAME-STEP
 // ═══════════════════════════════════════════════════════════
 function setPaused(on) {
