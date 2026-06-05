@@ -69,8 +69,6 @@ const BRAKE_TORQUE_R = 120;      // N·m   rear  brake torque on a spinning whee
 const REAR_BRAKE_LEVER = 0.22;   // m   effective lever for the rear-brake anti-wheelie nose-down moment
 const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
 const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
-const REGRIP_LOAD_K = 0.008;     // (1/s per N) extra regrip rate per N of tire normal load — a
-                                 // spinning wheel that hits a bump (load spike) bites and slows fast
 const TAU_REACT_MAX = 300;       // N·m   clamp on the chassis reaction torque (tames landing resync)
 let WHEELBASE    = 1.400;        // m  (live — Bike Geometry slider; front axle moves, rear fixed)
 const B_REAR_M   = 0.686;        // m  CoM from rear axle (fixed — anchors the swingarm geometry)
@@ -271,13 +269,7 @@ function bottomOutFactor(k_tire) {
 // dissipates much more energy (hysteresis) — so it compresses further AND rebounds
 // slowly/deadly, instead of springing back. Scales inversely with pressure: ~1500 at
 // nominal 36 psi, up to ~5000 when soft, down to ~900 when hard.
-const C_TIRE_BASE = 2600;   // raised: more carcass damping (up to the explicit-stability cap) so
-                            // small bumps don't set the tire oscillating down the road
-// Wheelie/stoppie bounce damper: in the rigid regime the suspension is bypassed and the bike bobs
-// on the tire. Damp the CONTACT-patch vertical velocity (high while bobbing, ~0 during a come-down
-// since the wheel stays planted) so the bounce dies WITHOUT slowing the come-down. Scaled by the
-// rigidity; applied to the chassis, so a big value is stable.
-const C_BOUNCE_TIRE = 6000;
+const C_TIRE_BASE = 1500;
 function tireDampCoef(k_tire) {
   return Math.max(600, Math.min(5000, C_TIRE_BASE * KTIRE_NOMINAL / Math.max(k_tire, 1)));
 }
@@ -361,13 +353,6 @@ const GEAR_REF     = 2;                                    // ratio that ≈ mat
 const RPM_IDLE     = 1500;
 const RPM_REDLINE  = 10000;
 const RPM_LIMIT    = 10800;   // hard rev limiter
-// Bouncing rev limiter: a fuel cut with hysteresis. Cuts at RPM_LIMIT, stays cut until revs
-// fall LIMITER_BAND below it, then fires again → the revs bounce off the top (seen + heard).
-const LIMITER_BAND       = 350;  // RPM hysteresis band when free-revving (clutch in) — dramatic bounce
-const LIMITER_BAND_GEAR  = 200;  // tighter band in gear (vs the 350 free-rev band) → bounces faster
-                                 // than a slow surge, but enough swing to read clearly on gauge/sound
-const LIMITER_DROP_RATE  = 16000; // RPM/s the (free) revs fall while the fuel is cut
-const LIMITER_BRAKE_BOOST = 4;   // ×engine-braking while cutting in gear → fast bounce in low gears
 const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
 const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side)
 // Normalized MT-07 (CP2 689 cc) crank-torque curve vs RPM. 1.0 = peak (~68 N·m near 6 000).
@@ -396,14 +381,6 @@ const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)
 const GRIP_LONG_K  = 2500;  // N per m/s of contact longitudinal slip (capped by friction)
 const GRIP_MU      = 0.5;   // longitudinal grip coefficient (× tire normal force)
-// Stoppie instability: a real stoppie balance is a knife edge — you can't park it on a fixed
-// brake. These add a destabilizing (positive-feedback) nose-down pitch torque in the DEEP
-// stoppie regime so the (otherwise too-stable) balance plateau becomes a repeller: hold the
-// brake a touch too long and it tips over the front; ease off and it drops. Gated to nose-down
-// pitch only (wheelies untouched) and capped so it can't explode.
-const STOPPIE_TIP_START = 0.70;  // rad (~40°) nose-down where the instability begins to bite
-const STOPPIE_TIP_K     = 500;   // N·m per rad past the threshold (positive feedback strength)
-const STOPPIE_TIP_CAP   = 400;   // N·m clamp on the destabilizing torque
 const MU_BASE      = 1.3;   // peak longitudinal grip coeff at 100% grip slider / 36 psi (asphalt)
 const GRIP_CURVE   = 1.6;   // expands the usable dirt range across the slider (load transfer
                             // otherwise keeps the μ·N cap above demand until grip is very low)
@@ -654,7 +631,6 @@ let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = exten
 let frontWheelX_m = 0;
 let frontWheelY_m = 0;
 let prevFrontWheelY_m = null;   // previous-substep front-wheel Y, for tire-damping velocity
-let prevRearWheelY_m  = null;   // previous-substep rear-wheel Y, for the wheelie bounce damper
 
 // Rear suspension: primary DOF is the SWINGARM ANGLE (chassis-relative rotation).
 // The wheel is a point mass at the swingarm tip; it follows an arc about the pivot.
@@ -676,7 +652,6 @@ let initialized   = false;
 // Drivetrain state
 let gear          = 0;          // 0…NUM_GEARS-1  (1st…6th)
 let engineRPM     = RPM_IDLE;   // crank speed
-let revLimiterCut = false;      // true while the rev limiter is cutting fuel (bouncing the revs)
 let clutchEngage  = 1;          // 0 = clutch fully IN (open), 1 = fully OUT (locked)
 let clutchPulled  = false;      // input: true while the clutch button/key is held
 

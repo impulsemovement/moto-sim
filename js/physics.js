@@ -257,30 +257,22 @@ function _physicsStep(dt_s) {
     clutchEngage  += Math.sign(ceTarget - clutchEngage) * Math.min(Math.abs(ceTarget - clutchEngage), ceStep);
     clutchEngage   = Math.max(0, Math.min(1, clutchEngage));
   }
-  // Engine RPM: locked to the wheel when fully engaged; otherwise free (gas revs it). While the
-  // rev limiter is cutting (set last frame), the free revs FALL — so held at WOT the engine
-  // bounces between RPM_LIMIT and RPM_LIMIT−LIMITER_BAND instead of pinning smoothly.
+  // Engine RPM: locked to the wheel when fully engaged; otherwise free (gas revs it).
   if (clutchEngage >= 0.999) {
     engineRPM = Math.min(RPM_LIMIT, lockedRPM);
-  } else if (revLimiterCut) {
-    engineRPM = Math.max(RPM_IDLE, engineRPM - LIMITER_DROP_RATE * dt_s);
   } else {
     engineRPM += (gasInput * ENGINE_REV_RATE - (1 - gasInput) * ENGINE_DECAY_RATE) * dt_s;
     engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
   }
-  // Rev-limiter hysteresis: cut at the ceiling, release once revs drop a band below it. Use the
-  // UNCLAMPED locked rpm when engaged (engineRPM is pinned to RPM_LIMIT) so the cut still fires
-  // and bounces the bike at top speed in gear too.
-  const inGear = (clutchEngage >= 0.999);
-  const rpmForLimiter = inGear ? lockedRPM : engineRPM;
-  const limBand = inGear ? LIMITER_BAND_GEAR : LIMITER_BAND;   // tighter (faster) bounce in gear
-  if (rpmForLimiter >= RPM_LIMIT)             revLimiterCut = true;
-  else if (rpmForLimiter <= RPM_LIMIT - limBand) revLimiterCut = false;
-  // Engine crank torque follows the MT-07 dyno curve → wheel torque via the gear. The limiter is
-  // a hard fuel cut: zero drive while cutting, so the bike can't push past it (and bounces).
+  // Engine crank torque follows the MT-07 dyno curve → wheel torque via the gear.
   const T_eng_peak  = GAS_ACCEL * ENGINE_K;
   const torqueFac   = engTorqueFac(engineRPM);
-  const F_throttle  = revLimiterCut ? 0 : (T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage);
+  // Rev limiter: the engine cannot be driven past the limiter. The clamped engineRPM pins at
+  // RPM_LIMIT, so use the UNCLAMPED locked rpm to fade fuel/spark to zero from redline→limiter
+  // (and fully cut above it) — otherwise torque keeps applying at the limiter and the bike
+  // accelerates forever in a low gear (200 km/h in 1st). It bounces off the limiter instead.
+  const limiterFac  = Math.max(0, Math.min(1, (RPM_LIMIT - lockedRPM) / (RPM_LIMIT - RPM_REDLINE)));
+  const F_throttle  = T_eng_peak * gasInput * torqueFac * limiterFac * ratio / WHEEL_R_R * clutchEngage;
   // Clutch slip: engine spinning faster than the wheel transmits a big torque while the
   // clutch is engaging — this is the clutch-up wheelie. It also sheds engine RPM.
   let F_clutch = 0;
@@ -296,12 +288,7 @@ function _physicsStep(dt_s) {
   // clutch at idle with the wheel speed matched produces no braking force (no pitch).
   const offThr     = Math.max(0, 1 - gasInput / 0.15);   // 1 fully off-throttle, 0 above ~15%
   const revFrac    = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)); // 0 idle → 1 redline
-  // A rev-limiter fuel cut IS engine braking even at WOT (no combustion), and boosted so the
-  // drivetrain sheds revs fast → the in-gear limiter bounces quickly. Because engine braking
-  // scales with the gear ratio, this bounces hard in 1st and gently in 6th, as it should.
-  const offThrEff  = revLimiterCut ? 1 : offThr;
-  const brakeBoost = revLimiterCut ? LIMITER_BRAKE_BOOST : 1;
-  const engBrakeT  = ENGINE_BRAKE_K * brakeBoost * revFrac * offThrEff * clutchEngage;
+  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage;
   const F_engbrake = (vChassisX > 0.1) ? engBrakeT * ratio / WHEEL_R_R : 0;
   // ── Tire friction limit (grip slider × pressure × normal load) ──────────────
   // Each tire can only transmit so much longitudinal force before it slides: μ·N, where
@@ -397,10 +384,9 @@ function _physicsStep(dt_s) {
         if (omega_r < omega_roll) omega_r = omega_roll;
       } else if (omega_r > omega_roll + 1e-3) {
         // Spinning but no longer over-driven (off-throttle / braking): kinetic friction + brake
-        // pull it back toward rolling. The regrip rate scales with the tire NORMAL LOAD, so a
-        // wheel that lands or hits a bump (load spike, big |f_tire_R|) bites hard and snaps back
-        // to rolling instead of spinning on forever; brake regrips hard too.
-        const regrip = (6 + 30 * brakeInput + REGRIP_LOAD_K * Math.abs(f_tire_R)) * dt_s;
+        // pull it back toward rolling. Relax at a prompt rate (so it doesn't spin on forever),
+        // much faster while braking — so the wheel regrips instead of spinning as the bike stops.
+        const regrip = (6 + 30 * brakeInput) * dt_s;   // 1/s; brake regrips hard
         omega_r += (omega_roll - omega_r) * Math.min(1, regrip);
       } else {
         omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
@@ -414,21 +400,9 @@ function _physicsStep(dt_s) {
                 - T_brake_r - engBrakeAir;
       omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
     }
-    // Front wheel (no drive). The brake can lock it on low grip: friction can only hold the
-    // wheel to rolling speed up to capFront·R of torque. If the brake torque exceeds that, the
-    // wheel skids/locks (omega_f → 0) instead of magically rolling at vehicle speed — so on
-    // dirt/gravel a hard squeeze locks the front and it slides.
+    // Front wheel (no drive)
     if (onGroundFront) {
-      const omega_roll_f = vChassisX / WHEEL_R_F;
-      const T_brake_f    = BRAKE_TORQUE_F * brakeInput * Math.tanh(omega_f / 3);  // ≥0, opposes spin
-      const gripHoldT_f  = capFront * WHEEL_R_F;          // torque grip can supply to keep it rolling
-      if (T_brake_f > gripHoldT_f && omega_f > 0.05) {
-        // Brake overcomes available grip → the wheel decelerates by the NET (brake − grip) torque
-        // and skids; it can lock fully (omega_f = 0) and slide while the bike still moves.
-        omega_f = Math.max(0, omega_f + (gripHoldT_f - T_brake_f) / I_WHEEL_F * dt_s);
-      } else {
-        omega_f += (omega_roll_f - omega_f) * gripK;      // within grip → rolls at vehicle speed
-      }
+      omega_f += (vChassisX / WHEEL_R_F - omega_f) * gripK;
     } else {
       const tau = -BRAKE_TORQUE_F * brakeInput * Math.tanh(omega_f / 3);
       omega_f = Math.max(0, omega_f + (tau / I_WHEEL_F) * dt_s);
@@ -632,13 +606,7 @@ function _physicsStep(dt_s) {
   // keeps the usual shock-isolated behaviour, the steep wheelie gets the rigid coupling.
   const pivotGate    = Math.max(0, Math.min(1, (Math.abs(pitchAngle) - 0.26) / (0.70 - 0.26)));
   const pivotFrac    = Math.sin(thetaSwWorld) ** 2 * pivotGate;   // 0 normal → toward 1 at balance
-  // Bounce damper: damp the rear CONTACT vertical velocity (≈0 during a come-down with the wheel
-  // planted, but high while the bike bobs on the tire) so the wheelie stops bouncing without
-  // damping the come-down. Only in the rigid regime where the tire's own damper goes blind.
-  const vRearContact = (prevRearWheelY_m === null) ? 0 : (rearWheelY_m - prevRearWheelY_m) / dt_s;
-  prevRearWheelY_m   = rearWheelY_m;
-  const rearBounceDamp = -C_BOUNCE_TIRE * vRearContact * pivotFrac;
-  const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac + rearBounceDamp;
+  const fsusp_r_eff  = fsusp_r * (1 - pivotFrac) + f_tire_R * pivotFrac;
 
   // Same rigid coupling on the FRONT for a stoppie: balanced nose-down on the front wheel, a
   // bump should pop the bike rather than be soaked by the fork. Gated on nose-DOWN pitch, so
@@ -716,19 +684,9 @@ function _physicsStep(dt_s) {
   const tau_terrain = Math.max(-TERRAIN_PITCH_CAP, Math.min(TERRAIN_PITCH_CAP,
                                -F_x_terrain * TERRAIN_PITCH * H_COM));
 
-  // Stoppie instability (knife-edge balance): in the deep stoppie regime add a destabilizing
-  // positive-feedback nose-down torque that grows with how far past the threshold the nose is
-  // pitched. This repels the bike off the balance plateau — hold the brake slightly too long
-  // and it tips OVER the front; back off and gravity drops it — so a steep stoppie can't be
-  // parked and must be actively modulated. Gated to nose-DOWN pitch with the front planted
-  // (wheelies and normal braking dive are untouched) and capped so it can't run away.
-  let tau_tip = 0;
-  if (pitchAngle > STOPPIE_TIP_START && onGroundFront && !onGroundRear) {
-    tau_tip = Math.min(STOPPIE_TIP_CAP, STOPPIE_TIP_K * (pitchAngle - STOPPIE_TIP_START));
-  }
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain + tau_tip - C_PITCH_DRAG * pitchRate) / I_YY;
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
