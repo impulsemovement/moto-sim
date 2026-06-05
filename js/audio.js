@@ -45,9 +45,13 @@ function updateEngineSound(rpm, throttle) {
   // Brightness opens with revs + throttle.
   const cutoff = 300 + (rpm / 10800) * 2600 + throttle * 1500;
   engLPF.frequency.setTargetAtTime(cutoff, t, 0.05);
-  // Volume: quiet idle hum + throttle + a touch with revs. Muted → silent.
-  const vol = soundMuted ? 0 : (0.035 + throttle * 0.10 + (rpm / 10800) * 0.045);
-  engGain.gain.setTargetAtTime(vol, t, 0.05);
+  // Volume: quiet idle hum + throttle + a touch with revs. Drops hard while the rev limiter is
+  // cutting fuel → the characteristic "bra-ba-ba-bap" stutter off the limiter. Muted → silent.
+  const cutting = (typeof revLimiterCut !== 'undefined' && revLimiterCut);
+  let vol = 0.035 + throttle * 0.10 + (rpm / 10800) * 0.045;
+  if (cutting) vol *= 0.25;
+  // Fast time constant so the rapid limiter on/off is heard as a crisp stutter, not blurred out.
+  engGain.gain.setTargetAtTime(soundMuted ? 0 : vol, t, 0.012);
 }
 
 function setMuted(m) {

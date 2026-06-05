@@ -22,7 +22,7 @@ function resetSim() {
   wheelAngle_f = 0; wheelAngle_r = 0; omega_f = 0; omega_r = 0;
   disp_f = 0; disp_r = 0;
   a_long = 0; gasInput = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
-  gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false;
+  gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false; revLimiterCut = false;
   gasPressed = false; brakePressed = false;
   rearContact  = false;
   camY_m       = 0;

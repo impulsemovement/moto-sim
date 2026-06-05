@@ -257,22 +257,28 @@ function _physicsStep(dt_s) {
     clutchEngage  += Math.sign(ceTarget - clutchEngage) * Math.min(Math.abs(ceTarget - clutchEngage), ceStep);
     clutchEngage   = Math.max(0, Math.min(1, clutchEngage));
   }
-  // Engine RPM: locked to the wheel when fully engaged; otherwise free (gas revs it).
+  // Engine RPM: locked to the wheel when fully engaged; otherwise free (gas revs it). While the
+  // rev limiter is cutting (set last frame), the free revs FALL — so held at WOT the engine
+  // bounces between RPM_LIMIT and RPM_LIMIT−LIMITER_BAND instead of pinning smoothly.
   if (clutchEngage >= 0.999) {
     engineRPM = Math.min(RPM_LIMIT, lockedRPM);
+  } else if (revLimiterCut) {
+    engineRPM = Math.max(RPM_IDLE, engineRPM - LIMITER_DROP_RATE * dt_s);
   } else {
     engineRPM += (gasInput * ENGINE_REV_RATE - (1 - gasInput) * ENGINE_DECAY_RATE) * dt_s;
     engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
   }
-  // Engine crank torque follows the MT-07 dyno curve → wheel torque via the gear.
+  // Rev-limiter hysteresis: cut at the ceiling, release once revs drop a band below it. Use the
+  // UNCLAMPED locked rpm when engaged (engineRPM is pinned to RPM_LIMIT) so the cut still fires
+  // and bounces the bike at top speed in gear too.
+  const rpmForLimiter = (clutchEngage >= 0.999) ? lockedRPM : engineRPM;
+  if (rpmForLimiter >= RPM_LIMIT)               revLimiterCut = true;
+  else if (rpmForLimiter <= RPM_LIMIT - LIMITER_BAND) revLimiterCut = false;
+  // Engine crank torque follows the MT-07 dyno curve → wheel torque via the gear. The limiter is
+  // a hard fuel cut: zero drive while cutting, so the bike can't push past it (and bounces).
   const T_eng_peak  = GAS_ACCEL * ENGINE_K;
   const torqueFac   = engTorqueFac(engineRPM);
-  // Rev limiter: the engine cannot be driven past the limiter. The clamped engineRPM pins at
-  // RPM_LIMIT, so use the UNCLAMPED locked rpm to fade fuel/spark to zero from redline→limiter
-  // (and fully cut above it) — otherwise torque keeps applying at the limiter and the bike
-  // accelerates forever in a low gear (200 km/h in 1st). It bounces off the limiter instead.
-  const limiterFac  = Math.max(0, Math.min(1, (RPM_LIMIT - lockedRPM) / (RPM_LIMIT - RPM_REDLINE)));
-  const F_throttle  = T_eng_peak * gasInput * torqueFac * limiterFac * ratio / WHEEL_R_R * clutchEngage;
+  const F_throttle  = revLimiterCut ? 0 : (T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage);
   // Clutch slip: engine spinning faster than the wheel transmits a big torque while the
   // clutch is engaging — this is the clutch-up wheelie. It also sheds engine RPM.
   let F_clutch = 0;

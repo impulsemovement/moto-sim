@@ -353,6 +353,10 @@ const GEAR_REF     = 2;                                    // ratio that ≈ mat
 const RPM_IDLE     = 1500;
 const RPM_REDLINE  = 10000;
 const RPM_LIMIT    = 10800;   // hard rev limiter
+// Bouncing rev limiter: a fuel cut with hysteresis. Cuts at RPM_LIMIT, stays cut until revs
+// fall LIMITER_BAND below it, then fires again → the revs bounce off the top (seen + heard).
+const LIMITER_BAND      = 350;   // RPM hysteresis band (bounce depth)
+const LIMITER_DROP_RATE = 16000; // RPM/s the (free) revs fall while the fuel is cut
 const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
 const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side)
 // Normalized MT-07 (CP2 689 cc) crank-torque curve vs RPM. 1.0 = peak (~68 N·m near 6 000).
@@ -652,6 +656,7 @@ let initialized   = false;
 // Drivetrain state
 let gear          = 0;          // 0…NUM_GEARS-1  (1st…6th)
 let engineRPM     = RPM_IDLE;   // crank speed
+let revLimiterCut = false;      // true while the rev limiter is cutting fuel (bouncing the revs)
 let clutchEngage  = 1;          // 0 = clutch fully IN (open), 1 = fully OUT (locked)
 let clutchPulled  = false;      // input: true while the clutch button/key is held
 
