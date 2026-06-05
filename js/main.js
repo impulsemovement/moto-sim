@@ -38,26 +38,6 @@ function resetSim() {
 document.getElementById('btn-reset').addEventListener('click', resetSim);
 
 // ═══════════════════════════════════════════════════════════
-//  FULLSCREEN  (takes the sim over the whole screen — escapes the page/header when embedded)
-// ═══════════════════════════════════════════════════════════
-{
-  const fsBtn = document.getElementById('btn-fullscreen');
-  const root  = document.documentElement;
-  const reqFS  = root.requestFullscreen || root.webkitRequestFullscreen || root.mozRequestFullScreen || root.msRequestFullscreen;
-  const exitFS = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
-  const fsEl   = () => document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
-  if (fsBtn && reqFS) {
-    fsBtn.addEventListener('click', () => {
-      if (fsEl()) { exitFS.call(document); } else { reqFS.call(root); }
-    });
-    const sync = () => { fsBtn.textContent = fsEl() ? '🗗' : '⛶'; };
-    ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev => document.addEventListener(ev, sync));
-  } else if (fsBtn) {
-    fsBtn.style.display = 'none';   // no Fullscreen API (e.g. iOS Safari) — hide the button
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
 //  PAUSE / PLAY + FRAME-STEP
 // ═══════════════════════════════════════════════════════════
 function setPaused(on) {

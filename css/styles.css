@@ -33,7 +33,6 @@ canvas { display: block; background: #080808; }
 #btn-pause  { right: 70px;  width: 34px; font-size: 13px; }
 #btn-rewind { right: 112px; width: 34px; font-size: 13px; }
 #btn-step   { right: 156px; width: 34px; font-size: 13px; }
-#btn-fullscreen { right: 198px; width: 34px; font-size: 15px; }
 #rewind-bar { display: none; align-items: center; gap: 8px; margin: 6px 0; }
 #rewind-bar input[type=range] { flex: 1; margin: 0; accent-color: #e11d48; }
 .ride-btn {
