@@ -716,9 +716,19 @@ function _physicsStep(dt_s) {
   const tau_terrain = Math.max(-TERRAIN_PITCH_CAP, Math.min(TERRAIN_PITCH_CAP,
                                -F_x_terrain * TERRAIN_PITCH * H_COM));
 
+  // Stoppie instability (knife-edge balance): in the deep stoppie regime add a destabilizing
+  // positive-feedback nose-down torque that grows with how far past the threshold the nose is
+  // pitched. This repels the bike off the balance plateau — hold the brake slightly too long
+  // and it tips OVER the front; back off and gravity drops it — so a steep stoppie can't be
+  // parked and must be actively modulated. Gated to nose-DOWN pitch with the front planted
+  // (wheelies and normal braking dive are untouched) and capped so it can't run away.
+  let tau_tip = 0;
+  if (pitchAngle > STOPPIE_TIP_START && onGroundFront && !onGroundRear) {
+    tau_tip = Math.min(STOPPIE_TIP_CAP, STOPPIE_TIP_K * (pitchAngle - STOPPIE_TIP_START));
+  }
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain - C_PITCH_DRAG * pitchRate) / I_YY;
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain + tau_tip - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:

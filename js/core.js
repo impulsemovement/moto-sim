@@ -396,6 +396,14 @@ const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)
 const GRIP_LONG_K  = 2500;  // N per m/s of contact longitudinal slip (capped by friction)
 const GRIP_MU      = 0.5;   // longitudinal grip coefficient (× tire normal force)
+// Stoppie instability: a real stoppie balance is a knife edge — you can't park it on a fixed
+// brake. These add a destabilizing (positive-feedback) nose-down pitch torque in the DEEP
+// stoppie regime so the (otherwise too-stable) balance plateau becomes a repeller: hold the
+// brake a touch too long and it tips over the front; ease off and it drops. Gated to nose-down
+// pitch only (wheelies untouched) and capped so it can't explode.
+const STOPPIE_TIP_START = 0.70;  // rad (~40°) nose-down where the instability begins to bite
+const STOPPIE_TIP_K     = 500;   // N·m per rad past the threshold (positive feedback strength)
+const STOPPIE_TIP_CAP   = 400;   // N·m clamp on the destabilizing torque
 const MU_BASE      = 1.3;   // peak longitudinal grip coeff at 100% grip slider / 36 psi (asphalt)
 const GRIP_CURVE   = 1.6;   // expands the usable dirt range across the slider (load transfer
                             // otherwise keeps the μ·N cap above demand until grip is very low)
