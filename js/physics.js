@@ -398,9 +398,13 @@ function _physicsStep(dt_s) {
       // forever and the brake actually slows it). The clutch is locked, so the wheel + engine
       // co-rotate (combined reflected inertia).
       const surplus = F_drive_raw - capRear;        // N at the contact; >0 = tyre can't hold
+      const rearLocking = brakeInputR > 0.05 && Math.abs(F_brakeR_raw) > capRear && omega_roll > 0.5;
       if (surplus > 0) {
         omega_r += (surplus * WHEEL_R_R - T_brake_r) / I_eff_r * dt_s;  // wheelspin up (brake fights it)
         if (omega_r < omega_roll) omega_r = omega_roll;
+      } else if (rearLocking) {
+        // Rear brake overpowers grip → the wheel SKIDS/LOCKS (omega_r → 0) and slides.
+        omega_r += (0 - omega_r) * Math.min(1, WHEEL_LOCK_RATE * dt_s);
       } else if (omega_r > omega_roll + 1e-3) {
         // Spinning but no longer over-driven (off-throttle / braking): kinetic friction + brake
         // pull it back toward rolling. The regrip rate scales with the tire NORMAL LOAD, so a
@@ -420,9 +424,16 @@ function _physicsStep(dt_s) {
                 - T_brake_r - engBrakeAir;
       omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
     }
-    // Front wheel (no drive)
+    // Front wheel (no drive). The front brake can overpower grip: when the DEMANDED front brake
+    // force exceeds the front grip cap (|F_brakeF_raw| > capFront — easy on dirt/gravel, or with
+    // full brake on tarmac), the wheel SKIDS/LOCKS (omega_f → 0) instead of rolling at vehicle
+    // speed. This detection works during deceleration (it's force-vs-grip, not omega-vs-rolling).
+    // Ease off the brake and it regrips.
     if (onGroundFront) {
-      omega_f += (vChassisX / WHEEL_R_F - omega_f) * gripK;
+      const omega_roll_f = vChassisX / WHEEL_R_F;
+      const frontLocking = brakeInputF > 0.05 && Math.abs(F_brakeF_raw) > capFront && omega_roll_f > 0.5;
+      if (frontLocking) omega_f += (0 - omega_f) * Math.min(1, WHEEL_LOCK_RATE * dt_s);   // skid
+      else              omega_f += (omega_roll_f - omega_f) * gripK;                       // rolls
     } else {
       const tau = -BRAKE_TORQUE_F * brakeInputF * Math.tanh(omega_f / 3);
       omega_f = Math.max(0, omega_f + (tau / I_WHEEL_F) * dt_s);
@@ -434,6 +445,11 @@ function _physicsStep(dt_s) {
     tau_react = Math.max(-TAU_REACT_MAX, Math.min(TAU_REACT_MAX, -(dLf + dLr)));
     wheelAngle_f += omega_f * dt_s;
     wheelAngle_r += omega_r * dt_s;
+    // Contact slip speed (m/s) for the tire-slip sound: how fast the tread is sliding over the
+    // ground. >0 when locked (skid) or spinning (wheelspin); ~0 when rolling true. Only counts
+    // when the wheel is on the ground.
+    frontSlipV = onGroundFront ? Math.abs(omega_f * WHEEL_R_F - vChassisX) : 0;
+    rearSlipV  = onGroundRear  ? Math.abs(omega_r * WHEEL_R_R - vChassisX) : 0;
   }
 
   // ── Fork geometry: axis locked to chassis ─────────────────────────────────

@@ -71,6 +71,8 @@ const REAR_BRAKE_FRAC = 0.65;    // rear brake is weaker than the front (smaller
 const REAR_BRAKE_LEVER = 0.22;   // m   effective lever for the rear-brake anti-wheelie nose-down moment
 const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
 const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
+const WHEEL_LOCK_RATE = 11;      // 1/s   how fast a wheel spins DOWN to a skid when the brake
+                                 // overpowers grip (lockup); ~0.2-0.3 s to lock from speed
 const TAU_REACT_MAX = 300;       // N·m   clamp on the chassis reaction torque (tames landing resync)
 let WHEELBASE    = 1.400;        // m  (live — Bike Geometry slider; front axle moves, rear fixed)
 const B_REAR_M   = 0.686;        // m  CoM from rear axle (fixed — anchors the swingarm geometry)
@@ -716,6 +718,10 @@ let wheelAngle_r  = 0;
 // when airborne (engine/brake spin them) and drive the torque-reaction pitch effect.
 let omega_f       = 0;
 let omega_r       = 0;
+// Contact slip speed (m/s) — |wheel surface speed − ground speed|. >0 when a wheel is locked
+// (braking skid) or spinning (wheelspin); 0 when rolling true. Drives the tire-slip sound.
+let frontSlipV    = 0;
+let rearSlipV     = 0;
 
 // Cached forces for display
 let f_spring_F=0, f_damp_F=0, f_spring_R=0, f_damp_R=0;
