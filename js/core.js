@@ -392,10 +392,15 @@ function engTorqueFac(rpm) {
   }
   return 1;
 }
-const ENGINE_REV_RATE   = 12000; // RPM/s free-rev spin-up at full gas (clutch in)
-const ENGINE_DECAY_RATE = 8000;  // RPM/s decay toward idle off-gas (clutch in)
+const ENGINE_REV_RATE   = 12000; // RPM/s (legacy; rev dynamics now torque/inertia based)
+const ENGINE_DECAY_RATE = 8000;  // RPM/s (legacy)
+// Engine ROTATIONAL inertia for the rev dynamics (free-rev AND airborne-in-gear). dω/dt = T/I,
+// so the crank spins up/down at a flywheel-limited rate. Realistic effective value (the 0.35
+// I_ENGINE is a clutch-slip lump, far too high for honest rev rates). Idle→redline ~1.3 s.
+const I_ENGINE_REV = 0.045;      // kg·m²
+const REV_FRIC     = 26;         // N·m  crank pumping/friction at redline (sets off-throttle decay)
 const CLUTCH_PULL_TIME   = 0.06; // s  to disengage (pull in)
-const CLUTCH_ENGAGE_TIME = 0.13; // s  to engage (release / dump)
+const CLUTCH_ENGAGE_TIME = 0.25; // s  to engage smoothly (release / dump) — not binary
 const CLUTCH_MAX_TORQUE  = 85;   // N·m  max torque the clutch can transmit (engine side)
 const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)

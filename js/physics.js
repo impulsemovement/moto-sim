@@ -284,20 +284,23 @@ function _physicsStep(dt_s) {
   // revs FALL — so held at WOT the engine bounces RPM_LIMIT↔RPM_LIMIT−LIMITER_BAND.
   if (!engineRunning) {
     engineRPM = Math.max(0, engineRPM - ENGINE_STALL_DECAY * dt_s);
-  } else if (clutchEngage >= 0.999) {
-    engineRPM = Math.min(RPM_LIMIT, lockedRPM);
-  } else if (revLimiterCut) {
-    engineRPM = Math.max(RPM_IDLE, engineRPM - LIMITER_DROP_RATE * dt_s);
+  } else if (clutchEngage > 0.98 && onGroundRear) {
+    // Clutch locked ON THE GROUND: the bike's speed dictates the revs (idle floor).
+    engineRPM = Math.min(RPM_LIMIT, Math.max(RPM_IDLE, lockedRPM));
   } else {
-    // Free-rev WITH INERTIA (clutch in): dω/dt = (T_drive − T_friction)/I_crank. The spin-up rate
-    // follows the engine torque curve (surges off idle, tapers near redline) and the off-throttle
-    // decay grows with rpm (the crank coasts down faster from high revs) — so blips feel like a
-    // real flywheel instead of a flat linear ramp.
-    const revUp   = ENGINE_REV_RATE   * gasInput * engTorqueFac(engineRPM);
-    const revDown = ENGINE_DECAY_RATE * (1 - gasInput)
-                    * (0.25 + 0.75 * Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)));
-    engineRPM += (revUp - revDown) * dt_s;
-    engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
+    // Engine on its OWN inertia: clutch in (free-rev), slipping, or AIRBORNE in gear (the engine
+    // drags the rear wheel). dω/dt = (T_combustion − T_friction)/I, where I is the crank/flywheel
+    // inertia PLUS — when the clutch is engaged airborne — the rear wheel's inertia reflected
+    // through the gear. So the revs climb at the flywheel-limited rate (no light-wheel skyrocket),
+    // and a heavier rear wheel or a taller gear slows the climb. Off-throttle, pumping friction
+    // brings it back toward idle.
+    const T_comb  = revLimiterCut ? 0 : (GAS_ACCEL * ENGINE_K) * gasInput * engTorqueFac(engineRPM);
+    const revFrac = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE));
+    const T_fric  = REV_FRIC * (0.15 + 0.85 * revFrac) * (1 - 0.7 * gasInput);
+    const I_rev   = I_ENGINE_REV + clutchEngage * (onGroundRear ? 0 : I_WHEEL_R / (ratio * ratio));
+    let   dRPM    = (T_comb - T_fric) / I_rev * RADS2RPM;
+    if (revLimiterCut) dRPM = -LIMITER_DROP_RATE;   // fuel cut → revs fall fast (limiter bounce)
+    engineRPM = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM + dRPM * dt_s));
   }
   const engOn = engineRunning ? 1 : 0;   // gates all engine-produced forces
   // Rev-limiter hysteresis: cut at the ceiling, release once revs drop a band below it. Use the
@@ -453,13 +456,17 @@ function _physicsStep(dt_s) {
         omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
       }
     } else {
-      // Airborne: the wheel spins freely on its own (light) inertia. Engine drives it on the
-      // gas; the brake (and engine braking when off-throttle) slow it — so a brake tap in the
-      // air actually stops the wheel instead of it coasting on.
-      const engBrakeAir = ENGINE_BRAKE_K * 8 * (1 - gasInput) * clutchEngage * Math.tanh(omega_r / 3);
-      const tau = ENG_TORQUE_R * gasInput * clutchEngage * (omega_r < OMEGA_MAX ? 1 : 0)
-                - T_brake_r - engBrakeAir;
-      omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
+      // Airborne. Clutch ENGAGED → the rear wheel is dragged by the engine, so it tracks engine
+      // speed through the gear (the engine's flywheel inertia limits the spin-up — handled in the
+      // RPM block above — so the revs no longer skyrocket on the light wheel). Clutch OPEN → the
+      // wheel is free; the rear brake plus a little engine-braking slow it.
+      if (clutchEngage > 0.5) {
+        omega_r = engineRPM / (ratio * RADS2RPM);
+      } else {
+        const engBrakeAir = ENGINE_BRAKE_K * 8 * (1 - gasInput) * clutchEngage * Math.tanh(omega_r / 3);
+        const tau = -T_brake_r - engBrakeAir;
+        omega_r = Math.max(0, omega_r + (tau / I_WHEEL_R) * dt_s);
+      }
     }
     // Front wheel (no drive). The front brake can overpower grip: when the DEMANDED front brake
     // force exceeds the front grip cap (|F_brakeF_raw| > capFront — easy on dirt/gravel, or with
