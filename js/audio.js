@@ -15,6 +15,7 @@
 let audioCtx = null, engGain = null, engLPF = null;
 let oscA = null, oscB = null, oscSub = null, subGain = null;
 let shaper = null, noiseSrc = null, noiseBP = null, noiseGain = null;
+let slipNoiseSrc = null, slipBP = null, slipGain = null;   // tire-slip (lockup/spin) sound
 let soundMuted = false;
 try { soundMuted = (localStorage.getItem('motosim-muted') === '1'); } catch (e) {}
 
@@ -62,7 +63,48 @@ function initAudio() {
   noiseGain = audioCtx.createGain(); noiseGain.gain.value = 0;
   noiseSrc.connect(noiseBP); noiseBP.connect(noiseGain); noiseGain.connect(engGain);
 
-  oscA.start(); oscB.start(); oscSub.start(); noiseSrc.start();
+  // Tire-slip layer — looping noise through a band-pass we retune per surface (asphalt screech
+  // vs dirt scrabble). Gain is driven by how hard the tire is sliding (lockup or wheelspin).
+  slipNoiseSrc = audioCtx.createBufferSource(); slipNoiseSrc.buffer = makeNoiseBuffer(audioCtx); slipNoiseSrc.loop = true;
+  slipBP = audioCtx.createBiquadFilter(); slipBP.type = 'bandpass'; slipBP.frequency.value = 500; slipBP.Q.value = 1;
+  slipGain = audioCtx.createGain(); slipGain.gain.value = 0;
+  slipNoiseSrc.connect(slipBP); slipBP.connect(slipGain); slipGain.connect(audioCtx.destination);
+
+  oscA.start(); oscB.start(); oscSub.start(); noiseSrc.start(); slipNoiseSrc.start();
+}
+
+// Tire-slip sound. slipV = contact slip speed (m/s); grip = the tire-grip slider (0..1+).
+// Two distinct timbres: ≥80% grip → a high, tonal asphalt SCREECH (tight band-pass); below
+// that → a low, broadband DIRT/gravel scrabble. Volume ramps in above a small slip threshold.
+function updateTireSound(slipV, grip) {
+  if (!audioCtx || !slipGain) return;
+  const t = audioCtx.currentTime;
+  const dirt = grip < 0.8;
+  if (dirt) { slipBP.frequency.setTargetAtTime(340, t, 0.05); slipBP.Q.setTargetAtTime(0.9, t, 0.05); }
+  else      { slipBP.frequency.setTargetAtTime(1550 + Math.min(slipV, 12) * 25, t, 0.04); slipBP.Q.setTargetAtTime(7, t, 0.05); }
+  let vol = Math.max(0, Math.min(1, (slipV - 1.5) / 7));   // fade in past ~1.5 m/s slip
+  vol *= dirt ? 0.20 : 0.17;
+  slipGain.gain.setTargetAtTime(soundMuted ? 0 : vol, t, 0.05);
+}
+
+// One-shot deep mechanical clatter when the engine stalls (engine dies + descending thud).
+function playStallClatter() {
+  if (!audioCtx || soundMuted) return;
+  const t = audioCtx.currentTime;
+  const src = audioCtx.createBufferSource(); src.buffer = makeNoiseBuffer(audioCtx);
+  const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260; lp.Q.value = 4;
+  const g  = audioCtx.createGain(); g.gain.setValueAtTime(0.0001, t);
+  src.connect(lp); lp.connect(g); g.connect(audioCtx.destination);
+  // lumpy "clack-clack-clk" decay
+  [[0.01,0.55],[0.06,0.12],[0.10,0.42],[0.16,0.08],[0.21,0.26],[0.30,0.05],[0.42,0.0001]]
+    .forEach(([dt,v]) => g.gain.linearRampToValueAtTime(v, t + dt));
+  // low descending thud underneath (the crank dying)
+  const osc = audioCtx.createOscillator(); osc.type = 'triangle';
+  osc.frequency.setValueAtTime(95, t); osc.frequency.exponentialRampToValueAtTime(42, t + 0.42);
+  const og = audioCtx.createGain(); og.gain.setValueAtTime(0.0001, t);
+  og.gain.linearRampToValueAtTime(0.32, t + 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  osc.connect(og); og.connect(audioCtx.destination);
+  src.start(t); src.stop(t + 0.45); osc.start(t); osc.stop(t + 0.46);
 }
 
 // Called every frame with the live engine rpm and throttle (0..1).

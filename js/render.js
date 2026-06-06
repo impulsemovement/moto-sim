@@ -138,6 +138,10 @@ function draw(ts) {
 
   // Engine sound: pitch tracks the live RPM (throttle 0 when paused → just idle).
   if (typeof updateEngineSound === 'function') updateEngineSound(engineRPM, paused ? 0 : gasInput);
+  // Tire-slip sound (lockup/wheelspin), surface-dependent; silent when paused.
+  if (typeof updateTireSound === 'function') updateTireSound(paused ? 0 : Math.max(frontSlipV, rearSlipV), P.tireGrip);
+  // One-shot mechanical clatter the moment the engine stalls.
+  if (engineStalledEvt) { if (typeof playStallClatter === 'function') playStallClatter(); engineStalledEvt = false; }
 
   // ── Clear & sky ───────────────────────────────────────────
   drawParallaxBackground(W, H);
