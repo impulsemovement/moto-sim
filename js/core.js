@@ -669,6 +669,17 @@ let initialized   = false;
 let gear          = 0;          // 0…NUM_GEARS-1  (1st…6th)
 let engineRPM     = RPM_IDLE;   // crank speed
 let revLimiterCut = false;      // true while the rev limiter is cutting fuel (bouncing the revs)
+// ── Idle creep + stall ──────────────────────────────────────────────────────
+let engineRunning = true;       // false = stalled (no torque; START ENGINE button shows)
+let stallLugTimer = 0;          // s the engine has been lugged near-stop in gear (→ stall)
+let startGrace    = 0;          // s after a start/reset during which stall is disabled
+let engineStalledEvt = false;   // one-shot: set the frame the engine stalls (for the clatter sound)
+const STALL_SPEED       = 0.6;  // m/s — below this, clutch-out + in-gear + no-gas = lugging
+const STALL_DELAY       = 0.45; // s of lugging before it actually stalls
+const STALL_START_GRACE = 1.4;  // s grace after start/reset so it doesn't insta-stall
+const ENGINE_STALL_DECAY= 7000; // RPM/s the crank spins down to 0 once stalled
+const IDLE_CRANK_TORQUE = 6;    // N·m idle drive torque → creep force (× gear ratio / wheel R)
+const IDLE_CREEP_SPEED  = 2.6;  // m/s creep settles here (idle pulls until this, then eases off)
 let clutchEngage  = 1;          // 0 = clutch fully IN (open), 1 = fully OUT (locked)
 let clutchPulled  = false;      // input: true while the clutch button/key is held
 

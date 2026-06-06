@@ -263,10 +263,28 @@ function _physicsStep(dt_s) {
     clutchEngage  += Math.sign(ceTarget - clutchEngage) * Math.min(Math.abs(ceTarget - clutchEngage), ceStep);
     clutchEngage   = Math.max(0, Math.min(1, clutchEngage));
   }
-  // Engine RPM: locked to the wheel when fully engaged; otherwise free (gas revs it). While the
-  // rev limiter is cutting (set last frame), the free revs FALL — so held at WOT the engine
-  // bounces between RPM_LIMIT and RPM_LIMIT−LIMITER_BAND instead of pinning smoothly.
-  if (clutchEngage >= 0.999) {
+  // ── Stall state machine ─────────────────────────────────────────────────────
+  // Lugging the engine — clutch OUT (engaged), in gear, crawling/stopped, no throttle — stalls
+  // it after a short delay. The idle creep below keeps it alive when free to roll; holding the
+  // brake (or never pulling the clutch at a stop) loads it down and kills it. A grace window
+  // after a start/reset prevents an instant spawn-stall.
+  if (initialized && startGrace > 0) startGrace -= dt_s;
+  if (initialized && engineRunning) {
+    // Lugging = clutch out, in gear, no throttle, crawling/stopped, AND the brake is holding it
+    // (engine fighting the brake → bogs and stalls). With NO brake the idle creep below pulls it
+    // forward and it survives; hold the brake at a stop without pulling the clutch and it stalls.
+    // Disabled during the init settle loop (initialized=false).
+    const lugging = clutchEngage > 0.6 && gasInput < 0.1 && brakeInput > 0.25
+                    && Math.abs(vChassisX) < STALL_SPEED && startGrace <= 0;
+    stallLugTimer = lugging ? stallLugTimer + dt_s : 0;
+    if (stallLugTimer > STALL_DELAY) { engineRunning = false; engineStalledEvt = true; stallLugTimer = 0; }
+  }
+  // Engine RPM: 0 (spinning down) when stalled; else locked to the wheel when fully engaged,
+  // otherwise free (gas revs it). While the rev limiter is cutting (set last frame) the free
+  // revs FALL — so held at WOT the engine bounces RPM_LIMIT↔RPM_LIMIT−LIMITER_BAND.
+  if (!engineRunning) {
+    engineRPM = Math.max(0, engineRPM - ENGINE_STALL_DECAY * dt_s);
+  } else if (clutchEngage >= 0.999) {
     engineRPM = Math.min(RPM_LIMIT, lockedRPM);
   } else if (revLimiterCut) {
     engineRPM = Math.max(RPM_IDLE, engineRPM - LIMITER_DROP_RATE * dt_s);
@@ -274,6 +292,7 @@ function _physicsStep(dt_s) {
     engineRPM += (gasInput * ENGINE_REV_RATE - (1 - gasInput) * ENGINE_DECAY_RATE) * dt_s;
     engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
   }
+  const engOn = engineRunning ? 1 : 0;   // gates all engine-produced forces
   // Rev-limiter hysteresis: cut at the ceiling, release once revs drop a band below it. Use the
   // UNCLAMPED locked rpm when engaged (engineRPM is pinned to RPM_LIMIT) so the cut still fires
   // and bounces the bike at top speed in gear too.
@@ -284,12 +303,18 @@ function _physicsStep(dt_s) {
   // a hard fuel cut: zero drive while cutting, so the bike can't push past it (and bounces).
   const T_eng_peak  = GAS_ACCEL * ENGINE_K;
   const torqueFac   = engTorqueFac(engineRPM);
-  const F_throttle  = revLimiterCut ? 0 : (T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage);
+  const F_throttle  = (revLimiterCut || !engineRunning) ? 0 : (T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage);
+  // Idle creep: a running engine in gear with the clutch out pulls the bike forward at idle
+  // (so it crawls from a stop instead of sitting dead). Idle crank torque through the gear,
+  // eased off as it reaches the creep speed; scales with the ratio (1st crawls, 6th barely).
+  const F_idle = (engineRunning && clutchEngage > 0.5 && gasInput < 0.1 && vChassisX < IDLE_CREEP_SPEED)
+    ? IDLE_CRANK_TORQUE * ratio / WHEEL_R_R * clutchEngage * Math.max(0, 1 - vChassisX / IDLE_CREEP_SPEED)
+    : 0;
   // Clutch slip: engine spinning faster than the wheel transmits a big torque while the
   // clutch is engaging — this is the clutch-up wheelie. It also sheds engine RPM.
   let F_clutch = 0;
   const slipRPM = engineRPM - lockedRPM;
-  if (slipRPM > 0 && clutchEngage > 0.02 && clutchEngage < 0.999) {
+  if (engineRunning && slipRPM > 0 && clutchEngage > 0.02 && clutchEngage < 0.999) {
     const clutchT = Math.min(CLUTCH_MAX_TORQUE, K_CLUTCH_SLIP * slipRPM) * clutchEngage; // N·m engine-side
     F_clutch  = clutchT * ratio / WHEEL_R_R;                       // extra wheel drive force
     engineRPM = Math.max(lockedRPM, engineRPM - (clutchT / I_ENGINE) * RADS2RPM * dt_s);
@@ -300,7 +325,7 @@ function _physicsStep(dt_s) {
   // clutch at idle with the wheel speed matched produces no braking force (no pitch).
   const offThr     = Math.max(0, 1 - gasInput / 0.15);   // 1 fully off-throttle, 0 above ~15%
   const revFrac    = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)); // 0 idle → 1 redline
-  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage;
+  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage * engOn;
   const F_engbrake = (vChassisX > 0.1) ? engBrakeT * ratio / WHEEL_R_R : 0;
   // ── Tire friction limit (grip slider × pressure × normal load) ──────────────
   // Each tire can only transmit so much longitudinal force before it slides: μ·N, where
@@ -311,7 +336,7 @@ function _physicsStep(dt_s) {
   const muFront  = MU_BASE * gripCurve * gripPressure(P.psi_f);
   const capRear  = muRear  * Math.abs(f_tire_R);   // max rear  longitudinal force (N)
   const capFront = muFront * Math.abs(f_tire_F);   // max front longitudinal force (N)
-  const F_drive_raw  = onGroundRear ? (F_throttle + F_clutch - F_engbrake) : 0;
+  const F_drive_raw  = onGroundRear ? (F_throttle + F_clutch - F_engbrake + F_idle) : 0;
   const F_drive_term = Math.max(-capRear, Math.min(capRear, F_drive_raw));   // rear traction-limited
   // Braking opposes forward motion only (no reversing once stopped). Each brake acts at ITS OWN
   // contact and is limited by THAT tire's grip (capFront / capRear). Under braking weight shifts

@@ -49,6 +49,20 @@ canvas { display: block; background: #080808; }
 .ride-btn:hover { filter: brightness(1.15); }
 .ride-btn:active, .ride-btn.held { filter: brightness(1.35); transform: scale(0.96); }
 
+/* Centered START ENGINE button — appears when the engine stalls, fades out once running */
+#btn-start-engine {
+  position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 30; padding: 14px 30px; border-radius: 10px;
+  background: #e11d48; color: #fff; border: none;
+  font-size: 16px; font-weight: 800; letter-spacing: 0.1em;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 4px 22px rgba(0,0,0,0.6);
+  opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
+}
+#btn-start-engine.show { opacity: 1; pointer-events: auto; }
+#btn-start-engine:hover  { filter: brightness(1.12); }
+#btn-start-engine:active { transform: translate(-50%, -50%) scale(0.96); }
+
 #key-legend {
   position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
   z-index: 9; max-width: calc(100% - 220px);

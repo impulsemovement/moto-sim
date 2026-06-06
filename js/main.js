@@ -23,6 +23,7 @@ function resetSim() {
   disp_f = 0; disp_r = 0;
   a_long = 0; gasInput = 0; brakeInputF = 0; brakeInputR = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
   gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false; revLimiterCut = false;
+  engineRunning = true; stallLugTimer = 0; startGrace = STALL_START_GRACE; engineStalledEvt = false;
   gasPressed = false; brakeFrontHeld = false; brakeRearHeld = false; brakeBothHeld = false;
   rearContact  = false;
   camY_m       = 0;
@@ -46,6 +47,28 @@ document.getElementById('btn-reset').addEventListener('click', resetSim);
     const sync = () => { mb.classList.toggle('muted', soundMuted); };
     sync();   // reflect the saved preference (dim + slash when muted)
     mb.addEventListener('click', () => { initAudio(); setMuted(!soundMuted); sync(); });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  START ENGINE (after a stall)
+// ═══════════════════════════════════════════════════════════
+function startEngine() {
+  engineRunning = true;
+  engineRPM     = RPM_IDLE;
+  stallLugTimer = 0;
+  startGrace    = STALL_START_GRACE;   // brief grace so it doesn't immediately re-stall
+  engineStalledEvt = false;
+}
+{
+  const sb = document.getElementById('btn-start-engine');
+  if (sb) {
+    sb.addEventListener('click', () => { initAudio(); startEngine(); });
+    // Per-frame: show the button while stalled, fade it out once the engine is running.
+    (function syncStartBtn() {
+      sb.classList.toggle('show', !engineRunning);
+      requestAnimationFrame(syncStartBtn);
+    })();
   }
 }
 
