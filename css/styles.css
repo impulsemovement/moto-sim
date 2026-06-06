@@ -129,14 +129,16 @@ canvas { display: block; background: #080808; }
 .card-fhist  { grid-area: fhist; }
 .card-vhist  { grid-area: vhist; }
 .card-geom   { grid-area: geom; }
-.ui { grid-template-areas: "susp curve" "terrain fhist" "vhist geom"; }
+.card-custom { grid-area: custom; }
+.ui { grid-template-areas: "susp curve" "custom custom" "terrain fhist" "vhist geom"; }
+#terrain-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; }
 
 /* Mobile: single column, curve + fhist drop below terrain */
 @media (max-width: 640px) {
   body { padding: 2px; }
   .ui {
     grid-template-columns: 1fr;
-    grid-template-areas: "susp" "terrain" "geom" "curve" "fhist" "vhist";
+    grid-template-areas: "susp" "terrain" "geom" "curve" "custom" "fhist" "vhist";
   }
   .stats { grid-template-columns: repeat(3,1fr); }
   .stat-n { font-size: 14px; }

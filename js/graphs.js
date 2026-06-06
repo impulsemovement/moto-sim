@@ -346,3 +346,127 @@ function applyPreset(name) {
   drawCurveEditor();
 }
 
+
+// ═══════════════════════════════════════════════════════════
+//  CUSTOM TERRAIN EDITOR  (periodic profile; endpoints locked level so it tiles)
+// ═══════════════════════════════════════════════════════════
+const tcv  = document.getElementById('terrain-canvas');
+const tcx  = tcv ? tcv.getContext('2d') : null;
+const TGP  = { l:34, r:14, t:10, b:16 };
+
+function tPtToScreen(nx, ny) {
+  const gw = tcv.width-TGP.l-TGP.r, gh = tcv.height-TGP.t-TGP.b;
+  return { sx: TGP.l+nx*gw, sy: TGP.t+(1-ny)*gh };
+}
+function tScreenToPt(sx, sy) {
+  const gw = tcv.width-TGP.l-TGP.r, gh = tcv.height-TGP.t-TGP.b;
+  return { nx:(sx-TGP.l)/gw, ny:1-(sy-TGP.t)/gh };
+}
+function rebuildTerrainLUT() { terrainLUT = buildCurveLUT(terrainPts); }
+
+function resizeTerrainCanvas() {
+  if (!tcv) return;
+  tcv.width  = tcv.clientWidth;
+  tcv.height = tcv.clientHeight || 150;
+  drawTerrainEditor();
+}
+window.addEventListener('resize', resizeTerrainCanvas);
+
+function drawTerrainEditor() {
+  if (!tcv || !tcx) return;
+  const W=tcv.width, H=tcv.height; if (!W||!H) return;
+  const gw=W-TGP.l-TGP.r, gh=H-TGP.t-TGP.b;
+  const lut = terrainLUT || buildCurveLUT(terrainPts);
+
+  tcx.clearRect(0,0,W,H);
+  tcx.fillStyle='#0f0f0f'; tcx.fillRect(0,0,W,H);
+  tcx.fillStyle='#0a0a0a'; tcx.fillRect(TGP.l,TGP.t,gw,gh);
+
+  // grid
+  tcx.strokeStyle='#1f1f1f'; tcx.lineWidth=1;
+  for (let i=0;i<=4;i++){
+    tcx.beginPath(); tcx.moveTo(TGP.l+i/4*gw,TGP.t); tcx.lineTo(TGP.l+i/4*gw,TGP.t+gh); tcx.stroke();
+    tcx.beginPath(); tcx.moveTo(TGP.l,TGP.t+i/4*gh); tcx.lineTo(TGP.l+gw,TGP.t+i/4*gh); tcx.stroke();
+  }
+  // seam (endpoint) reference line — terrain sits at 0 here
+  const seamY = TGP.t+(1-lut[0].y)*gh;
+  tcx.strokeStyle='#333'; tcx.setLineDash([4,4]);
+  tcx.beginPath(); tcx.moveTo(TGP.l,seamY); tcx.lineTo(TGP.l+gw,seamY); tcx.stroke();
+  tcx.setLineDash([]);
+
+  // dirt fill under the profile + the top line
+  const top = px => { const ph=px/gw; return TGP.t+(1-evalCurveLUT(lut,ph))*gh; };
+  tcx.beginPath();
+  for (let px=0; px<=gw; px+=2) { const sx=TGP.l+px, sy=top(px); px===0?tcx.moveTo(sx,sy):tcx.lineTo(sx,sy); }
+  tcx.lineTo(TGP.l+gw,TGP.t+gh); tcx.lineTo(TGP.l,TGP.t+gh); tcx.closePath();
+  tcx.fillStyle='rgba(139,105,20,0.4)'; tcx.fill();
+  tcx.beginPath();
+  for (let px=0; px<=gw; px+=2) { const sx=TGP.l+px, sy=top(px); px===0?tcx.moveTo(sx,sy):tcx.lineTo(sx,sy); }
+  tcx.strokeStyle='#d6a93a'; tcx.lineWidth=2.5; tcx.stroke();
+
+  // x-axis label
+  tcx.fillStyle='#444'; tcx.font='9px sans-serif'; tcx.textAlign='center';
+  tcx.fillText('one repeating period →', TGP.l+gw/2, TGP.t+gh+12);
+
+  // control points — endpoints blue (locked level), interior red
+  terrainPts.forEach((p,i)=>{
+    const s=tPtToScreen(p.x,p.y);
+    const end=(i===0||i===terrainPts.length-1);
+    tcx.beginPath(); tcx.arc(s.sx,s.sy,6,0,Math.PI*2);
+    tcx.fillStyle=end?'#3b82f6':'#e11d48'; tcx.fill();
+    tcx.strokeStyle='#f0f0f0'; tcx.lineWidth=1.5; tcx.stroke();
+  });
+
+  tcx.strokeStyle='#1f1f1f'; tcx.lineWidth=1; tcx.strokeRect(TGP.l,TGP.t,gw,gh);
+}
+
+// Drag / click / remove
+let tDrag=-1;
+function tGetPos(e) {
+  const r=tcv.getBoundingClientRect();
+  const cx=e.touches?e.touches[0].clientX:e.clientX;
+  const cy=e.touches?e.touches[0].clientY:e.clientY;
+  return { sx:(cx-r.left)*(tcv.width/r.width), sy:(cy-r.top)*(tcv.height/r.height) };
+}
+function tFindHit(sx,sy) {
+  for (let i=0;i<terrainPts.length;i++){ const s=tPtToScreen(terrainPts[i].x,terrainPts[i].y);
+    if (Math.hypot(s.sx-sx,s.sy-sy)<14) return i; }
+  return -1;
+}
+function tDoDrag(sx,sy) {
+  if (tDrag<0) return;
+  const {nx,ny}=tScreenToPt(sx,sy); const i=tDrag, n=terrainPts.length;
+  const cy=Math.max(0,Math.min(1,ny));
+  if (i===0 || i===n-1) {           // endpoints: x pinned to 0/1, Y locked EQUAL so it tiles
+    terrainPts[0].y=cy; terrainPts[n-1].y=cy;
+  } else {
+    const cx=Math.max(terrainPts[i-1].x+0.02, Math.min(terrainPts[i+1].x-0.02, nx));
+    terrainPts[i]={x:cx,y:cy};
+  }
+  rebuildTerrainLUT(); drawTerrainEditor();
+}
+if (tcv) {
+  tcv.addEventListener('mousedown', e=>{
+    if (e.button!==0) return;
+    const p=tGetPos(e); const hit=tFindHit(p.sx,p.sy);
+    if (hit>=0) { tDrag=hit; return; }
+    const {nx,ny}=tScreenToPt(p.sx,p.sy);
+    if (nx>0.03&&nx<0.97&&ny>=0&&ny<=1 && !terrainPts.some(pt=>Math.abs(pt.x-nx)<0.04)) {
+      terrainPts.push({x:nx,y:Math.max(0,Math.min(1,ny))});
+      terrainPts.sort((a,b)=>a.x-b.x);
+      rebuildTerrainLUT(); drawTerrainEditor();
+    }
+  });
+  tcv.addEventListener('mousemove',  e=>{ const p=tGetPos(e); tDoDrag(p.sx,p.sy); });
+  window.addEventListener('mouseup', ()=>{ tDrag=-1; });
+  tcv.addEventListener('mouseleave', ()=>{ tDrag=-1; });
+  tcv.addEventListener('contextmenu', e=>{
+    e.preventDefault(); const p=tGetPos(e);
+    if (terrainPts.length<=3) return;
+    const hit=tFindHit(p.sx,p.sy);
+    if (hit>0 && hit<terrainPts.length-1) { terrainPts.splice(hit,1); rebuildTerrainLUT(); drawTerrainEditor(); }
+  });
+  tcv.addEventListener('touchstart', e=>{ e.preventDefault(); const p=tGetPos(e); tDrag=tFindHit(p.sx,p.sy); },{passive:false});
+  tcv.addEventListener('touchmove',  e=>{ e.preventDefault(); const p=tGetPos(e); tDoDrag(p.sx,p.sy); },{passive:false});
+  tcv.addEventListener('touchend',   ()=>{ tDrag=-1; });
+}

@@ -10,7 +10,7 @@ const SETUP_SLIDERS = [
   'k_r','pre_r','damp_r','ktire_r','munsp_r',
   'mass','speed','timescale','gasrate','brakerate',
   'terrain','amp','freq','rough','duty','pitchmom','drivepitch','tiregrip','terrainbite','terrainpitch','bounceF','bounceR',
-  'comheight','pitchinertia','rake','wheelbase'
+  'comheight','pitchinertia','rake','wheelbase','custlen','custheight'
 ];
 
 function loadSetups() {
@@ -31,6 +31,7 @@ function captureSetup() {
     sliders,
     curves: { compPts_F: clone(compPts_F), rebPts_F: clone(rebPts_F),
               compPts_R: clone(compPts_R), rebPts_R: clone(rebPts_R) },
+    terrainPts: clone(terrainPts),
     scales: { ...curveScaleVals },
     wheelMode, curveMode
   };
@@ -52,6 +53,11 @@ function applySetupToControls(s) {
     if (s.curves.rebPts_R)  rebPts_R  = cl(s.curves.rebPts_R);
     compLUT_F = buildCurveLUT(compPts_F); rebLUT_F = buildCurveLUT(rebPts_F);
     compLUT_R = buildCurveLUT(compPts_R); rebLUT_R = buildCurveLUT(rebPts_R);
+  }
+  if (s.terrainPts) {
+    terrainPts = (s.terrainPts || []).map(p => ({ x:p.x, y:p.y }));
+    terrainLUT = buildCurveLUT(terrainPts);
+    if (typeof drawTerrainEditor === 'function') drawTerrainEditor();
   }
   if (s.scales) Object.assign(curveScaleVals, s.scales);
   // 3) Active toggles + redraw.

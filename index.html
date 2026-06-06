@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=29">
+<link rel="stylesheet" href="css/styles.css?v=30">
 </head>
 <body>
 
@@ -127,20 +127,44 @@
     </div><!-- .card-body -->
   </div>
 
+  <!-- CUSTOM TERRAIN editor (full-width row) -->
+  <div class="card card-custom" id="custom-card">
+    <div class="card-title">CUSTOM TERRAIN<span class="card-arrow">▼</span></div>
+    <div class="card-body">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:10px;color:#e11d48;font-weight:700">REPEATING PROFILE</span>
+      <span style="font-size:10px;color:#333">click=add · drag=move · right-click=remove · ends locked level</span>
+      <span id="custom-hint" style="font-size:10px;color:#888;margin-left:auto">set Terrain → Cust to ride it</span>
+    </div>
+    <canvas id="terrain-canvas" height="150"></canvas>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;margin-top:6px">
+      <div>
+        <label>Length <span id="lcustlen">8 m</span></label>
+        <input type="range" id="custlen" min="2" max="40" value="8" step="1" style="margin-bottom:0;">
+      </div>
+      <div>
+        <label>Height <span id="lcustheight">30 cm</span></label>
+        <input type="range" id="custheight" min="5" max="200" value="30" step="1" style="margin-bottom:0;">
+      </div>
+    </div>
+    </div><!-- .card-body -->
+  </div>
+
   <!-- BOTTOM-LEFT: Terrain card -->
   <div class="card card-terrain">
     <div class="card-title">TERRAIN AND CHASSIS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <label>Terrain <span id="lterrain">Bumps</span></label>
-    <input type="range" id="terrain" min="0" max="6" value="0" step="1">
-    <div style="display:flex;gap:1px;font-size:8px;color:#444;margin-top:-5px;margin-bottom:8px">
+    <input type="range" id="terrain" min="0" max="7" value="0" step="1">
+    <div style="display:flex;gap:0;font-size:7px;color:#444;margin-top:-5px;margin-bottom:8px">
       <span style="flex:1;text-align:left">Bump</span>
       <span style="flex:1;text-align:center">Whoop</span>
       <span style="flex:1;text-align:center">Step</span>
       <span style="flex:1;text-align:center">Kick</span>
       <span style="flex:1;text-align:center">Roll</span>
       <span style="flex:1;text-align:center">Pass</span>
-      <span style="flex:1;text-align:right">Flat</span>
+      <span style="flex:1;text-align:center">Flat</span>
+      <span style="flex:1;text-align:right">Cust</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
       <div>
@@ -274,13 +298,13 @@
   document.querySelectorAll(".donate-link").forEach(function (a) { a.href = DONATE_URL; });
 </script>
 
-<script src="js/core.js?v=29"></script>
-<script src="js/physics.js?v=29"></script>
-<script src="js/render.js?v=29"></script>
-<script src="js/graphs.js?v=29"></script>
-<script src="js/ui.js?v=29"></script>
-<script src="js/background.js?v=29"></script>
-<script src="js/audio.js?v=29"></script>
-<script src="js/main.js?v=29"></script>
+<script src="js/core.js?v=30"></script>
+<script src="js/physics.js?v=30"></script>
+<script src="js/render.js?v=30"></script>
+<script src="js/graphs.js?v=30"></script>
+<script src="js/ui.js?v=30"></script>
+<script src="js/background.js?v=30"></script>
+<script src="js/audio.js?v=30"></script>
+<script src="js/main.js?v=30"></script>
 </body>
 </html>

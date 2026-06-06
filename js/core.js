@@ -323,7 +323,7 @@ let P = {
   tireGrip:1.0,      // 0–1+ surface grip (1 = asphalt, lower = dirt/loose); friction-limits drive/brake
   bottomBounceF:3.5, bottomBounceR:2.0   // bottom-out restitution (0 = dead … up to 10× super-elastic)
 };
-const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Rollers','Mountain Pass','Flat'];
+const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Rollers','Mountain Pass','Flat','Custom'];
 
 // True only for genuine text-entry targets (e.g. the setup-name box). Used so global
 // key shortcuts keep firing while a range slider / dropdown is focused.
@@ -461,6 +461,17 @@ bind('freq',      'lfreq',      v => { P.freq    = v/100;   return (v/100).toFix
 bind('rough',     'lrough',     v => { P.rough   = v/100;   return v+'%'; });
 bind('duty',      'lduty',      v => { P.duty    = v/100;   return v+'%'; });
 
+// ── Custom terrain editor (periodic profile + scale sliders) ────────────────
+// terrainPts: one repeating period, x∈[0,1] (phase), y∈[0,1] (height). The two ENDPOINTS are
+// locked to the same Y so the profile tiles seamlessly (last point == first point). The Length
+// slider sets the period in meters; Height scales how tall the bumps draw. Used by terrain "Custom".
+let terrainPts = [ { x:0, y:0.5 }, { x:0.5, y:0.85 }, { x:1, y:0.5 } ];
+let terrainLUT = null;            // built once buildCurveLUT() is defined (below)
+let TERRAIN_WAVELEN = 8;          // m  — period length (Length slider)
+let TERRAIN_HEIGHT  = 0.30;       // m  — vertical bump scale (Height slider)
+bind('custlen',    'lcustlen',    v => { TERRAIN_WAVELEN = +v;     return v + ' m';  });
+bind('custheight', 'lcustheight', v => { TERRAIN_HEIGHT  = +v/100; return v + ' cm'; });
+
 // ── Bike geometry (live) ────────────────────────────────────────────────────
 bind('comheight',    'lcomheight',    v => { H_COM    = v/100;          return (v/100).toFixed(2)+' m'; });
 bind('pitchinertia', 'lpitchinertia', v => { I_YY     = +v;             return v+' kg·m²'; });
@@ -568,6 +579,7 @@ let compLUT_F = buildCurveLUT(compPts_F);
 let rebLUT_F  = buildCurveLUT(rebPts_F);
 let compLUT_R = buildCurveLUT(compPts_R);
 let rebLUT_R  = buildCurveLUT(rebPts_R);
+terrainLUT    = buildCurveLUT(terrainPts);   // custom-terrain profile LUT (declared above the binds)
 
 // ═══════════════════════════════════════════════════════════
 //  TERRAIN  (SI — returns meters, positive Y = down)
@@ -630,6 +642,14 @@ function groundY_m(wx_m) {
     }
     case 6: // Flat — gentle long-wavelength
       return Math.sin(wx_m*0.5*freq)*0.025*amp + noise;
+    case 7: { // Custom — the repeating profile drawn in the Custom Terrain card
+      if (!terrainLUT) return noise;
+      const wl = TERRAIN_WAVELEN;
+      const ph = (((wx_m % wl) + wl) % wl) / wl;     // phase 0..1 within one period
+      const h0 = terrainLUT[0].y;                    // seam height (endpoints are locked equal)
+      const h  = evalCurveLUT(terrainLUT, ph);       // 0..1 profile height
+      return -(h - h0) * TERRAIN_HEIGHT + noise;     // up (peak) = negative Y; seam sits at 0
+    }
   }
   return 0;
 }

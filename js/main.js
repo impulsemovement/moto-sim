@@ -3,6 +3,7 @@
 //  STARTUP
 // ═══════════════════════════════════════════════════════════
 requestAnimationFrame(resizeCurveCanvas);
+requestAnimationFrame(resizeTerrainCanvas);
 requestAnimationFrame(resizeFG);
 requestAnimationFrame(resizeVG);
 requestAnimationFrame(draw);
@@ -161,7 +162,7 @@ window.addEventListener('keydown', e => {
 })();
 
 // Re-run after layout fully settles so flex heights are computed
-setTimeout(() => { resizeCurveCanvas(); resizeFG(); resizeVG(); }, 100);
+setTimeout(() => { resizeCurveCanvas(); resizeTerrainCanvas(); resizeFG(); resizeVG(); }, 100);
 
 // ═══════════════════════════════════════════════════════════
 //  CAMERA PAN  (click-drag on main canvas)
