@@ -499,15 +499,16 @@ function draw(ts) {
     ctx.fillStyle = '#444'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(label, x + 6, bTop - 5);
   }
-  inputBar(10, brakeInput, '#ef4444', 'B');   // far-left: brake (red)
-  inputBar(26, gasInput,   '#22c55e', 'G');   // next in:  gas   (green)
+  inputBar(10, brakeInputF, '#ef4444', 'Bf');  // far-left: FRONT brake (red)
+  inputBar(26, brakeInputR, '#f97316', 'Br');  // REAR brake (orange — distinct from front)
+  inputBar(42, gasInput,    '#22c55e', 'G');   // gas (green)
   // Engine RPM bar — fills with revs; color blends clutch-blue (idle) → redline-red, matching
   // the gear indicator. Above redline (limiter) it pins full/red.
   {
     const rpmFrac = Math.max(0, Math.min(1, engineRPM / RPM_REDLINE));
     const lerp = (a, b, t) => Math.round(a + (b - a) * t);
     const rpmColor = `rgb(${lerp(59,225,rpmFrac)},${lerp(130,29,rpmFrac)},${lerp(246,72,rpmFrac)})`;
-    inputBar(42, rpmFrac, rpmColor, 'RPM');
+    inputBar(58, rpmFrac, rpmColor, 'RPM');
   }
 
   drawForceGraph();

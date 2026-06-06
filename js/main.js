@@ -21,9 +21,9 @@ function resetSim() {
   worldX_m     = 0;
   wheelAngle_f = 0; wheelAngle_r = 0; omega_f = 0; omega_r = 0;
   disp_f = 0; disp_r = 0;
-  a_long = 0; gasInput = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
+  a_long = 0; gasInput = 0; brakeInputF = 0; brakeInputR = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
   gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false; revLimiterCut = false;
-  gasPressed = false; brakePressed = false;
+  gasPressed = false; brakeFrontHeld = false; brakeRearHeld = false; brakeBothHeld = false;
   rearContact  = false;
   camY_m       = 0;
   camPanX_m    = 0;

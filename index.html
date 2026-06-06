@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=19">
+<link rel="stylesheet" href="css/styles.css?v=20">
 </head>
 <body>
 
@@ -26,7 +26,7 @@
   <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
   <button id="btn-pause"  class="top-btn" title="Pause / play (P)">⏸</button>
   <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
-  <button class="ride-btn" id="btn-brake">⬛ BRAKE</button>
+  <button class="ride-btn" id="btn-brake" title="Brake — button = both wheels · ↓ front · ← rear">⬛ BRAKE</button>
   <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
   <button class="ride-btn shift-btn" id="btn-shift-dn" title="Downshift (A)">GEAR ▼</button>
   <button class="ride-btn shift-btn" id="btn-shift-up" title="Upshift (D)">GEAR ▲</button>
@@ -36,7 +36,7 @@
   </div>
   <button class="ride-btn" id="btn-gas">GAS ⬛</button>
   <div id="key-legend">
-    <span><b>G</b>/→ Gas · <b>B</b>/← Brake · <b>Space</b>/<b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>P</b> Pause · <b>R</b> Reset</span>
+    <span><b>G</b>/→ Gas · <b>↓</b> Front brake · <b>←</b> Rear brake · <b>B</b> Both · <b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>R</b> Reset</span>
     <span id="key-legend-x" title="Hide">✕</span>
   </div>
 </div>
@@ -251,13 +251,33 @@
 
 </div><!-- .ui -->
 
-<script src="js/core.js?v=19"></script>
-<script src="js/physics.js?v=19"></script>
-<script src="js/render.js?v=19"></script>
-<script src="js/graphs.js?v=19"></script>
-<script src="js/ui.js?v=19"></script>
-<script src="js/background.js?v=19"></script>
-<script src="js/audio.js?v=19"></script>
-<script src="js/main.js?v=19"></script>
+<!-- Donate row under the controls -->
+<div id="donate-row">
+  <span>Like the sim? Help keep it running.</span>
+  <a class="donate-btn donate-link" target="_blank" rel="noopener">
+    <span class="heart">♥</span> Donate
+  </a>
+</div>
+
+<!-- Floating corner donate button -->
+<a id="btn-donate-corner" class="donate-btn donate-link" target="_blank" rel="noopener"
+   title="Support this project">
+  <span class="heart">♥</span> Donate
+</a>
+
+<script>
+  // ▼▼ Paste your PayPal link here (e.g. https://www.paypal.com/donate?... or https://paypal.me/yourname) ▼▼
+  var DONATE_URL = "https://www.paypal.com/donate";
+  document.querySelectorAll(".donate-link").forEach(function (a) { a.href = DONATE_URL; });
+</script>
+
+<script src="js/core.js?v=20"></script>
+<script src="js/physics.js?v=20"></script>
+<script src="js/render.js?v=20"></script>
+<script src="js/graphs.js?v=20"></script>
+<script src="js/ui.js?v=20"></script>
+<script src="js/background.js?v=20"></script>
+<script src="js/audio.js?v=20"></script>
+<script src="js/main.js?v=20"></script>
 </body>
 </html>

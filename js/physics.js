@@ -237,7 +237,13 @@ function _physicsStep(dt_s) {
     // The wheel responds to net torque (engine drive vs brake + friction), so whichever wins
     // wins; the brake never disables the throttle.
     gasInput   = gasPressed   ? rampUp(gasInput,   GAS_RAMP_UP)   : rampDown(gasInput,   GAS_RAMP_DOWN);
-    brakeInput = brakePressed ? rampUp(brakeInput, BRAKE_RAMP_UP) : rampDown(brakeInput, BRAKE_RAMP_DOWN);
+    // Independent front/rear brakes — "both" (B / button) drives each. Ramp each separately so
+    // the front and rear can be at different levels (e.g. trail the rear while hard on the front).
+    const wantF = brakeFrontHeld || brakeBothHeld;
+    const wantR = brakeRearHeld  || brakeBothHeld;
+    brakeInputF = wantF ? rampUp(brakeInputF, BRAKE_RAMP_UP) : rampDown(brakeInputF, BRAKE_RAMP_DOWN);
+    brakeInputR = wantR ? rampUp(brakeInputR, BRAKE_RAMP_UP) : rampDown(brakeInputR, BRAKE_RAMP_DOWN);
+    brakeInput  = Math.max(brakeInputF, brakeInputR);   // derived: "any brake" + display
   }
 
   // Traction requires ground contact: a wheel in the air makes no drive/brake force
@@ -307,10 +313,17 @@ function _physicsStep(dt_s) {
   const capFront = muFront * Math.abs(f_tire_F);   // max front longitudinal force (N)
   const F_drive_raw  = onGroundRear ? (F_throttle + F_clutch - F_engbrake) : 0;
   const F_drive_term = Math.max(-capRear, Math.min(capRear, F_drive_raw));   // rear traction-limited
-  // Braking opposes forward motion only (no reversing once stopped); needs a wheel down.
-  const F_brake_raw  = anyGround ? -(M_total * BRAKE_DECEL) * brakeInput * (vChassisX > 0 ? 1 : 0) : 0;
-  const brakeCap     = capFront + capRear;          // both wheels share the braking grip budget
-  const F_brake_term = Math.max(-brakeCap, Math.min(brakeCap, F_brake_raw));
+  // Braking opposes forward motion only (no reversing once stopped). Each brake acts at ITS OWN
+  // contact and is limited by THAT tire's grip (capFront / capRear). Under braking weight shifts
+  // forward, so capFront grows (front does most of the stopping) while capRear shrinks (the rear
+  // locks/skids easily) — all emergent. The rear demand is weaker (REAR_BRAKE_FRAC). Both forces
+  // feed the surge decel and, via a_long below, the nose-dive load transfer.
+  const brakeDir     = (vChassisX > 0 ? 1 : 0);
+  const F_brakeF_raw = onGroundFront ? -(M_total * BRAKE_DECEL)                  * brakeInputF * brakeDir : 0;
+  const F_brakeR_raw = onGroundRear  ? -(M_total * BRAKE_DECEL * REAR_BRAKE_FRAC) * brakeInputR * brakeDir : 0;
+  const F_brakeF     = Math.max(-capFront, Math.min(capFront, F_brakeF_raw));   // front traction-limited
+  const F_brakeR     = Math.max(-capRear,  Math.min(capRear,  F_brakeR_raw));   // rear  traction-limited
+  const F_brake_term = F_brakeF + F_brakeR;
   // No cruise/auto-speed-hold: the bike is ridden manually with throttle, clutch, gears and
   // engine braking. (A cruise assist would either fight engine braking or — when gated to
   // clutch-in — wrongly accelerate the bike with the clutch pulled.) The speed slider sets
@@ -375,7 +388,7 @@ function _physicsStep(dt_s) {
     const gripK = Math.min(1, GRIP_LAMBDA * dt_s);
     // Rear wheel
     const I_eff_r = I_WHEEL_R + I_ENGINE * ratio * ratio * SPIN_I_FRAC;  // wheel + engine reflected
-    const T_brake_r = BRAKE_TORQUE_R * brakeInput * Math.tanh(omega_r / 3);  // ≥0, opposes spin
+    const T_brake_r = BRAKE_TORQUE_R * brakeInputR * Math.tanh(omega_r / 3);  // ≥0, REAR brake opposes spin
     if (onGroundRear) {
       const omega_roll = vChassisX / WHEEL_R_R;
       // Traction is force-limited (capRear = μ·|tire normal load|). If the engine demands more
@@ -393,7 +406,7 @@ function _physicsStep(dt_s) {
         // pull it back toward rolling. The regrip rate scales with the tire NORMAL LOAD, so a
         // wheel that lands or hits a bump (load spike, big |f_tire_R|) bites hard and snaps back
         // to rolling instead of spinning on forever; brake regrips hard too.
-        const regrip = (6 + 30 * brakeInput + REGRIP_LOAD_K * Math.abs(f_tire_R)) * dt_s;
+        const regrip = (6 + 30 * brakeInputR + REGRIP_LOAD_K * Math.abs(f_tire_R)) * dt_s;
         omega_r += (omega_roll - omega_r) * Math.min(1, regrip);
       } else {
         omega_r += (omega_roll - omega_r) * gripK;            // within grip → locked to rolling
@@ -411,7 +424,7 @@ function _physicsStep(dt_s) {
     if (onGroundFront) {
       omega_f += (vChassisX / WHEEL_R_F - omega_f) * gripK;
     } else {
-      const tau = -BRAKE_TORQUE_F * brakeInput * Math.tanh(omega_f / 3);
+      const tau = -BRAKE_TORQUE_F * brakeInputF * Math.tanh(omega_f / 3);
       omega_f = Math.max(0, omega_f + (tau / I_WHEEL_F) * dt_s);
     }
     // Reaction torque on the chassis = −d(wheel angular momentum)/dt. Clamped so a
@@ -680,7 +693,7 @@ function _physicsStep(dt_s) {
   // moment when braking with the rear planted during a wheelie. Gated to nose-up pitch so it
   // doesn't add to normal braking dive. Scales with the brake-rate slider.
   const wheelieAmt = Math.max(0, Math.min(1, (-pitchAngle - 0.15) / 0.35));   // 0 at ~8.5° up → 1 at ~28° up
-  const tau_rearbrake = (onGroundRear ? 1 : 0) * REAR_BRAKE_LEVER * M_total * BRAKE_DECEL * brakeInput * wheelieAmt;
+  const tau_rearbrake = (onGroundRear ? 1 : 0) * REAR_BRAKE_LEVER * M_total * BRAKE_DECEL * brakeInputR * wheelieAmt;
 
   // Terrain-normal PITCH (pass 2): the horizontal terrain force acts at the contact ≈H_COM
   // below the CoM, so it pitches the bike — front into a bump face kicks the nose DOWN (endo

@@ -66,6 +66,8 @@ const I_WHEEL_R     = 0.75;      // kg·m²  rear  wheel+tire rotational inertia
 const ENG_TORQUE_R  = 290;       // N·m   engine torque available to spin the free rear wheel (gas)
 const BRAKE_TORQUE_F = 150;      // N·m   front brake torque on a spinning wheel
 const BRAKE_TORQUE_R = 120;      // N·m   rear  brake torque on a spinning wheel
+const REAR_BRAKE_FRAC = 0.65;    // rear brake is weaker than the front (smaller demand); combined
+                                 // with the rear losing grip under load transfer, it locks easily
 const REAR_BRAKE_LEVER = 0.22;   // m   effective lever for the rear-brake anti-wheelie nose-down moment
 const OMEGA_MAX     = 220;       // rad/s  rev-limit for a free-spinning driven wheel
 const GRIP_LAMBDA   = 300;       // 1/s   tire-grip relaxation of wheel spin → rolling speed
@@ -686,14 +688,21 @@ let   rewindIndex    = 0;       // scrub position into recorder
 // Longitudinal acceleration (gas / brake input), m/s²  positive = forward
 let a_long        = 0;
 let gasPressed    = false;
-let brakePressed  = false;
+// Independent brakes. Three intent flags from the inputs: front (↓ key), rear (← key), and
+// "both" (the B key / on-screen BRAKE button). The physics derives want-front / want-rear from
+// these each frame (wantF = front || both), so multiple sources can't fight over one flag.
+let brakeFrontHeld = false;
+let brakeRearHeld  = false;
+let brakeBothHeld  = false;
 // Ramp PHASE (linear in time, 0→1) and the smoothed INPUT (smootherstep of phase, 0→1).
 // smootherstep has zero slope at both ends → gentle onset (doesn't come on hard) and a
 // gentle, non-abrupt release. The output gasInput/brakeInput are what the physics uses.
 let gasPhase      = 0;
 let brakePhase    = 0;
 let gasInput      = 0;
-let brakeInput    = 0;
+let brakeInputF   = 0;   // ramped FRONT brake input (0→1)
+let brakeInputR   = 0;   // ramped REAR  brake input (0→1)
+let brakeInput    = 0;   // derived = max(front, rear); used for "any brake" conditions + display
 const GAS_RAMP_UP    = 0.85;  // s  throttle press → full (slow climb so it doesn't snap to WOT)
 const GAS_RAMP_DOWN  = 0.50;  // s  throttle release → zero (gentle drop for consistent wheelies)
 const BRAKE_RAMP_UP  = 0.85;  // s  brake press → full (same ease-out feel as the throttle)

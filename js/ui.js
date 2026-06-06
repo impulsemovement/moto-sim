@@ -126,10 +126,15 @@ function setSetupStatus(msg) {
     gasPressed = on;
     document.getElementById('btn-gas').classList.toggle('held', on);
   }
-  function setBrake(on) {
-    brakePressed = on;
-    document.getElementById('btn-brake').classList.toggle('held', on);
+  // Independent brakes: ↓ = front only, ← = rear only, B / on-screen button = BOTH.
+  const brakeBtnEl = document.getElementById('btn-brake');
+  function syncBrakeBtn() {
+    // Button glows held whenever any brake intent is active.
+    brakeBtnEl.classList.toggle('held', brakeFrontHeld || brakeRearHeld || brakeBothHeld);
   }
+  function setBrakeFront(on) { brakeFrontHeld = on; syncBrakeBtn(); }
+  function setBrakeRear(on)  { brakeRearHeld  = on; syncBrakeBtn(); }
+  function setBrakeBoth(on)  { brakeBothHeld  = on; syncBrakeBtn(); }
   function setClutch(on) {
     clutchPulled = on;
     document.getElementById('btn-clutch').classList.toggle('held', on);
@@ -142,17 +147,17 @@ function setSetupStatus(msg) {
   const brakeBtn  = document.getElementById('btn-brake');
   const clutchBtn = document.getElementById('btn-clutch');
 
-  // Mouse
+  // Mouse — the on-screen BRAKE button applies BOTH brakes (simple combined braking for touch).
   gasBtn.addEventListener('mousedown',   () => setGas(true));
-  brakeBtn.addEventListener('mousedown', () => setBrake(true));
+  brakeBtn.addEventListener('mousedown', () => setBrakeBoth(true));
   clutchBtn.addEventListener('mousedown',() => setClutch(true));
-  window.addEventListener('mouseup',     () => { setGas(false); setBrake(false); setClutch(false); });
+  window.addEventListener('mouseup',     () => { setGas(false); setBrakeBoth(false); setClutch(false); });
 
   // Touch (prevent scroll while holding)
   gasBtn.addEventListener('touchstart',    e => { e.preventDefault(); setGas(true); },    {passive:false});
   gasBtn.addEventListener('touchend',      e => { e.preventDefault(); setGas(false); },   {passive:false});
-  brakeBtn.addEventListener('touchstart',  e => { e.preventDefault(); setBrake(true); },  {passive:false});
-  brakeBtn.addEventListener('touchend',    e => { e.preventDefault(); setBrake(false); }, {passive:false});
+  brakeBtn.addEventListener('touchstart',  e => { e.preventDefault(); setBrakeBoth(true); },  {passive:false});
+  brakeBtn.addEventListener('touchend',    e => { e.preventDefault(); setBrakeBoth(false); }, {passive:false});
   clutchBtn.addEventListener('touchstart', e => { e.preventDefault(); setClutch(true); }, {passive:false});
   clutchBtn.addEventListener('touchend',   e => { e.preventDefault(); setClutch(false); },{passive:false});
 
@@ -165,13 +170,15 @@ function setSetupStatus(msg) {
   shiftUpBtn.addEventListener('touchstart', e => { e.preventDefault(); shiftGear(+1); }, {passive:false});
   shiftDnBtn.addEventListener('touchstart', e => { e.preventDefault(); shiftGear(-1); }, {passive:false});
 
-  // Keyboard: G/→ gas, B/← brake, C clutch (hold), A downshift, D upshift, R reset.
-  // Only a TEXT-entry field (the setup-name box) swallows shortcuts — range sliders,
-  // dropdowns, etc. do NOT, so the controls always work even with a slider focused.
+  // Keyboard: G/→ gas, ↓ FRONT brake, ← REAR brake, B BOTH brakes, C clutch (hold),
+  // A downshift, D upshift, R reset. Only a TEXT-entry field (the setup-name box) swallows
+  // shortcuts — range sliders, dropdowns, etc. do NOT, so controls work with a slider focused.
   window.addEventListener('keydown', e => {
     if (isTextEntry(e.target)) return;
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') { e.preventDefault(); setGas(true); }
-    if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  { e.preventDefault(); setBrake(true); }
+    if (e.key === 'ArrowDown')                                    { e.preventDefault(); setBrakeFront(true); }
+    if (e.key === 'ArrowLeft')                                    { e.preventDefault(); setBrakeRear(true); }
+    if (e.key === 'b' || e.key === 'B')                           { e.preventDefault(); setBrakeBoth(true); }
     if (e.key === 'c' || e.key === 'C' || e.key === ' ' || e.code === 'Space') { e.preventDefault(); setClutch(true); }
     if (!e.repeat && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); shiftGear(+1); }
     if (!e.repeat && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); shiftGear(-1); }
@@ -179,7 +186,9 @@ function setSetupStatus(msg) {
   });
   window.addEventListener('keyup', e => {
     if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') setGas(false);
-    if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft')  setBrake(false);
+    if (e.key === 'ArrowDown')          setBrakeFront(false);
+    if (e.key === 'ArrowLeft')          setBrakeRear(false);
+    if (e.key === 'b' || e.key === 'B') setBrakeBoth(false);
     if (e.key === 'c' || e.key === 'C' || e.key === ' ' || e.code === 'Space') setClutch(false);
   });
 })();
