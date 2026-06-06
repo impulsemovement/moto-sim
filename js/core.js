@@ -370,7 +370,11 @@ const RPM_LIMIT    = 10800;   // hard rev limiter
 const LIMITER_BAND      = 350;   // RPM hysteresis band (bounce depth)
 const LIMITER_DROP_RATE = 16000; // RPM/s the (free) revs fall while the fuel is cut
 const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
-const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side)
+const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side, clutch-slip feel)
+// Engine ROTATIONAL inertia reflected to the wheel when the clutch is locked: spinning the crank
+// up costs torque, so it adds effective mass = I_ENGINE_REFLECT·ratio²/R² to the surge. Felt in
+// low gears (high ratio) and ~nil in top gear — tuned subtle so accel/wheelie feel is preserved.
+const I_ENGINE_REFLECT = 0.011; // kg·m²  (separate, small — the force model isn't a true torque model)
 // Normalized MT-07 (CP2 689 cc) crank-torque curve vs RPM. 1.0 = peak (~68 N·m near 6 000).
 // Modeled on published dyno sheets: strong low-end, broad flat plateau 4 000–7 500, gentle
 // taper to redline, dropping off hard into the limiter. F_throttle = PEAK·this(rpm).

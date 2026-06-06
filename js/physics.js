@@ -289,7 +289,14 @@ function _physicsStep(dt_s) {
   } else if (revLimiterCut) {
     engineRPM = Math.max(RPM_IDLE, engineRPM - LIMITER_DROP_RATE * dt_s);
   } else {
-    engineRPM += (gasInput * ENGINE_REV_RATE - (1 - gasInput) * ENGINE_DECAY_RATE) * dt_s;
+    // Free-rev WITH INERTIA (clutch in): dω/dt = (T_drive − T_friction)/I_crank. The spin-up rate
+    // follows the engine torque curve (surges off idle, tapers near redline) and the off-throttle
+    // decay grows with rpm (the crank coasts down faster from high revs) — so blips feel like a
+    // real flywheel instead of a flat linear ramp.
+    const revUp   = ENGINE_REV_RATE   * gasInput * engTorqueFac(engineRPM);
+    const revDown = ENGINE_DECAY_RATE * (1 - gasInput)
+                    * (0.25 + 0.75 * Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)));
+    engineRPM += (revUp - revDown) * dt_s;
     engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
   }
   const engOn = engineRunning ? 1 : 0;   // gates all engine-produced forces
@@ -384,7 +391,12 @@ function _physicsStep(dt_s) {
   // Tractive/brake forces act at the contact patches (≈H_COM below CoM) → they
   // also produce the dive/squat pitch moment (computed in the pitch EOM below).
   const F_contact_long = F_drive_term + F_brake_term + F_cruise;
-  const a_x = (F_contact_long + F_drag + F_rr) / M_total;
+  // Engine ROTATIONAL inertia: when the clutch is locked, accelerating the bike must also spin
+  // the crank up, which reflects to the wheel as added effective mass (I·ratio²/R²). Big in low
+  // gears, ~nil in top — so the engine's spin-up inertia is now felt in the acceleration.
+  const mEngReflect = (engineRunning && clutchEngage > 0.9 && onGroundRear)
+    ? I_ENGINE_REFLECT * ratio * ratio / (WHEEL_R_R * WHEEL_R_R) : 0;
+  const a_x = (F_contact_long + F_drag + F_rr) / (M_total + mEngReflect);
   a_long = a_x;                       // load-transfer pitch source (terrain pitch handled separately)
   vChassisX += (a_x + F_x_terrain * TERRAIN_BITE / M_total) * dt_s;
   if (vChassisX < -1) vChassisX = -1;   // allow a small backward roll (e.g. rear falling from a stoppie)
