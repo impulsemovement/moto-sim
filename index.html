@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=26">
+<link rel="stylesheet" href="css/styles.css?v=29">
 </head>
 <body>
 
@@ -132,12 +132,14 @@
     <div class="card-title">TERRAIN AND CHASSIS<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <label>Terrain <span id="lterrain">Bumps</span></label>
-    <input type="range" id="terrain" min="0" max="4" value="0" step="1">
-    <div style="display:flex;gap:2px;font-size:9px;color:#444;margin-top:-5px;margin-bottom:8px">
-      <span style="flex:1;text-align:left">Bumps</span>
-      <span style="flex:1;text-align:center">Whoops</span>
+    <input type="range" id="terrain" min="0" max="6" value="0" step="1">
+    <div style="display:flex;gap:1px;font-size:8px;color:#444;margin-top:-5px;margin-bottom:8px">
+      <span style="flex:1;text-align:left">Bump</span>
+      <span style="flex:1;text-align:center">Whoop</span>
       <span style="flex:1;text-align:center">Step</span>
-      <span style="flex:1;text-align:center">Kicker</span>
+      <span style="flex:1;text-align:center">Kick</span>
+      <span style="flex:1;text-align:center">Roll</span>
+      <span style="flex:1;text-align:center">Pass</span>
       <span style="flex:1;text-align:right">Flat</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
@@ -272,13 +274,13 @@
   document.querySelectorAll(".donate-link").forEach(function (a) { a.href = DONATE_URL; });
 </script>
 
-<script src="js/core.js?v=26"></script>
-<script src="js/physics.js?v=26"></script>
-<script src="js/render.js?v=26"></script>
-<script src="js/graphs.js?v=26"></script>
-<script src="js/ui.js?v=26"></script>
-<script src="js/background.js?v=26"></script>
-<script src="js/audio.js?v=26"></script>
-<script src="js/main.js?v=26"></script>
+<script src="js/core.js?v=29"></script>
+<script src="js/physics.js?v=29"></script>
+<script src="js/render.js?v=29"></script>
+<script src="js/graphs.js?v=29"></script>
+<script src="js/ui.js?v=29"></script>
+<script src="js/background.js?v=29"></script>
+<script src="js/audio.js?v=29"></script>
+<script src="js/main.js?v=29"></script>
 </body>
 </html>

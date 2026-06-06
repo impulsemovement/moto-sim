@@ -323,7 +323,7 @@ let P = {
   tireGrip:1.0,      // 0–1+ surface grip (1 = asphalt, lower = dirt/loose); friction-limits drive/brake
   bottomBounceF:3.5, bottomBounceR:2.0   // bottom-out restitution (0 = dead … up to 10× super-elastic)
 };
-const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Flat'];
+const TERRAINS = ['Bumps','Whoops','Step drop','Kicker','Rollers','Mountain Pass','Flat'];
 
 // True only for genuine text-entry targets (e.g. the setup-name box). Used so global
 // key shortcuts keep firing while a range slider / dropdown is focused.
@@ -603,14 +603,32 @@ function groundY_m(wx_m) {
       else if (zone>=rStart && zone<rEnd)   { t=(zone-rStart)/edgeW; t=(1+Math.cos(t*Math.PI))/2; }
       return t*dropH + noise;
     }
-    case 3: { // Kicker — smooth hump
-      const cycle = 5.0/freq;
-      const zone  = (((wx_m%cycle)+cycle)%cycle)/cycle;
-      const dur   = 0.22;
-      if (zone<dur) { const rt=zone/dur; return -Math.sin(rt*Math.PI)*0.12*amp + noise; }
-      return noise;
+    case 3: { // Kicker — a launch RAMP: steep takeoff face that ends at a lip (kicks you airborne),
+              // then a long flat landing/run-up before the next one. Distinct from the rounded whoops.
+      const cycle = 11.0/freq;
+      const zone  = (((wx_m%cycle)+cycle)%cycle);
+      const rampW = 2.4;                 // m, length of the launch face
+      if (zone < rampW) {
+        const rt = zone / rampW;         // 0 at base → 1 at the lip
+        return -(rt*rt)*0.42*amp + noise; // quadratic ramp up (up = negative Y); abrupt lip at the top
+      }
+      return noise;                       // flat run between kickers
     }
-    case 4: // Flat — gentle long-wavelength
+    case 4: { // Rollers — big SMOOTH rolling hills (pump-track), long wavelength, gentle faces
+      const wl = 7.0/freq;
+      return Math.sin(wx_m/wl*Math.PI*2)*0.35*amp + noise;
+    }
+    case 5: { // Mountain Pass — sustained CLIMBS & DESCENTS gaining/losing hundreds of feet. A few
+              // layered long sines so the grade varies (a climb, a crest, a descent) rather than one
+              // repeating hill. ELEV amplitude scales with the Amplitude slider; gentle road texture.
+              // (Crank Amplitude up for a bigger pass; grade stays rideable at long wavelengths.)
+      const ELEV = 30 * amp;             // m of elevation swing per layer (amp 1 → ~45 m total ≈ 150 ft)
+      const k    = 0.0065 * freq;        // long spatial frequency (≈ 1 km wavelength at freq 1)
+      const elev = -(ELEV * Math.sin(wx_m * k) + 0.5 * ELEV * Math.sin(wx_m * k * 0.37 + 1.3));
+      const road = Math.sin(wx_m * 0.11 * freq) * 0.04 * amp;  // smooth long-wavelength pavement sway
+      return elev + road + noise;                              // (short bumps would launch the bike)
+    }
+    case 6: // Flat — gentle long-wavelength
       return Math.sin(wx_m*0.5*freq)*0.025*amp + noise;
   }
   return 0;

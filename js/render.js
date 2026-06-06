@@ -167,10 +167,27 @@ function draw(ts) {
   ctx.fillStyle='#8b6914'; ctx.fill();
   ctx.strokeStyle='#aaaaaa'; ctx.lineWidth=1.5; ctx.stroke();
 
-  // ── Camera Y: very slow drift toward mean terrain height (~10 s time constant) ─────
-  // Individual bumps do NOT move the camera — only long-term elevation changes do.
-  // This keeps the terrain visually stable while the bike bounces above it.
-  camY_m += (groundY_m(comX_m_d) - camY_m) * 0.003;
+  // ── Camera Y: deadzone follow — keep the bike inside a vertical comfort band ─────────
+  // Small bumps don't move the camera (it bounces within the band), but a sustained climb or
+  // descent (Mountain Pass, big Rollers) pulls the camera so the bike never rides out of frame.
+  // Within the band, a very slow drift toward the terrain mean gently recenters.
+  {
+    const bikeSY = (chassisY_m - camY_m) * PM + groundBaseY;   // bike's current draw Y (px)
+    const topLim = H * 0.22;   // don't let the bike climb above the top ~22% of the canvas
+    const botLim = H * 0.72;   // or sink below ~72%
+    let over = 0;
+    if      (bikeSY < topLim) over = bikeSY - topLim;          // -ve: above the band (climbing)
+    else if (bikeSY > botLim) over = bikeSY - botLim;          // +ve: below the band (descending)
+    if (over !== 0) {
+      // Follow proportionally, but ramp the gain up the further the bike is outside the band —
+      // a gentle climb tracks smoothly (~0.25), while a hard launch/landing snaps the camera so
+      // the bike can never ride off-screen.
+      const gain = Math.min(1, 0.25 + Math.abs(over) / H * 1.2);
+      camY_m += over / PM * gain;
+    } else {
+      camY_m += (groundY_m(comX_m_d) - camY_m) * 0.003;        // in band → slow recenter
+    }
+  }
 
   // ── Kinematic screen positions (chassis-relative) ─────────
   // These use the X positions computed in the physics step from fork/swingarm geometry.
