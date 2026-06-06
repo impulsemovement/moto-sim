@@ -74,16 +74,16 @@ function initAudio() {
 }
 
 // Tire-slip sound. slipV = contact slip speed (m/s); grip = the tire-grip slider (0..1+).
-// Two distinct timbres: ≥80% grip → a high, tonal asphalt SCREECH (tight band-pass); below
+// Two distinct timbres: ≥65% grip → a high, tonal asphalt SCREECH (very tight band-pass); below
 // that → a low, broadband DIRT/gravel scrabble. Volume ramps in above a small slip threshold.
 function updateTireSound(slipV, grip) {
   if (!audioCtx || !slipGain) return;
   const t = audioCtx.currentTime;
-  const dirt = grip < 0.8;
-  if (dirt) { slipBP.frequency.setTargetAtTime(340, t, 0.05); slipBP.Q.setTargetAtTime(0.9, t, 0.05); }
-  else      { slipBP.frequency.setTargetAtTime(1550 + Math.min(slipV, 12) * 25, t, 0.04); slipBP.Q.setTargetAtTime(7, t, 0.05); }
+  const dirt = grip < 0.65;
+  if (dirt) { slipBP.frequency.setTargetAtTime(340, t, 0.05); slipBP.Q.setTargetAtTime(1.1, t, 0.05); }
+  else      { slipBP.frequency.setTargetAtTime(1750 + Math.min(slipV, 12) * 30, t, 0.04); slipBP.Q.setTargetAtTime(14, t, 0.05); }
   let vol = Math.max(0, Math.min(1, (slipV - 1.5) / 7));   // fade in past ~1.5 m/s slip
-  vol *= dirt ? 0.20 : 0.17;
+  vol *= dirt ? 0.40 : 0.34;   // ~2× louder than before
   slipGain.gain.setTargetAtTime(soundMuted ? 0 : vol, t, 0.05);
 }
 
