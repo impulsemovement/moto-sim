@@ -255,9 +255,13 @@ window.addEventListener('resize', resizeMain);
 //  PARAMETERS
 // ═══════════════════════════════════════════════════════════
 // Tire pressure → tire spring rate mapping: slider in psi, physics in N/m
-// [28, 52] psi → [200 000, 500 000] N/m (36 psi = 300 000 N/m = original K_TIRE)
+// [28, 52] psi → [280 000, 340 000] N/m (36 psi = 300 000 N/m = original K_TIRE). The range is
+// deliberately NARROW: a jump off a ramp is mostly ballistic, so the launch should be roughly
+// pressure-independent. A wide spring range made low psi too soft to launch (bike "stuck") and
+// high psi a stiff trampoline (bike "flew"). Pressure still meaningfully changes GRIP
+// (gripPressure), ride harshness, carcass damping and bottoming — just not jump height.
 const PSI_MIN = 28, PSI_MAX = 52;
-const KTIRE_MIN = 200000, KTIRE_MAX = 500000;
+const KTIRE_MIN = 280000, KTIRE_MAX = 340000;
 function psiToKtire(psi) {
   // Linear in the 28–52 psi design range; floored so low slider values (down to 10 psi)
   // stay a soft-but-POSITIVE spring instead of going negative (which broke the tire model).
@@ -273,10 +277,10 @@ function gripPressure(psi) { return Math.max(0.8, Math.min(1.25, 1 + (36 - psi) 
 function bottomOutFactor(k_tire) {
   return Math.max(0.15, Math.min(1.6, k_tire / KTIRE_NOMINAL));
 }
-// Tire carcass damping coefficient (N·s/m). A low-pressure tire flexes far more and
-// dissipates much more energy (hysteresis) — so it compresses further AND rebounds
-// slowly/deadly, instead of springing back. Scales inversely with pressure: ~1500 at
-// nominal 36 psi, up to ~5000 when soft, down to ~900 when hard.
+// Tire carcass damping coefficient (N·s/m). A low-pressure tire flexes more and dissipates more
+// energy (hysteresis). Scales inversely with stiffness: 1500 at nominal 36 psi; with the narrow
+// spring range it now stays a mild ~1320–1610 across the pressure range (no longer dominates
+// launches). Still clamped [600, 5000] for safety.
 const C_TIRE_BASE = 1500;
 // Rear tire runs MORE carcass damping than the front (front stays at the stable baseline). The
 // rear gets damped harder (up to the explicit-stability cap) so small bumps don't set it
