@@ -469,7 +469,13 @@ let terrainPts = [ { x:0, y:0.5 }, { x:0.5, y:0.85 }, { x:1, y:0.5 } ];
 let terrainLUT = null;            // built once buildCurveLUT() is defined (below)
 let TERRAIN_WAVELEN = 8;          // m  — period length (Length slider)
 let TERRAIN_HEIGHT  = 0.30;       // m  — vertical bump scale (Height slider)
-bind('custlen',    'lcustlen',    v => { TERRAIN_WAVELEN = +v;     return v + ' m';  });
+// Length is LOGARITHMIC: the 0–1000 slider maps to 2 m … 500 m as wl = 2·250^(v/1000), so equal
+// slider travel is an equal RATIO change — fine control at the short end, and the top end stretches
+// to very long tracks with little movement.
+bind('custlen',    'lcustlen',    v => {
+  TERRAIN_WAVELEN = 2 * Math.pow(250, (+v) / 1000);
+  return TERRAIN_WAVELEN.toFixed(TERRAIN_WAVELEN < 20 ? 1 : 0) + ' m';
+});
 bind('custheight', 'lcustheight', v => { TERRAIN_HEIGHT  = +v/100; return v + ' cm'; });
 
 // ── Bike geometry (live) ────────────────────────────────────────────────────
