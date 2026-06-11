@@ -213,6 +213,9 @@ const COM_SX = () => canvas.width * 0.40;       // chassis CoM screen X
 // ═══════════════════════════════════════════════════════════
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
+const minimap   = document.getElementById('minimap');
+const minimapCtx = minimap ? minimap.getContext('2d') : null;
+const MAP_SPAN  = 240;   // m of terrain shown across the minimap (window centered on the bike)
 
 // Real browser viewport height. When embedded in a SAME-ORIGIN iframe — especially an
 // auto-height embed that inflates our own innerHeight to the full content height — read the
@@ -243,6 +246,7 @@ function resizeMain() {
   groundBaseY   = canvas.height - groundOffset;
   PM_base       = mobile ? 100 : 200;
   PM            = PM_base * userZoom;
+  if (minimap) { minimap.width = canvas.width; minimap.height = mobile ? 48 : 64; }
 }
 resizeMain();
 window.addEventListener('resize', resizeMain);

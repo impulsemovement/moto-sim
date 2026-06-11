@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=34">
+<link rel="stylesheet" href="css/styles.css?v=35">
 </head>
 <body>
 
@@ -41,6 +41,9 @@
     <span id="key-legend-x" title="Hide">✕</span>
   </div>
 </div>
+
+<!-- Minimap: terrain profile + bike position (helps build/test tracks) -->
+<canvas id="minimap" title="Track map — bike position on the terrain"></canvas>
 
 <div id="rewind-bar">
   <span style="font-size:10px;color:#e11d48;font-weight:700;letter-spacing:0.06em">REWIND</span>
@@ -298,13 +301,13 @@
   document.querySelectorAll(".donate-link").forEach(function (a) { a.href = DONATE_URL; });
 </script>
 
-<script src="js/core.js?v=34"></script>
-<script src="js/physics.js?v=34"></script>
-<script src="js/render.js?v=34"></script>
-<script src="js/graphs.js?v=34"></script>
-<script src="js/ui.js?v=34"></script>
-<script src="js/background.js?v=34"></script>
-<script src="js/audio.js?v=34"></script>
-<script src="js/main.js?v=34"></script>
+<script src="js/core.js?v=35"></script>
+<script src="js/physics.js?v=35"></script>
+<script src="js/render.js?v=35"></script>
+<script src="js/graphs.js?v=35"></script>
+<script src="js/ui.js?v=35"></script>
+<script src="js/background.js?v=35"></script>
+<script src="js/audio.js?v=35"></script>
+<script src="js/main.js?v=35"></script>
 </body>
 </html>

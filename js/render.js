@@ -534,5 +534,59 @@ function draw(ts) {
 
   drawForceGraph();
   drawVelocityGraph();
+  drawMinimap();
+}
+
+// ── Minimap: a wide, zoomed-out view of the terrain with the bike's position ─────────
+// A MAP_SPAN-metre window centred on the bike, vertical auto-scaled to the elevation in view —
+// so you can see the track shape around the bike (and the distance travelled) while building maps.
+function drawMinimap() {
+  const mm = minimap, c2 = minimapCtx;
+  if (!mm || !c2) return;
+  const W = mm.width, H = mm.height;
+  if (!W || !H) return;
+  c2.clearRect(0, 0, W, H);
+  c2.fillStyle = '#0b0f15'; c2.fillRect(0, 0, W, H);   // sky
+
+  const cx   = worldX_m - A_FRONT_M;        // bike CoM world X (centre of the window)
+  const span = MAP_SPAN;
+  const x0   = cx - span / 2;
+
+  // Sample the terrain across the window; track elevation range for the vertical auto-scale.
+  const N = Math.min(W | 0, 400);
+  const ys = [];
+  let loY = Infinity, hiY = -Infinity;
+  for (let i = 0; i <= N; i++) {
+    const y = groundY_m(x0 + (i / N) * span);
+    ys.push(y); if (y < loY) loY = y; if (y > hiY) hiY = y;
+  }
+  loY = Math.min(loY, chassisY_m); hiY = Math.max(hiY, chassisY_m);   // keep the bike in view
+  const pad = (hiY - loY) * 0.25 + 0.4; loY -= pad; hiY += pad;
+  const rng = (hiY - loY) || 1;
+  const sy  = y => ((y - loY) / rng) * H;   // world Y-down → screen Y-down (peaks at top)
+
+  // dirt fill + top line
+  c2.beginPath();
+  for (let i = 0; i <= N; i++) { const px = (i / N) * W, py = sy(ys[i]); i === 0 ? c2.moveTo(px, py) : c2.lineTo(px, py); }
+  c2.lineTo(W, H); c2.lineTo(0, H); c2.closePath();
+  c2.fillStyle = '#6b5418'; c2.fill();
+  c2.beginPath();
+  for (let i = 0; i <= N; i++) { const px = (i / N) * W, py = sy(ys[i]); i === 0 ? c2.moveTo(px, py) : c2.lineTo(px, py); }
+  c2.strokeStyle = '#caa23a'; c2.lineWidth = 1.5; c2.stroke();
+
+  // centre line + bike marker (the bike sits at the centre; terrain scrolls under it)
+  c2.strokeStyle = 'rgba(255,255,255,0.10)'; c2.lineWidth = 1;
+  c2.beginPath(); c2.moveTo(W / 2, 0); c2.lineTo(W / 2, H); c2.stroke();
+  const by = sy(chassisY_m);
+  c2.fillStyle = '#e11d48';
+  c2.beginPath(); c2.arc(W / 2, by, 4, 0, Math.PI * 2); c2.fill();
+  c2.strokeStyle = '#fff'; c2.lineWidth = 1; c2.stroke();
+
+  // labels: distance at the marker + window span at the edges
+  c2.font = '9px sans-serif'; c2.fillStyle = '#9a9a9a';
+  c2.textAlign = 'center'; c2.fillText(Math.round(cx) + ' m', W / 2, 11);
+  c2.textAlign = 'left';   c2.fillText('−' + (span / 2) + ' m', 4, H - 4);
+  c2.textAlign = 'right';  c2.fillText('+' + (span / 2) + ' m', W - 4, H - 4);
+  c2.strokeStyle = '#1f1f1f'; c2.lineWidth = 1; c2.strokeRect(0.5, 0.5, W - 1, H - 1);
 }
 
