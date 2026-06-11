@@ -132,7 +132,25 @@ canvas { display: block; background: #080808; }
 .card-geom   { grid-area: geom; }
 .card-custom { grid-area: custom; }
 .ui { grid-template-areas: "susp curve" "custom custom" "terrain fhist" "vhist geom"; }
-#terrain-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; }
+#terrain-canvas { display:block; width:100%; cursor:pointer; border-radius:4px; }
+/* Custom-track builder: Add-feature icon popup + per-feature controls */
+.feature-popup {
+  position:absolute; top:30px; left:0; z-index:40; display:none;
+  grid-template-columns:repeat(4,1fr); gap:6px; padding:8px;
+  background:#141414; border:1px solid #333; border-radius:8px; box-shadow:0 6px 22px rgba(0,0,0,0.6);
+}
+.feature-popup.open { display:grid; }
+.feature-popup button {
+  display:flex; flex-direction:column; align-items:center; gap:3px; width:58px;
+  background:#0f0f0f; border:1px solid #1f1f1f; border-radius:6px; padding:6px 4px;
+  cursor:pointer; color:#bbb; font-size:8px; letter-spacing:0.03em; transition:background .12s,border-color .12s,color .12s;
+}
+.feature-popup button:hover { background:#1c1c1c; border-color:#e11d48; color:#fff; }
+.feature-popup svg { width:40px; height:24px; }
+#feature-controls { display:none; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap; }
+#feature-controls.show { display:flex; }
+#feat-type-label { font-size:11px; color:#e11d48; font-weight:700; letter-spacing:0.06em; min-width:64px; }
+.feat-ctl { flex:1; min-width:110px; }
 
 /* Mobile: single column, curve + fhist drop below terrain */
 @media (max-width: 640px) {

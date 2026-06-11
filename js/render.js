@@ -167,6 +167,22 @@ function draw(ts) {
   ctx.fillStyle='#8b6914'; ctx.fill();
   ctx.strokeStyle='#aaaaaa'; ctx.lineWidth=1.5; ctx.stroke();
 
+  // ── Custom-track solid walls (drawn as blocks the bike crashes into) ─────────
+  if (P.terrain === 7 && typeof trackWalls !== 'undefined' && trackWalls.length && trackTotalLen) {
+    const lap = trackTotalLen;
+    const xL = comX_m_view - comSX / PM, xR = comX_m_view + (W - comSX) / PM;  // visible world X
+    for (const wll of trackWalls) {
+      const nLo = Math.floor((xL - wll.x1) / lap), nHi = Math.ceil((xR - wll.x0) / lap);
+      for (let n = nLo; n <= nHi; n++) {
+        const bx0 = w2sx(wll.x0 + n*lap), bx1 = w2sx(wll.x1 + n*lap);
+        if (bx1 < 0 || bx0 > W) continue;
+        const top = screenY(-wll.top), base = screenY(0);
+        ctx.fillStyle = '#7a2b22';   ctx.fillRect(bx0, top, bx1 - bx0, base - top);   // brick body
+        ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2; ctx.strokeRect(bx0, top, bx1 - bx0, base - top);
+      }
+    }
+  }
+
   // ── Camera Y: deadzone follow — keep the bike inside a vertical comfort band ─────────
   // Small bumps don't move the camera (it bounces within the band), but a sustained climb or
   // descent (Mountain Pass, big Rollers) pulls the camera so the bike never rides out of frame.
@@ -573,6 +589,19 @@ function drawMinimap() {
   c2.beginPath();
   for (let i = 0; i <= N; i++) { const px = (i / N) * W, py = sy(ys[i]); i === 0 ? c2.moveTo(px, py) : c2.lineTo(px, py); }
   c2.strokeStyle = '#caa23a'; c2.lineWidth = 1.5; c2.stroke();
+
+  // custom-track walls as solid red blocks (they don't show in the height profile)
+  if (P.terrain === 7 && typeof trackWalls !== 'undefined' && trackWalls.length && trackTotalLen) {
+    const lap = trackTotalLen;
+    for (const wll of trackWalls) {
+      const nLo = Math.floor((x0 - wll.x1) / lap), nHi = Math.ceil((x0 + span - wll.x0) / lap);
+      for (let n = nLo; n <= nHi; n++) {
+        const bx0 = ((wll.x0 + n*lap - x0) / span) * W, bx1 = ((wll.x1 + n*lap - x0) / span) * W;
+        if (bx1 < 0 || bx0 > W) continue;
+        c2.fillStyle = '#c0392b'; c2.fillRect(bx0, sy(-wll.top), Math.max(2, bx1 - bx0), sy(0) - sy(-wll.top));
+      }
+    }
+  }
 
   // centre line + bike marker (the bike sits at the centre; terrain scrolls under it)
   c2.strokeStyle = 'rgba(255,255,255,0.10)'; c2.lineWidth = 1;

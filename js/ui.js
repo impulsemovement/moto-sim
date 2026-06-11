@@ -32,6 +32,7 @@ function captureSetup() {
     curves: { compPts_F: clone(compPts_F), rebPts_F: clone(rebPts_F),
               compPts_R: clone(compPts_R), rebPts_R: clone(rebPts_R) },
     terrainPts: clone(terrainPts),
+    customTrack: customTrack.map(f => { const { _x0, ...rest } = f; return { ...rest }; }),
     scales: { ...curveScaleVals },
     wheelMode, curveMode
   };
@@ -57,8 +58,12 @@ function applySetupToControls(s) {
   if (s.terrainPts) {
     terrainPts = (s.terrainPts || []).map(p => ({ x:p.x, y:p.y }));
     terrainLUT = buildCurveLUT(terrainPts);
-    if (typeof drawTerrainEditor === 'function') drawTerrainEditor();
   }
+  if (Array.isArray(s.customTrack) && s.customTrack.length) {
+    customTrack = s.customTrack.map(f => ({ ...f }));
+    rebuildCustomTrack();
+  }
+  if (typeof drawTerrainEditor === 'function') drawTerrainEditor();
   if (s.scales) Object.assign(curveScaleVals, s.scales);
   // 3) Active toggles + redraw.
   setWheelMode(s.wheelMode || 'front');

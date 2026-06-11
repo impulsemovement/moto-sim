@@ -347,22 +347,33 @@ function applyPreset(name) {
 }
 
 
-// ═══════════════════════════════════════════════════════════
-//  CUSTOM TERRAIN EDITOR  (periodic profile; endpoints locked level so it tiles)
-// ═══════════════════════════════════════════════════════════
-const tcv  = document.getElementById('terrain-canvas');
-const tcx  = tcv ? tcv.getContext('2d') : null;
-const TGP  = { l:34, r:14, t:10, b:16 };
 
-function tPtToScreen(nx, ny) {
-  const gw = tcv.width-TGP.l-TGP.r, gh = tcv.height-TGP.t-TGP.b;
-  return { sx: TGP.l+nx*gw, sy: TGP.t+(1-ny)*gh };
-}
-function tScreenToPt(sx, sy) {
-  const gw = tcv.width-TGP.l-TGP.r, gh = tcv.height-TGP.t-TGP.b;
-  return { nx:(sx-TGP.l)/gw, ny:1-(sy-TGP.t)/gh };
-}
-function rebuildTerrainLUT() { terrainLUT = buildCurveLUT(terrainPts); }
+// ═══════════════════════════════════════════════════════════
+//  CUSTOM TRACK BUILDER — editor (feature sequence + icon palette)
+// ═══════════════════════════════════════════════════════════
+const tcv = document.getElementById('terrain-canvas');
+const tcx = tcv ? tcv.getContext('2d') : null;
+const TGP = { l:8, r:8, t:10, b:6 };
+let selFeature = -1;
+
+// Palette: type, label, default params, and a stylized SVG icon (viewBox 0 0 36 26).
+const FEATURE_PALETTE = [
+  { type:'jump',     label:'Jump',      def:{len:5,   height:0.9},
+    icon:'<path d="M3 23 L26 5 L26 23 Z" fill="#d6a93a"/>' },
+  { type:'rhythm',   label:'Whoops',    def:{len:9,   height:0.28, count:5},
+    icon:'<path d="M2 23 Q5 12 8 23 Q11 12 14 23 Q17 12 20 23 Q23 12 26 23 Q29 12 32 23 Z" fill="#d6a93a"/>' },
+  { type:'table',    label:'Table',     def:{len:7,   height:1.0},
+    icon:'<path d="M3 23 L11 7 L25 7 L33 23 Z" fill="#d6a93a"/>' },
+  { type:'stepup',   label:'Step up',   def:{len:4,   height:0.6},
+    icon:'<path d="M3 23 L3 16 L13 16 L13 8 L33 8 L33 23 Z" fill="#d6a93a"/>' },
+  { type:'stepdown', label:'Step down', def:{len:4,   height:0.6},
+    icon:'<path d="M3 8 L13 8 L13 16 L23 16 L23 23 L3 23 Z" fill="#d6a93a"/>' },
+  { type:'wall',     label:'Wall',      def:{len:2.5, height:0.9},
+    icon:'<path d="M2 23 L34 23" stroke="#d6a93a" stroke-width="2.5"/><rect x="14" y="4" width="8" height="19" fill="#c0392b"/>' },
+  { type:'flat',     label:'Flat / gap',def:{len:6},
+    icon:'<path d="M2 21 L34 21" stroke="#d6a93a" stroke-width="3"/>' },
+];
+const FEAT_ICON = {}; FEATURE_PALETTE.forEach(p => FEAT_ICON[p.type] = p.icon);
 
 function resizeTerrainCanvas() {
   if (!tcv) return;
@@ -374,99 +385,109 @@ window.addEventListener('resize', resizeTerrainCanvas);
 
 function drawTerrainEditor() {
   if (!tcv || !tcx) return;
-  const W=tcv.width, H=tcv.height; if (!W||!H) return;
-  const gw=W-TGP.l-TGP.r, gh=H-TGP.t-TGP.b;
-  const lut = terrainLUT || buildCurveLUT(terrainPts);
+  const W = tcv.width, H = tcv.height; if (!W || !H) return;
+  const gw = W - TGP.l - TGP.r, gh = H - TGP.t - TGP.b;
+  tcx.clearRect(0, 0, W, H);
+  tcx.fillStyle = '#0b0f15'; tcx.fillRect(0, 0, W, H);
 
-  tcx.clearRect(0,0,W,H);
-  tcx.fillStyle='#0f0f0f'; tcx.fillRect(0,0,W,H);
-  tcx.fillStyle='#0a0a0a'; tcx.fillRect(TGP.l,TGP.t,gw,gh);
+  const total = trackTotalLen || 1;
+  let lo = 0, hi = 0;
+  for (let i = 0; i <= 240; i++) { const y = customGroundAt(i / 240 * total); if (y < lo) lo = y; if (y > hi) hi = y; }
+  for (const w of trackWalls) if (-w.top < lo) lo = -w.top;
+  const pad = (hi - lo) * 0.15 + 0.3; lo -= pad; hi += pad; const rng = (hi - lo) || 1;
+  const X = x => TGP.l + (x / total) * gw;
+  const Y = y => TGP.t + ((y - lo) / rng) * gh;
 
-  // grid
-  tcx.strokeStyle='#1f1f1f'; tcx.lineWidth=1;
-  for (let i=0;i<=4;i++){
-    tcx.beginPath(); tcx.moveTo(TGP.l+i/4*gw,TGP.t); tcx.lineTo(TGP.l+i/4*gw,TGP.t+gh); tcx.stroke();
-    tcx.beginPath(); tcx.moveTo(TGP.l,TGP.t+i/4*gh); tcx.lineTo(TGP.l+gw,TGP.t+i/4*gh); tcx.stroke();
-  }
-  // seam (endpoint) reference line — terrain sits at 0 here
-  const seamY = TGP.t+(1-lut[0].y)*gh;
-  tcx.strokeStyle='#333'; tcx.setLineDash([4,4]);
-  tcx.beginPath(); tcx.moveTo(TGP.l,seamY); tcx.lineTo(TGP.l+gw,seamY); tcx.stroke();
-  tcx.setLineDash([]);
-
-  // dirt fill under the profile + the top line
-  const top = px => { const ph=px/gw; return TGP.t+(1-evalCurveLUT(lut,ph))*gh; };
-  tcx.beginPath();
-  for (let px=0; px<=gw; px+=2) { const sx=TGP.l+px, sy=top(px); px===0?tcx.moveTo(sx,sy):tcx.lineTo(sx,sy); }
-  tcx.lineTo(TGP.l+gw,TGP.t+gh); tcx.lineTo(TGP.l,TGP.t+gh); tcx.closePath();
-  tcx.fillStyle='rgba(139,105,20,0.4)'; tcx.fill();
-  tcx.beginPath();
-  for (let px=0; px<=gw; px+=2) { const sx=TGP.l+px, sy=top(px); px===0?tcx.moveTo(sx,sy):tcx.lineTo(sx,sy); }
-  tcx.strokeStyle='#d6a93a'; tcx.lineWidth=2.5; tcx.stroke();
-
-  // x-axis label
-  tcx.fillStyle='#444'; tcx.font='9px sans-serif'; tcx.textAlign='center';
-  tcx.fillText('one repeating period →', TGP.l+gw/2, TGP.t+gh+12);
-
-  // control points — endpoints blue (locked level), interior red
-  terrainPts.forEach((p,i)=>{
-    const s=tPtToScreen(p.x,p.y);
-    const end=(i===0||i===terrainPts.length-1);
-    tcx.beginPath(); tcx.arc(s.sx,s.sy,6,0,Math.PI*2);
-    tcx.fillStyle=end?'#3b82f6':'#e11d48'; tcx.fill();
-    tcx.strokeStyle='#f0f0f0'; tcx.lineWidth=1.5; tcx.stroke();
+  // selection highlight + segment dividers
+  customTrack.forEach((f, i) => {
+    const x0 = X(f._x0), x1 = X(f._x0 + f.len);
+    if (i === selFeature) { tcx.fillStyle = 'rgba(225,29,72,0.13)'; tcx.fillRect(x0, TGP.t, x1 - x0, gh); }
+    tcx.strokeStyle = '#181818'; tcx.lineWidth = 1;
+    tcx.beginPath(); tcx.moveTo(x1, TGP.t); tcx.lineTo(x1, TGP.t + gh); tcx.stroke();
   });
 
-  tcx.strokeStyle='#1f1f1f'; tcx.lineWidth=1; tcx.strokeRect(TGP.l,TGP.t,gw,gh);
+  // ground fill + line
+  const line = () => { tcx.beginPath();
+    for (let px = 0; px <= gw; px += 2) { const y = customGroundAt(px / gw * total); const sx = TGP.l + px, sy = Y(y); px === 0 ? tcx.moveTo(sx, sy) : tcx.lineTo(sx, sy); } };
+  line(); tcx.lineTo(TGP.l + gw, TGP.t + gh); tcx.lineTo(TGP.l, TGP.t + gh); tcx.closePath();
+  tcx.fillStyle = 'rgba(139,105,20,0.5)'; tcx.fill();
+  line(); tcx.strokeStyle = '#d6a93a'; tcx.lineWidth = 2; tcx.stroke();
+
+  // walls as solid red blocks
+  for (const w of trackWalls) { const bx = X(w.x0), bw = Math.max(2, X(w.x1) - X(w.x0)); const bt = Y(-w.top), bb = Y(0);
+    tcx.fillStyle = '#c0392b'; tcx.fillRect(bx, bt, bw, bb - bt); }
+
+  // labels
+  tcx.font = '9px sans-serif'; tcx.textAlign = 'center'; tcx.textBaseline = 'top';
+  customTrack.forEach((f, i) => { tcx.fillStyle = i === selFeature ? '#e11d48' : '#9a9a9a';
+    tcx.fillText(f.type, X(f._x0 + f.len / 2), TGP.t + 2); });
+
+  tcx.strokeStyle = '#1f1f1f'; tcx.lineWidth = 1; tcx.strokeRect(TGP.l, TGP.t, gw, gh);
 }
 
-// Drag / click / remove
-let tDrag=-1;
-function tGetPos(e) {
-  const r=tcv.getBoundingClientRect();
-  const cx=e.touches?e.touches[0].clientX:e.clientX;
-  const cy=e.touches?e.touches[0].clientY:e.clientY;
-  return { sx:(cx-r.left)*(tcv.width/r.width), sy:(cy-r.top)*(tcv.height/r.height) };
-}
-function tFindHit(sx,sy) {
-  for (let i=0;i<terrainPts.length;i++){ const s=tPtToScreen(terrainPts[i].x,terrainPts[i].y);
-    if (Math.hypot(s.sx-sx,s.sy-sy)<14) return i; }
-  return -1;
-}
-function tDoDrag(sx,sy) {
-  if (tDrag<0) return;
-  const {nx,ny}=tScreenToPt(sx,sy); const i=tDrag, n=terrainPts.length;
-  const cy=Math.max(0,Math.min(1,ny));
-  if (i===0 || i===n-1) {           // endpoints: x pinned to 0/1, Y locked EQUAL so it tiles
-    terrainPts[0].y=cy; terrainPts[n-1].y=cy;
-  } else {
-    const cx=Math.max(terrainPts[i-1].x+0.02, Math.min(terrainPts[i+1].x-0.02, nx));
-    terrainPts[i]={x:cx,y:cy};
-  }
-  rebuildTerrainLUT(); drawTerrainEditor();
-}
 if (tcv) {
-  tcv.addEventListener('mousedown', e=>{
-    if (e.button!==0) return;
-    const p=tGetPos(e); const hit=tFindHit(p.sx,p.sy);
-    if (hit>=0) { tDrag=hit; return; }
-    const {nx,ny}=tScreenToPt(p.sx,p.sy);
-    if (nx>0.03&&nx<0.97&&ny>=0&&ny<=1 && !terrainPts.some(pt=>Math.abs(pt.x-nx)<0.04)) {
-      terrainPts.push({x:nx,y:Math.max(0,Math.min(1,ny))});
-      terrainPts.sort((a,b)=>a.x-b.x);
-      rebuildTerrainLUT(); drawTerrainEditor();
-    }
+  const popup = document.getElementById('feature-popup');
+  const ctrls = document.getElementById('feature-controls');
+  const elLen = document.getElementById('featlen'),   lLen = document.getElementById('lfeatlen');
+  const elHei = document.getElementById('feathei'),   lHei = document.getElementById('lfeathei');
+  const elCnt = document.getElementById('featcount'), lCnt = document.getElementById('lfeatcount');
+  const typeLabel = document.getElementById('feat-type-label');
+  const heiWrap = document.getElementById('feathei-wrap'), cntWrap = document.getElementById('featcount-wrap');
+
+  function commit() { rebuildCustomTrack(); drawTerrainEditor(); if (typeof drawMinimap === 'function') drawMinimap(); }
+
+  function syncControls() {
+    const f = customTrack[selFeature];
+    if (!f) { ctrls.classList.remove('show'); return; }
+    ctrls.classList.add('show');
+    typeLabel.textContent = f.type.toUpperCase();
+    elLen.value = f.len; lLen.textContent = (+f.len).toFixed(f.len < 10 ? 1 : 0) + ' m';
+    const hasH = f.type !== 'flat';
+    heiWrap.style.display = hasH ? '' : 'none';
+    if (hasH) { elHei.value = Math.round((f.height || 0) * 100); lHei.textContent = Math.round((f.height || 0) * 100) + ' cm'; }
+    const hasC = f.type === 'rhythm';
+    cntWrap.style.display = hasC ? '' : 'none';
+    if (hasC) { elCnt.value = f.count || 5; lCnt.textContent = (f.count || 5); }
+  }
+  function selectFeature(i) { selFeature = i; syncControls(); drawTerrainEditor(); }
+
+  // Build the Add-feature popup icons
+  if (popup) {
+    FEATURE_PALETTE.forEach(p => {
+      const b = document.createElement('button');
+      b.innerHTML = '<svg viewBox="0 0 36 26" aria-hidden="true">' + p.icon + '</svg><span>' + p.label + '</span>';
+      b.addEventListener('click', () => {
+        const f = Object.assign({ type: p.type }, p.def);
+        const at = selFeature >= 0 ? selFeature + 1 : customTrack.length;
+        customTrack.splice(at, 0, f);
+        rebuildCustomTrack();
+        popup.classList.remove('open');
+        selectFeature(at);
+        commit();
+      });
+      popup.appendChild(b);
+    });
+  }
+  const addBtn = document.getElementById('btn-add-feature');
+  if (addBtn) addBtn.addEventListener('click', e => { e.stopPropagation(); popup.classList.toggle('open'); });
+  document.addEventListener('click', e => { if (popup && !popup.contains(e.target) && e.target !== addBtn) popup.classList.remove('open'); });
+
+  // Per-feature sliders
+  elLen.addEventListener('input', () => { const f = customTrack[selFeature]; if (!f) return; f.len = +elLen.value; lLen.textContent = (+f.len).toFixed(f.len < 10 ? 1 : 0) + ' m'; commit(); });
+  elHei.addEventListener('input', () => { const f = customTrack[selFeature]; if (!f) return; f.height = (+elHei.value) / 100; lHei.textContent = elHei.value + ' cm'; commit(); });
+  elCnt.addEventListener('input', () => { const f = customTrack[selFeature]; if (!f) return; f.count = +elCnt.value; lCnt.textContent = elCnt.value; commit(); });
+
+  // Move / delete
+  document.getElementById('btn-feat-left').addEventListener('click',  () => { if (selFeature > 0) { const t = customTrack; [t[selFeature-1], t[selFeature]] = [t[selFeature], t[selFeature-1]]; selFeature--; commit(); syncControls(); } });
+  document.getElementById('btn-feat-right').addEventListener('click', () => { if (selFeature >= 0 && selFeature < customTrack.length-1) { const t = customTrack; [t[selFeature+1], t[selFeature]] = [t[selFeature], t[selFeature+1]]; selFeature++; commit(); syncControls(); } });
+  document.getElementById('btn-feat-del').addEventListener('click',   () => { if (selFeature >= 0 && customTrack.length > 1) { customTrack.splice(selFeature, 1); selFeature = Math.min(selFeature, customTrack.length-1); commit(); syncControls(); } });
+
+  // Canvas: click a feature to select it
+  tcv.addEventListener('click', e => {
+    const r = tcv.getBoundingClientRect();
+    const sx = (e.clientX - r.left) * (tcv.width / r.width);
+    const gw = tcv.width - TGP.l - TGP.r;
+    const x = Math.max(0, Math.min(1, (sx - TGP.l) / gw)) * (trackTotalLen || 1);
+    for (let i = 0; i < customTrack.length; i++) { const f = customTrack[i]; if (x >= f._x0 && x < f._x0 + f.len) { selectFeature(i); return; } }
   });
-  tcv.addEventListener('mousemove',  e=>{ const p=tGetPos(e); tDoDrag(p.sx,p.sy); });
-  window.addEventListener('mouseup', ()=>{ tDrag=-1; });
-  tcv.addEventListener('mouseleave', ()=>{ tDrag=-1; });
-  tcv.addEventListener('contextmenu', e=>{
-    e.preventDefault(); const p=tGetPos(e);
-    if (terrainPts.length<=3) return;
-    const hit=tFindHit(p.sx,p.sy);
-    if (hit>0 && hit<terrainPts.length-1) { terrainPts.splice(hit,1); rebuildTerrainLUT(); drawTerrainEditor(); }
-  });
-  tcv.addEventListener('touchstart', e=>{ e.preventDefault(); const p=tGetPos(e); tDrag=tFindHit(p.sx,p.sy); },{passive:false});
-  tcv.addEventListener('touchmove',  e=>{ e.preventDefault(); const p=tGetPos(e); tDoDrag(p.sx,p.sy); },{passive:false});
-  tcv.addEventListener('touchend',   ()=>{ tDrag=-1; });
 }

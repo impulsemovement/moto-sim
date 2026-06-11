@@ -533,6 +533,46 @@ function _physicsStep(dt_s) {
   rearWheelX_m = comX_m     + axle_xc * cosP - axle_yc * sinP;
   rearWheelY_m = chassisY_m + axle_xc * sinP + axle_yc * cosP;
 
+  // ── Solid track-wall collision (Custom track only) — crash & endo ──────────────────────────
+  // A wheel that can't clear a wall's top, when its leading edge overlaps the wall face, gets a
+  // stiff horizontal barrier force (spring on the overlap + damping, capped). The force acts at
+  // contact height (≈H_COM below the CoM), so it also pitches the bike forward over the bars.
+  // A front hit additionally compresses the fork (horizontal force projected onto the fork axis).
+  let tau_wall = 0;
+  if (P.terrain === 7 && trackWalls.length) {
+    const lap = trackTotalLen;
+    const vx0 = vChassisX;                                // approach speed (before this block)
+    const wheels = [
+      { x: frontWheelX_m, y: frontWheelY_m, R: WHEEL_R_F, front: true },
+      { x: rearWheelX_m,  y: rearWheelY_m,  R: WHEEL_R_R, front: false },
+    ];
+    let inContact = false, endoSum = 0;
+    for (const w of trackWalls) {
+      for (const wh of wheels) {
+        const wx = (((wh.x % lap) + lap) % lap);
+        const wheelBottomAbove = -wh.y - wh.R;            // wheel-bottom height above ground (m)
+        if (wheelBottomAbove >= w.top - 0.02) continue;   // wheel clears the wall top → rides over
+        let overlap, dir;
+        if (vx0 >= 0) { overlap = (wx + wh.R) - w.x0; dir = 1; }   // hitting the left face
+        else          { overlap = w.x1 - (wx - wh.R); dir = -1; }  // backing into the right face
+        if (overlap <= 0 || overlap > wh.R + (w.x1 - w.x0) + 0.6) continue;
+        inContact = true;
+        const into  = dir > 0 ? Math.max(0, vx0) : Math.max(0, -vx0);  // speed INTO the wall
+        const Fmag  = Math.min(WALL_FMAX, WALL_K * overlap + WALL_C * into);
+        const Fwall = -dir * Fmag;
+        vChassisX += (Fwall / M_total) * dt_s;            // decelerate / stop at the wall
+        endoSum   += dir * Math.min(WALL_ENDO_CAP, WALL_ENDO_K * into);  // nose-over, fades as it stops
+        if (wh.front) vForkSlide_f += (Fwall * sinφ / P.m_unsprung_f) * dt_s;  // fork compresses
+      }
+    }
+    if (inContact) {
+      // endo torque + heavy pitch damping while jammed → the bike pitches over the bars and SETTLES
+      // (instead of spinning) and the chassis-body collision catches it on the ground.
+      tau_wall = endoSum - WALL_PITCH_DAMP * pitchRate;
+      if (vChassisX < -1) vChassisX = -1;
+    }
+  }
+
   // ── Front fork spring & damper (along fork axis) ──────────────────────────
   // forkSlide_f < 0 → compressed → spring pushes wheel out (extends fork)
   const df   = forkSlide_f - P.pre_f;            // spring displacement; preload offsets the curve
@@ -769,7 +809,7 @@ function _physicsStep(dt_s) {
 
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain - C_PITCH_DRAG * pitchRate) / I_YY;
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain + tau_wall - C_PITCH_DRAG * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
