@@ -673,7 +673,10 @@ function _physicsStep(dt_s) {
   // drag cancels it (a ≈ 0), so a force-based moment would wrongly hold the nose up forever.
   // Using net accel, steady speed → no pitch; only real accel lifts and real decel dives.
   //   forward accel → nose lifts (negative pitch torque); braking/decel → nose dives.
-  const tau_long   = -M_total * a_long * H_COM * P.drivePitch;
+  // Load transfer needs a contact patch to transfer through — zero it when fully airborne, else
+  // aero-drag deceleration spuriously pitches the nose DOWN in free flight (it stays active on the
+  // ground and in wheelies/stoppies, where a wheel is down so anyGround is true).
+  const tau_long   = (anyGround ? 1 : 0) * -M_total * a_long * H_COM * P.drivePitch;
 
   // Rigid "through-the-pivot" path at the wheelie balance point. As the swingarm approaches
   // vertical (world) its lever cos(θ)→0: the wheel is geometrically locked to the chassis
@@ -717,14 +720,14 @@ function _physicsStep(dt_s) {
   // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
   // numerics calm and stands in for unmodeled structural/tire-carcass damping.
   const C_PITCH_DRAG = 40; // N·m·s/rad
-  // When FULLY airborne the bike should hold its attitude (conservation of angular
-  // momentum) and only the wheel torque-reaction should change pitch. The drooped/topped
-  // suspension would otherwise apply a spurious pitch moment to a free-flying bike, so
-  // suppress tau_susp here. On the ground or one wheel down (wheelie/stoppie) it's normal.
+  // When FULLY airborne the bike holds its attitude (conservation of angular momentum) and only
+  // the wheel torque-reaction (tau_react) should change pitch. The drooped/topped suspension would
+  // otherwise apply a spurious pitch moment to a free-flying bike, so zero tau_susp here. On the
+  // ground or one wheel down (wheelie/stoppie) it's normal.
   const fullyAir = !onGroundFront && !onGroundRear;
   // P.pitchMoment (slider) scales how much the suspension forces pitch the chassis;
   // 0 = bumps cause no pitch (heave only), 1 = full effect.
-  const tau_susp_eff = (fullyAir ? tau_susp * 0.1 : tau_susp) * P.pitchMoment;
+  const tau_susp_eff = (fullyAir ? 0 : tau_susp) * P.pitchMoment;
   // ── Longitudinal tire grip (planted-contact rolling) ──────────────────────
   // Pitching the chassis moves a contact patch horizontally (≈ -pitchRate·H_COM). A planted
   // tire's static friction resists that slip, turning pitch-about-a-planted-wheel into ROLLING:
