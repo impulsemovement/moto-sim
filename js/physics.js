@@ -760,6 +760,7 @@ function _physicsStep(dt_s) {
   // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
   // numerics calm and stands in for unmodeled structural/tire-carcass damping.
   const C_PITCH_DRAG = 40; // N·m·s/rad
+  const AIR_PITCH_DAMP = 130; // N·m·s/rad extra pitch damping while fully airborne (self-leveling)
   // When FULLY airborne the bike holds its attitude (conservation of angular momentum) and only
   // the wheel torque-reaction (tau_react) should change pitch. The drooped/topped suspension would
   // otherwise apply a spurious pitch moment to a free-flying bike, so zero tau_susp here. On the
@@ -809,7 +810,12 @@ function _physicsStep(dt_s) {
 
   // tau_react: engine/brake wheel angular-momentum reaction (nose-up on spin-up, nose-down
   // on braking) — the only pitch source that works airborne (air throttle blip / brake tap).
-  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain + tau_wall - C_PITCH_DRAG * pitchRate) / I_YY;
+  // Airborne pitch damping: jumps impart a forward launch rotation; with strict angular-momentum
+  // hold the bike noses over and lands front-first with the rear unloaded ("rear won't travel").
+  // A modest air damping lets it self-level toward a flatter landing (so both wheels work) while
+  // still allowing intentional rotation — it bleeds the RATE, it doesn't pull toward any attitude.
+  const pitchDampC = C_PITCH_DRAG + (fullyAir ? AIR_PITCH_DAMP : 0);
+  const alpha_pitch = (tau_susp_eff + tau_long + tau_react + tau_rearbrake + tau_terrain + tau_wall - pitchDampC * pitchRate) / I_YY;
 
   // ── Fork slide EOM (chassis-relative DOF along fork axis) ─────────────────
   // Forces along fork axis on the unsprung wheel mass:
