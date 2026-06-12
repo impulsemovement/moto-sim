@@ -184,13 +184,28 @@ function resolveChassisGroundContacts(Ms, M_total) {
 function resolveTireBottom(Ms) {
   const comX_m = worldX_m - A_FRONT_M;
   const wheels = [
-    [frontWheelX_m, frontWheelY_m, WHEEL_R_F, TIRE_TRAVEL_F],
-    [rearWheelX_m,  rearWheelY_m,  WHEEL_R_R, TIRE_TRAVEL_R],
+    [frontWheelX_m, frontWheelY_m, WHEEL_R_F, TIRE_TRAVEL_F, false],
+    [rearWheelX_m,  rearWheelY_m,  WHEEL_R_R, TIRE_TRAVEL_R, true],
   ];
-  for (const [wx, wy, r, travel] of wheels) {
+  for (const [wx, wy, r, travel, isRear] of wheels) {
     const excess = (wy - calcNaturalWY_m(wx, r)) - travel;   // how far past the rim limit
     if (excess <= 0) continue;
     const armX = wx - comX_m;                                // horizontal offset from CoM
+    // REAR: the wheel rides on the SWINGARM, so the rim bottoming must compress the swingarm
+    // (rotate it toward bump), NOT dead-stop the chassis. The old chassis dead-stop pinned the
+    // chassis at the rear wheel and FROZE the swingarm at partial travel — the bug where big drops
+    // "locked" the rear short of full travel. The swingarm's own bump clamp (PHI_FULL_BUMP) remains
+    // the true full-travel stop; only once it's there does the rim become a rigid dead-stop.
+    if (isRear) {
+      const lever = SWINGARM_L * Math.cos(swingAngle - pitchAngle);   // world-vertical swing lever
+      if (lever > 0.05 && swingAngle > PHI_FULL_BUMP + 1e-3) {
+        swingAngle = Math.max(PHI_FULL_BUMP, swingAngle - excess / lever);  // take up the rim excess
+        const vptY = vChassis + pitchRate * armX;            // inbound velocity at the contact
+        if (vptY > 0) swingRate = -vptY / lever;             // keep STROKING (compress), don't pin
+        continue;
+      }
+      // swingarm fully compressed (bottomed) → fall through to the rigid chassis dead-stop
+    }
     const wInv = 1 / Ms + (armX * armX) / I_YY;
     const vptY = vChassis + pitchRate * armX;                // chassis-borne wheel vertical vel
     if (vptY > 0) {                                          // arrest the descent (dead, restitution 0)
