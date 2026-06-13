@@ -205,6 +205,20 @@ function resolveTireBottom(Ms) {
         continue;
       }
       // swingarm fully compressed (bottomed) → fall through to the rigid chassis dead-stop
+    } else {
+      // FRONT: the wheel rides on the FORK, so the rim bottoming must COMPRESS THE FORK along its
+      // axis (not dead-stop the chassis, which froze the fork at partial travel — the same lockout
+      // bug the rear had: a hard bump bottoms the tire and the fork "walks out" short of full
+      // travel). Take up the vertical rim excess as fork-axis travel (excess / cosφ); the fork's
+      // own bottom-out clamp (−TRAVEL_MAX) is the true full-travel stop, only then a rigid dead-stop.
+      const cphi = Math.cos(RAKE_RAD - pitchAngle);          // fork-axis vertical projection
+      if (cphi > 0.2 && forkSlide_f > -TRAVEL_MAX + 1e-3) {
+        forkSlide_f = Math.max(-TRAVEL_MAX, forkSlide_f - excess / cphi);  // take up the rim excess
+        const vptY = vChassis + pitchRate * armX;            // inbound velocity at the contact
+        if (vptY > 0) vForkSlide_f = -vptY / cphi;           // keep STROKING (compress), don't pin
+        continue;
+      }
+      // fork fully compressed (bottomed) → fall through to the rigid chassis dead-stop
     }
     const wInv = 1 / Ms + (armX * armX) / I_YY;
     const vptY = vChassis + pitchRate * armX;                // chassis-borne wheel vertical vel
