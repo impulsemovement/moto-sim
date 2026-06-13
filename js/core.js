@@ -230,8 +230,8 @@ const minimapCtx = minimap ? minimap.getContext('2d') : null;
 const MAP_SPAN  = 240;   // m of terrain shown across the minimap (window centered on the bike)
 // Horizontal camera accel-lead: how far the view leads ahead/behind per m/s² of longitudinal accel,
 // and the clamp. Gives a sense of acceleration/braking by sliding the bike back/forward in frame.
-const LEAD_GAIN  = 0.11; // m of look-ahead per m/s² of accel
-const LEAD_MAX_M = 0.85; // m  max look-ahead (clamp)
+const LEAD_GAIN  = 0.0275; // m of look-ahead per m/s² of accel (subtle — ¼ of the first pass)
+const LEAD_MAX_M = 0.21;   // m  max look-ahead (clamp)
 
 // Real browser viewport height. When embedded in a SAME-ORIGIN iframe — especially an
 // auto-height embed that inflates our own innerHeight to the full content height — read the

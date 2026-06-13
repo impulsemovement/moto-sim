@@ -151,7 +151,7 @@ function draw(ts) {
   {
     const a = (typeof a_long === 'number' && !paused) ? a_long : 0;
     const target = Math.max(-LEAD_MAX_M, Math.min(LEAD_MAX_M, -a * LEAD_GAIN));
-    camLeadX_m += (target - camLeadX_m) * 0.06;   // smooth so it eases in/out, not jumpy
+    camLeadX_m += (target - camLeadX_m) * 0.025;  // heavily smoothed — eases in/out slowly, never jumpy
   }
 
   // ── Clear & sky ───────────────────────────────────────────
