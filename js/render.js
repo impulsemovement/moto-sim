@@ -55,6 +55,8 @@ function drawWheel(cx, cy, r_px, rotAngle) {
 //  SCREEN COORDINATE HELPERS
 // ═══════════════════════════════════════════════════════════
 let camY_m = 0;   // smoothed camera Y reference — follows terrain, not the bike's bounce
+let camLeadX_m = 0;   // smoothed horizontal lead: the camera looks AHEAD when accelerating and
+                      // BEHIND when braking, so the bike shifts back/forward in frame for a sense of g's
 
 function screenY(y_m) {
   // Camera tracks X only; Y is fixed to camY_m so the bike's heave is visible on screen.
@@ -143,6 +145,15 @@ function draw(ts) {
   // One-shot mechanical clatter the moment the engine stalls.
   if (engineStalledEvt) { if (typeof playStallClatter === 'function') playStallClatter(); engineStalledEvt = false; }
 
+  // ── Horizontal accel-lead: ease the camera toward looking ahead under acceleration / behind
+  // under braking, so the bike slides back in frame as it drives forward and forward as it brakes
+  // (a sense of g-force). Driven by the longitudinal accel; clamped and smoothed. Skipped while paused.
+  {
+    const a = (typeof a_long === 'number' && !paused) ? a_long : 0;
+    const target = Math.max(-LEAD_MAX_M, Math.min(LEAD_MAX_M, a * LEAD_GAIN));  // m of look-ahead
+    camLeadX_m += (target - camLeadX_m) * 0.06;   // smooth so it eases in/out, not jumpy
+  }
+
   // ── Clear & sky ───────────────────────────────────────────
   drawParallaxBackground(W, H);
 
@@ -150,7 +161,7 @@ function draw(ts) {
   // Chassis CoM is at a fixed screen X; everything is rendered relative to it.
   const comSX       = COM_SX();                     // CoM fixed screen X
   const comX_m_d    = worldX_m - A_FRONT_M;         // CoM world X (physics, no pan)
-  const comX_m_view = comX_m_d + camPanX_m;         // CoM world X shifted by camera pan
+  const comX_m_view = comX_m_d + camPanX_m + camLeadX_m;  // CoM world X shifted by pan + accel lead
 
   // World-X → screen-X (pan-aware)
   const w2sx = wx => comSX + (wx - comX_m_view) * PM;
@@ -189,19 +200,18 @@ function draw(ts) {
   // Within the band, a very slow drift toward the terrain mean gently recenters.
   {
     const bikeSY = (chassisY_m - camY_m) * PM + groundBaseY;   // bike's current draw Y (px)
-    const topLim = H * 0.22;   // don't let the bike climb above the top ~22% of the canvas
-    const botLim = H * 0.72;   // or sink below ~72%
+    const topLim = H * 0.34;   // tighter vertical band — the camera tracks the bike's height sooner
+    const botLim = H * 0.60;
     let over = 0;
     if      (bikeSY < topLim) over = bikeSY - topLim;          // -ve: above the band (climbing)
     else if (bikeSY > botLim) over = bikeSY - botLim;          // +ve: below the band (descending)
     if (over !== 0) {
-      // Follow proportionally, but ramp the gain up the further the bike is outside the band —
-      // a gentle climb tracks smoothly (~0.25), while a hard launch/landing snaps the camera so
-      // the bike can never ride off-screen.
-      const gain = Math.min(1, 0.25 + Math.abs(over) / H * 1.2);
+      // Follow proportionally, ramping the gain up the further the bike is outside the band —
+      // a gentle climb tracks smoothly, a hard launch/landing snaps so the bike never leaves frame.
+      const gain = Math.min(1, 0.30 + Math.abs(over) / H * 1.2);
       camY_m += over / PM * gain;
     } else {
-      camY_m += (groundY_m(comX_m_d) - camY_m) * 0.003;        // in band → slow recenter
+      camY_m += (groundY_m(comX_m_d) - camY_m) * 0.012;        // in band → gentle recenter to terrain
     }
   }
 

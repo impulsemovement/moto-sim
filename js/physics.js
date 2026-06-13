@@ -775,7 +775,7 @@ function _physicsStep(dt_s) {
   // old inflated 100 N·m·s/rad fudge is no longer needed; a modest residual keeps
   // numerics calm and stands in for unmodeled structural/tire-carcass damping.
   const C_PITCH_DRAG = 40; // N·m·s/rad
-  const AIR_PITCH_DAMP = 130; // N·m·s/rad extra pitch damping while fully airborne (self-leveling)
+  const AIR_PITCH_DAMP = 33; // N·m·s/rad extra pitch damping while fully airborne (light self-leveling)
   // When FULLY airborne the bike holds its attitude (conservation of angular momentum) and only
   // the wheel torque-reaction (tau_react) should change pitch. The drooped/topped suspension would
   // otherwise apply a spurious pitch moment to a free-flying bike, so zero tau_susp here. On the

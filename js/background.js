@@ -3,6 +3,9 @@
 //  ARIZONA PARALLAX BACKGROUND
 // ═══════════════════════════════════════════════════════════
 
+let bgGroundY_m = 0;   // smoothed terrain elevation under the bike — anchors the background horizon
+                       // to the REAL ground so big jumps don't tear (horizon stays with the ground)
+
 // Deterministic hash (slot index n → 0..1 float)
 function bgH(n, sub) {
   let h = Math.imul((n * 2654435761 + (sub||0) * 2246822519) | 0, 0x45d9f3b);
@@ -179,6 +182,24 @@ function drawShrub(cx, baseY, r) {
   ctx.fillStyle = '#5a8040'; ctx.fill();
 }
 
+// ── Small desert rock (deterministic faceted boulder) ───────
+function drawRock(cx, baseY, r) {
+  ctx.beginPath();
+  ctx.moveTo(cx - r, baseY);
+  ctx.lineTo(cx - r * 0.72, baseY - r * 0.82);
+  ctx.lineTo(cx - r * 0.10, baseY - r * 1.05);
+  ctx.lineTo(cx + r * 0.62, baseY - r * 0.72);
+  ctx.lineTo(cx + r,        baseY);
+  ctx.closePath();
+  ctx.fillStyle = '#6b6258'; ctx.fill();                 // shaded body
+  ctx.beginPath();                                        // lit top facet
+  ctx.moveTo(cx - r * 0.10, baseY - r * 1.05);
+  ctx.lineTo(cx + r * 0.62, baseY - r * 0.72);
+  ctx.lineTo(cx + r * 0.18, baseY - r * 0.55);
+  ctx.closePath();
+  ctx.fillStyle = '#857c70'; ctx.fill();
+}
+
 // ── Mesa / butte formation ──────────────────────────────────
 // n = stable slot index used for deterministic shape (NOT screen X)
 function drawMesa(n, x, baseY, w, h, col1, col2) {
@@ -249,9 +270,13 @@ function drawFarMountains(W, H, horizY, scrollOff) {
 
 // ── Main draw function ──────────────────────────────────────
 function drawParallaxBackground(W, H) {
-  // Align the decorative horizon to the real ground line (screenY of world-Y 0 = groundBaseY),
-  // so sky, mesas and plants sit ON the road instead of floating above it after the canvas grew.
-  const horizY = groundBaseY;
+  // Anchor the horizon to the REAL ground under the bike (smoothed), projected through the camera.
+  // Normal riding: ≈ groundBaseY. Big jump: the camera rises with the bike, so the ground (and the
+  // whole desert scene) slides DOWN and stays connected to the dirt — no gap/tear, and you see the
+  // ground rushing below you. Mountain pass: tracks the climb. Smoothed so bumps don't jitter it.
+  const bikeGround = (typeof groundY_m === 'function') ? groundY_m(worldX_m - A_FRONT_M) : 0;
+  bgGroundY_m += (bikeGround - bgGroundY_m) * 0.12;
+  const horizY = (typeof screenY === 'function') ? screenY(bgGroundY_m) : groundBaseY;
   const comX = COM_SX();
 
   // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
@@ -264,8 +289,8 @@ function drawParallaxBackground(W, H) {
   const pzD = base * Math.sqrt(zoom);     // distant plants     (half-power zoom)
   const pzM = base * Math.pow(zoom, 0.25);// mesas              (gentle zoom)
 
-  // Pan offset in screen pixels — applied uniformly to all layers (camera pan)
-  const panPx = camPanX_m * PM;
+  // Pan offset in screen pixels — applied uniformly to all layers (camera pan + accel look-ahead)
+  const panPx = (camPanX_m + (typeof camLeadX_m === 'number' ? camLeadX_m : 0)) * PM;
 
   // Helper: world slot → screen X, accounting for parallax speed and camera pan
   function slotScreenX(slot, spacing, speed) {
@@ -287,6 +312,9 @@ function drawParallaxBackground(W, H) {
   skyG.addColorStop(0.5, '#4a9fd4');
   skyG.addColorStop(1,   '#aad8f0');
   ctx.fillStyle = skyG; ctx.fillRect(0, 0, W, horizY);
+  // Fill EVERYTHING below the horizon with a sand base, so on big jumps (horizon high above the
+  // dirt line) there's never an unpainted/torn band — the real dirt is drawn on top by render.js.
+  if (horizY < H) { ctx.fillStyle = '#a88048'; ctx.fillRect(0, horizY, W, H - horizY); }
 
   // ── Clouds (speed 0.025) ─────────────────────────────────
   function drawCloud(cx, cy, r) {
@@ -354,6 +382,20 @@ function drawParallaxBackground(W, H) {
       drawBarrel(sx, by, (14 + bgH(n, 24) * 12) * pz);
     } else {
       drawShrub(sx, by, (18 + bgH(n, 26) * 14) * pz);
+    }
+  });
+
+  // ── Near foreground: small rocks & bushes (speed 0.6) — the CLOSEST layer, reads as the ground
+  // rushing by; the extra depth is especially visible on big jumps when more ground is in frame. ──
+  eachSlot(0.9, 0.6, 1.6, (n, sx) => {
+    const by = horizY;
+    const roll = bgH(n, 30);
+    if (roll < 0.42) {
+      drawRock(sx, by, (10 + bgH(n, 31) * 14) * pz);
+    } else if (roll < 0.78) {
+      drawShrub(sx, by, (12 + bgH(n, 32) * 12) * pz);
+    } else {
+      drawRock(sx, by, (5 + bgH(n, 33) * 5) * pz);          // small pebble
     }
   });
 
