@@ -281,7 +281,9 @@ function drawParallaxBackground(W, H) {
   // whole desert scene) slides DOWN and stays connected to the dirt — no gap/tear, and you see the
   // ground rushing below you. Mountain pass: tracks the climb. Smoothed so bumps don't jitter it.
   const bikeGround = (typeof groundY_m === 'function') ? groundY_m(worldX_m - A_FRONT_M) : 0;
-  bgGroundY_m += (bikeGround - bgGroundY_m) * 0.35;   // track the ground quickly so a climb doesn't lag
+  bgGroundY_m += (bikeGround - bgGroundY_m) * 0.04;   // HEAVILY smoothed: tracks the average ground
+                                                      // level so the horizon (and the scenery sitting
+                                                      // on it) doesn't bounce over every bump/whoop.
   const horizY = (typeof screenY === 'function') ? screenY(bgGroundY_m) : groundBaseY;
   const comX = COM_SX();
 
