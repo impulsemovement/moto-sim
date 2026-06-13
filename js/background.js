@@ -7,6 +7,8 @@ let bgGroundY_m = 0;   // smoothed terrain elevation under the bike — anchors 
                        // to the REAL ground so big jumps don't tear (horizon stays with the ground)
 let bgLayerV   = 0;    // heavily-smoothed, clamped vertical offset for the decorative parallax layers
                        // (mountains/mesas/clouds) so they only ever GLIDE subtly with elevation, never wobble
+let bgRest     = 0;    // learned camera-height-above-ground while RIDING — the parallax measures the
+                       // camera's rise ABOVE this (i.e. airborne), so ramps/climbs don't move the layers
 
 // Deterministic hash (slot index n → 0..1 float)
 function bgH(n, sub) {
@@ -289,12 +291,18 @@ function drawParallaxBackground(W, H) {
   // (0 = far/barely moves vertically … 1 = on the ground, moves fully). Far silhouettes lag, the
   // ground-level scenery tracks the dirt.
   const gB = groundBaseY;
-  const dV = horizY - gB;
-  // Decorative layers (mountains/mesas/clouds) follow a HEAVILY-SMOOTHED, tightly-CLAMPED version of
-  // the camera-vs-ground offset, so big climbs/launches only nudge them as a subtle depth cue and the
-  // motion always glides — it can't wobble or fling. (The sky/sand fill below still uses the full
-  // horizY so the dirt line never tears.)
-  bgLayerV += (Math.max(-110, Math.min(110, dV)) - bgLayerV) * 0.05;
+  // Vertical parallax = how far the CAMERA has risen ABOVE the ground the bike rides on (the user's
+  // model: camera relative to the front-most ground plane). camAbove is the camera's height over the
+  // ground beneath it; while a wheel is on the ground we LEARN that as the resting height (bgRest),
+  // so flat/ramp/climb riding reads ~0 (no layer movement). Only when the bike is AIRBORNE does the
+  // camera rise above bgRest → the layers glide down a touch (depth). Heavily smoothed + clamped, so
+  // it can never spike/wobble. (The sky/sand fill still uses horizY, so the dirt never tears.)
+  const camAbove = (typeof groundY_m === 'function') ? (groundY_m(worldX_m - A_FRONT_M) - camY_m) : 0;
+  const onGround = (typeof rearContact !== 'undefined' && rearContact) ||
+                   (typeof f_tire_F !== 'undefined' && f_tire_F !== 0);
+  if (onGround) bgRest += (camAbove - bgRest) * 0.1;          // learn the riding height
+  const targetV = Math.min(130, Math.max(0, camAbove - bgRest) * PM);   // airborne rise, clamped ≥0
+  bgLayerV += (targetV - bgLayerV) * 0.06;                    // smooth glide
   const vy = s => gB + bgLayerV * s;
 
   // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
