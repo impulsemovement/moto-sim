@@ -5,6 +5,8 @@
 
 let bgGroundY_m = 0;   // smoothed terrain elevation under the bike — anchors the background horizon
                        // to the REAL ground so big jumps don't tear (horizon stays with the ground)
+let bgLayerV   = 0;    // heavily-smoothed, clamped vertical offset for the decorative parallax layers
+                       // (mountains/mesas/clouds) so they only ever GLIDE subtly with elevation, never wobble
 
 // Deterministic hash (slot index n → 0..1 float)
 function bgH(n, sub) {
@@ -277,7 +279,7 @@ function drawParallaxBackground(W, H) {
   // whole desert scene) slides DOWN and stays connected to the dirt — no gap/tear, and you see the
   // ground rushing below you. Mountain pass: tracks the climb. Smoothed so bumps don't jitter it.
   const bikeGround = (typeof groundY_m === 'function') ? groundY_m(worldX_m - A_FRONT_M) : 0;
-  bgGroundY_m += (bikeGround - bgGroundY_m) * 0.12;
+  bgGroundY_m += (bikeGround - bgGroundY_m) * 0.35;   // track the ground quickly so a climb doesn't lag
   const horizY = (typeof screenY === 'function') ? screenY(bgGroundY_m) : groundBaseY;
   const comX = COM_SX();
 
@@ -288,7 +290,12 @@ function drawParallaxBackground(W, H) {
   // ground-level scenery tracks the dirt.
   const gB = groundBaseY;
   const dV = horizY - gB;
-  const vy = s => gB + dV * s;
+  // Decorative layers (mountains/mesas/clouds) follow a HEAVILY-SMOOTHED, tightly-CLAMPED version of
+  // the camera-vs-ground offset, so big climbs/launches only nudge them as a subtle depth cue and the
+  // motion always glides — it can't wobble or fling. (The sky/sand fill below still uses the full
+  // horizY so the dirt line never tears.)
+  bgLayerV += (Math.max(-110, Math.min(110, dV)) - bgLayerV) * 0.05;
+  const vy = s => gB + bgLayerV * s;
 
   // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
   // 200 desktop) makes the scenery shrink WITH the bike on a small canvas; without it the
@@ -337,7 +344,7 @@ function drawParallaxBackground(W, H) {
     ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fill();
   }
   eachSlot(3.0, 0.025, 2.5, (n, sx) => {
-    const cy = gB * (0.15 + bgH(n, 5) * 0.30) + dV * 0.12;   // fixed sky height, barely parallaxes
+    const cy = gB * (0.15 + bgH(n, 5) * 0.30) + bgLayerV * 0.12;  // fixed sky height, barely parallaxes
     const r  = (18 + bgH(n, 6) * 28) * pzD;
     drawCloud(sx + bgH(n, 7) * 40, cy, r);
   });
