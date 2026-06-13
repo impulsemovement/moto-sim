@@ -3,12 +3,8 @@
 //  ARIZONA PARALLAX BACKGROUND
 // ═══════════════════════════════════════════════════════════
 
-let bgGroundY_m = 0;   // smoothed terrain elevation under the bike — anchors the background horizon
-                       // to the REAL ground so big jumps don't tear (horizon stays with the ground)
-let bgLayerV   = 0;    // heavily-smoothed, clamped vertical offset for the decorative parallax layers
-                       // (mountains/mesas/clouds) so they only ever GLIDE subtly with elevation, never wobble
-let bgRest     = 0;    // learned camera-height-above-ground while RIDING — the parallax measures the
-                       // camera's rise ABOVE this (i.e. airborne), so ramps/climbs don't move the layers
+// (Vertical parallax disabled — the horizon is fixed at groundBaseY; no per-frame ground/camera
+//  trackers are needed. Horizontal parallax is unchanged.)
 
 // Deterministic hash (slot index n → 0..1 float)
 function bgH(n, sub) {
@@ -276,36 +272,15 @@ function drawFarMountains(W, H, baseY, hRef, scrollOff) {
 
 // ── Main draw function ──────────────────────────────────────
 function drawParallaxBackground(W, H) {
-  // Anchor the horizon to the REAL ground under the bike (smoothed), projected through the camera.
-  // Normal riding: ≈ groundBaseY. Big jump: the camera rises with the bike, so the ground (and the
-  // whole desert scene) slides DOWN and stays connected to the dirt — no gap/tear, and you see the
-  // ground rushing below you. Mountain pass: tracks the climb. Smoothed so bumps don't jitter it.
-  const bikeGround = (typeof groundY_m === 'function') ? groundY_m(worldX_m - A_FRONT_M) : 0;
-  bgGroundY_m += (bikeGround - bgGroundY_m) * 0.04;   // HEAVILY smoothed: tracks the average ground
-                                                      // level so the horizon (and the scenery sitting
-                                                      // on it) doesn't bounce over every bump/whoop.
-  const horizY = (typeof screenY === 'function') ? screenY(bgGroundY_m) : groundBaseY;
-  const comX = COM_SX();
-
-  // Vertical parallax. gB is a FIXED reference for element SIZES so nothing scales when the horizon
-  // moves with the camera (the bug: heights were tied to horizY → mesas/mountains grew on jumps).
-  // dV is how far the ground has moved from nominal; vy(s) places a layer at parallax-depth s
-  // (0 = far/barely moves vertically … 1 = on the ground, moves fully). Far silhouettes lag, the
-  // ground-level scenery tracks the dirt.
+  // VERTICAL PARALLAX DISABLED (for now): the horizon is fixed at groundBaseY, so the whole desert
+  // scene — mountains, mesas, cacti, rocks — stays rock-solid vertically and never bounces/wobbles
+  // with bumps, jumps or climbs. (Horizontal parallax is unchanged.) The sand fill below the horizon
+  // still covers everything down to the canvas bottom, so big jumps don't tear. gB is also the fixed
+  // size reference so nothing scales.
   const gB = groundBaseY;
-  // Vertical parallax = how far the CAMERA has risen ABOVE the ground the bike rides on (the user's
-  // model: camera relative to the front-most ground plane). camAbove is the camera's height over the
-  // ground beneath it; while a wheel is on the ground we LEARN that as the resting height (bgRest),
-  // so flat/ramp/climb riding reads ~0 (no layer movement). Only when the bike is AIRBORNE does the
-  // camera rise above bgRest → the layers glide down a touch (depth). Heavily smoothed + clamped, so
-  // it can never spike/wobble. (The sky/sand fill still uses horizY, so the dirt never tears.)
-  const camAbove = (typeof groundY_m === 'function') ? (groundY_m(worldX_m - A_FRONT_M) - camY_m) : 0;
-  const onGround = (typeof rearContact !== 'undefined' && rearContact) ||
-                   (typeof f_tire_F !== 'undefined' && f_tire_F !== 0);
-  if (onGround) bgRest += (camAbove - bgRest) * 0.1;          // learn the riding height
-  const targetV = Math.min(130, Math.max(0, camAbove - bgRest) * PM);   // airborne rise, clamped ≥0
-  bgLayerV += (targetV - bgLayerV) * 0.06;                    // smooth glide
-  const vy = s => gB + bgLayerV * s;
+  const horizY = gB;
+  const comX = COM_SX();
+  const vy = () => gB;          // every layer sits on the fixed horizon (no vertical movement)
 
   // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
   // 200 desktop) makes the scenery shrink WITH the bike on a small canvas; without it the
@@ -354,7 +329,7 @@ function drawParallaxBackground(W, H) {
     ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fill();
   }
   eachSlot(3.0, 0.025, 2.5, (n, sx) => {
-    const cy = gB * (0.15 + bgH(n, 5) * 0.30) + bgLayerV * 0.12;  // fixed sky height, barely parallaxes
+    const cy = gB * (0.15 + bgH(n, 5) * 0.30);   // fixed sky height
     const r  = (18 + bgH(n, 6) * 28) * pzD;
     drawCloud(sx + bgH(n, 7) * 40, cy, r);
   });
