@@ -245,24 +245,26 @@ function drawMesa(n, x, baseY, w, h, col1, col2) {
 }
 
 // ── Far purple mountain silhouette (tiling polygon band) ──
-function drawFarMountains(W, H, horizY, scrollOff) {
+// baseY = where the mountains MEET the ground (parallaxed vertical anchor); hRef = FIXED peak-height
+// reference (so the peaks don't scale when baseY moves with the camera on jumps).
+function drawFarMountains(W, H, baseY, hRef, scrollOff) {
   const tileW = W * 2.5;
   const tileOff = ((scrollOff % tileW) + tileW) % tileW;
 
   for (let t = -1; t <= 1; t++) {
     const ox = t * tileW - tileOff;
     const pts = [
-      [0, horizY], [0.05, 0.72], [0.12, 0.60], [0.18, 0.70],
+      [0, 1], [0.05, 0.72], [0.12, 0.60], [0.18, 0.70],
       [0.25, 0.52], [0.30, 0.65], [0.38, 0.45], [0.44, 0.60],
       [0.52, 0.48], [0.58, 0.58], [0.65, 0.42], [0.72, 0.56],
       [0.80, 0.50], [0.85, 0.62], [0.92, 0.47], [0.97, 0.60],
-      [1.0, horizY]
-    ].map(([tx, ty]) => [ox + tx * tileW, ty < 1 ? ty * horizY : ty]);
+      [1.0, 1]
+    ].map(([tx, ty]) => [ox + tx * tileW, baseY - (1 - ty) * hRef]);   // height fixed by hRef
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.lineTo(ox + tileW, horizY); ctx.lineTo(ox, horizY); ctx.closePath();
-    const g = ctx.createLinearGradient(0, horizY * 0.45, 0, horizY);
+    ctx.lineTo(ox + tileW, baseY); ctx.lineTo(ox, baseY); ctx.closePath();
+    const g = ctx.createLinearGradient(0, baseY - hRef * 0.55, 0, baseY);
     g.addColorStop(0, '#7068a8'); g.addColorStop(1, '#9080b0');
     ctx.fillStyle = g; ctx.fill();
   }
@@ -278,6 +280,15 @@ function drawParallaxBackground(W, H) {
   bgGroundY_m += (bikeGround - bgGroundY_m) * 0.12;
   const horizY = (typeof screenY === 'function') ? screenY(bgGroundY_m) : groundBaseY;
   const comX = COM_SX();
+
+  // Vertical parallax. gB is a FIXED reference for element SIZES so nothing scales when the horizon
+  // moves with the camera (the bug: heights were tied to horizY → mesas/mountains grew on jumps).
+  // dV is how far the ground has moved from nominal; vy(s) places a layer at parallax-depth s
+  // (0 = far/barely moves vertically … 1 = on the ground, moves fully). Far silhouettes lag, the
+  // ground-level scenery tracks the dirt.
+  const gB = groundBaseY;
+  const dV = horizY - gB;
+  const vy = s => gB + dV * s;
 
   // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
   // 200 desktop) makes the scenery shrink WITH the bike on a small canvas; without it the
@@ -326,34 +337,33 @@ function drawParallaxBackground(W, H) {
     ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fill();
   }
   eachSlot(3.0, 0.025, 2.5, (n, sx) => {
-    const cy = horizY * (0.15 + bgH(n, 5) * 0.30);
+    const cy = gB * (0.15 + bgH(n, 5) * 0.30) + dV * 0.12;   // fixed sky height, barely parallaxes
     const r  = (18 + bgH(n, 6) * 28) * pzD;
     drawCloud(sx + bgH(n, 7) * 40, cy, r);
   });
 
-  // ── Far purple mountains — use PM_base scroll so zoom doesn't jump position ──
-  drawFarMountains(W, H, horizY, worldX_m * 0.05 * PM_base + panPx);
+  // ── Far purple mountains — fixed peak height (gB), base parallaxes gently (vy 0.40) ──
+  drawFarMountains(W, H, vy(0.40), gB, worldX_m * 0.05 * PM_base + panPx);
 
-  // ── Distant red-rock mesas (speed 0.10) — size scales gently with zoom ───────
+  // ── Distant red-rock mesas (speed 0.10) — fixed size, base parallaxes (vy 0.62) ───────
   eachSlot(4.0, 0.10, 3.0, (n, sx) => {
     const w = (160 + bgH(n, 1) * 140) * pzM;
-    const h = horizY * (0.18 + bgH(n, 2) * 0.20);
-    const by = horizY + 5;
-    drawMesa(n, sx + bgH(n, 8) * 60, by, w, h, '#7a4028', '#a05835');
+    const h = gB * (0.18 + bgH(n, 2) * 0.20);
+    drawMesa(n, sx + bgH(n, 8) * 60, vy(0.62) + 5, w, h, '#7a4028', '#a05835');
   });
 
   // ── Mid red-rock mesas (speed 0.17) ──────────────────────
   eachSlot(5.0, 0.17, 3.0, (n, sx) => {
     const w = (180 + bgH(n, 3) * 200) * pzM;
-    const h = horizY * (0.28 + bgH(n, 4) * 0.28);
-    const by = horizY + 8;
-    drawMesa(n, sx + bgH(n, 9) * 70, by, w, h, '#9a4828', '#c86038');
+    const h = gB * (0.28 + bgH(n, 4) * 0.28);
+    drawMesa(n, sx + bgH(n, 9) * 70, vy(0.78) + 8, w, h, '#9a4828', '#c86038');
   });
 
-  // ── Sandy desert mid-ground strip ────────────────────────
-  const dg = ctx.createLinearGradient(0, horizY * 0.88, 0, horizY + 20);
+  // ── Sandy desert mid-ground strip (fixed thickness, anchored near the ground) ─────
+  const stripTop = vy(0.9) - gB * 0.12;
+  const dg = ctx.createLinearGradient(0, stripTop, 0, stripTop + gB * 0.15);
   dg.addColorStop(0, '#c8a060'); dg.addColorStop(1, '#a88048');
-  ctx.fillStyle = dg; ctx.fillRect(0, horizY * 0.88, W, horizY * 0.15);
+  ctx.fillStyle = dg; ctx.fillRect(0, stripTop, W, gB * 0.15);
 
   // ── Distant small plants (speed 0.25) — scale at √zoom ───
   eachSlot(0.7, 0.25, 1.0, (n, sx) => {
