@@ -145,12 +145,12 @@ function draw(ts) {
   // One-shot mechanical clatter the moment the engine stalls.
   if (engineStalledEvt) { if (typeof playStallClatter === 'function') playStallClatter(); engineStalledEvt = false; }
 
-  // ── Horizontal accel-lead: ease the camera toward looking ahead under acceleration / behind
-  // under braking, so the bike slides back in frame as it drives forward and forward as it brakes
-  // (a sense of g-force). Driven by the longitudinal accel; clamped and smoothed. Skipped while paused.
+  // ── Horizontal accel-lead: the bike slides FORWARD in frame as it accelerates (the camera falls
+  // behind, so you feel it surge ahead) and BACK as it brakes. Driven by longitudinal accel; clamped
+  // and smoothed. Skipped while paused. (Sign: accel → camLeadX_m negative → comX shifts the bike +X.)
   {
     const a = (typeof a_long === 'number' && !paused) ? a_long : 0;
-    const target = Math.max(-LEAD_MAX_M, Math.min(LEAD_MAX_M, a * LEAD_GAIN));  // m of look-ahead
+    const target = Math.max(-LEAD_MAX_M, Math.min(LEAD_MAX_M, -a * LEAD_GAIN));
     camLeadX_m += (target - camLeadX_m) * 0.06;   // smooth so it eases in/out, not jumpy
   }
 
@@ -219,7 +219,9 @@ function draw(ts) {
   // These use the X positions computed in the physics step from fork/swingarm geometry.
 
   // Chassis CoM screen Y — computed early so all body-fixed points can use it
-  const comX    = comSX - camPanX_m * PM;   // pan-shifted CoM screen X
+  const comX    = comSX - (camPanX_m + camLeadX_m) * PM;   // pan + accel-lead shifted CoM screen X
+                                                           // (MUST match w2sx's comX_m_view or the
+                                                           // chassis desyncs from the wheels)
   const comY    = screenY(chassisY_m);
 
   // Chassis rotation (for all body-fixed point positions)
