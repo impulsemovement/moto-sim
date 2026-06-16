@@ -212,13 +212,29 @@ function resolveTireBottom(Ms) {
       // travel). Take up the vertical rim excess as fork-axis travel (excess / cosφ); the fork's
       // own bottom-out clamp (−TRAVEL_MAX) is the true full-travel stop, only then a rigid dead-stop.
       const cphi = Math.cos(RAKE_RAD - pitchAngle);          // fork-axis vertical projection
-      if (cphi > 0.2 && forkSlide_f > -TRAVEL_MAX + 1e-3) {
-        forkSlide_f = Math.max(-TRAVEL_MAX, forkSlide_f - excess / cphi);  // take up the rim excess
-        const vptY = vChassis + pitchRate * armX;            // inbound velocity at the contact
-        if (vptY > 0) vForkSlide_f = -vptY / cphi;           // keep STROKING (compress), don't pin
-        continue;
+      const room = forkSlide_f + TRAVEL_MAX;                 // remaining fork compression travel (≥0)
+      if (cphi > 0.2 && room > 1e-4) {
+        const want = excess / cphi;                          // fork-axis travel to absorb the rim excess
+        if (want <= room) {
+          forkSlide_f -= want;                               // fork absorbs it ALL — no lockout
+          const vptY = vChassis + pitchRate * armX;          // inbound velocity at the contact
+          if (vptY > 0) {
+            vForkSlide_f = -vptY / cphi;                     // descent → fork STROKE (the fork absorbs it)
+            // ARREST the chassis descent (its momentum is now in the fork). Without this the chassis
+            // free-falls through the whole absorb phase and piles up penetration that the dead-stop
+            // then ejects all at once → a chassis "pop" on hard landings. Bleeding it off here keeps
+            // the wheel out of the ground AND the chassis settle smooth.
+            const wInv = 1 / Ms + (armX * armX) / I_YY;
+            const Jn = -vptY / wInv;
+            vChassis  += Jn / Ms;
+            pitchRate += Jn * armX / I_YY;
+          }
+          continue;
+        }
+        forkSlide_f = -TRAVEL_MAX;                            // fork takes what it can, then bottoms
       }
-      // fork fully compressed (bottomed) → fall through to the rigid chassis dead-stop
+      // fork bottomed → the residual rim excess is rigid: fall through to the chassis dead-stop so
+      // the chassis is ARRESTED (otherwise a hard descent keeps punching the wheel through the floor).
     }
     const wInv = 1 / Ms + (armX * armX) / I_YY;
     const vptY = vChassis + pitchRate * armX;                // chassis-borne wheel vertical vel
@@ -227,9 +243,15 @@ function resolveTireBottom(Ms) {
       vChassis  += Jn / Ms;
       pitchRate += Jn * armX / I_YY;
     }
-    const corr = Math.min(excess, 0.03);                     // capped push-out → no catapult
-    chassisY_m += -corr * (1 / Ms) / wInv;
-    pitchAngle += -corr * (armX / I_YY) / wInv;
+    // A rebounding/extending fork (vForkSlide_f > 0) drives the wheel DOWN past the bottomed rim — the
+    // ground stops it, so kill that extension; otherwise the fork punches the wheel through the floor.
+    if (!isRear && vForkSlide_f > 0) vForkSlide_f = 0;
+    // FULLY eject the penetration this substep (the suspension is bottomed = a rigid column, and the
+    // descent velocity is already killed above, so there is no catapult). Eject as a pure vertical
+    // translation — coupling the position fix through pitch (armX/I_YY) kicks the nose and bounces the
+    // bike into a harder re-landing, which is exactly what made a capped/lever push-out let hard hits
+    // sink in for ~0.2 s. Clamp to a sane max to ignore pathological terrain spikes.
+    chassisY_m -= Math.min(excess, 0.5);
   }
 }
 
