@@ -22,6 +22,11 @@ function resetSim() {
   worldX_m     = 0;
   wheelAngle_f = 0; wheelAngle_r = 0; omega_f = 0; omega_r = 0; frontSlipV = 0; rearSlipV = 0;
   disp_f = 0; disp_r = 0;
+  // Tire contact forces are read with a 1-step lag (the airborne/ground check at the top of
+  // _physicsStep uses the PREVIOUS sub-step's value). Zero them so a fresh sim is reproducible —
+  // otherwise the first step inherits the last run's contact state (breaks A/B compare & rewind).
+  f_tire_F = 0; f_tire_R = 0;
+  f_spring_F = 0; f_damp_F = 0; f_spring_R = 0; f_damp_R = 0;
   a_long = 0; gasInput = 0; brakeInputF = 0; brakeInputR = 0; brakeInput = 0; gasPhase = 0; brakePhase = 0;
   gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false; revLimiterCut = false;
   engineRunning = true; stallLugTimer = 0; startGrace = STALL_START_GRACE; engineStalledEvt = false;
