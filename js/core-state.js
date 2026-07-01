@@ -21,7 +21,9 @@ let vForkSlide_f  = 0;   // m/s, rate of change of forkSlide_f (positive = exten
 // Derived wheel world positions (recomputed every physics step, NOT integrated)
 let frontWheelX_m = 0;
 let frontWheelY_m = 0;
-let prevFrontWheelY_m = null;   // previous-substep front-wheel Y, for tire-damping velocity
+let prevFrontWheelY_m = null;   // UNUSED — front tire-damping velocity is now analytic (see
+                                // physics.js). Kept only because resetSim() in main.js still
+                                // writes it (strict mode); delete both together.
 
 // Rear suspension: primary DOF is the SWINGARM ANGLE (chassis-relative rotation).
 // The wheel is a point mass at the swingarm tip; it follows an arc about the pivot.
@@ -82,11 +84,13 @@ let gasPressed    = false;
 let brakeFrontHeld = false;
 let brakeRearHeld  = false;
 let brakeBothHeld  = false;
-// Ramp PHASE (linear in time, 0→1) and the smoothed INPUT (smootherstep of phase, 0→1).
-// smootherstep has zero slope at both ends → gentle onset (doesn't come on hard) and a
-// gentle, non-abrupt release. The output gasInput/brakeInput are what the physics uses.
+// gasPhase/brakePhase are UNUSED — the smootherstep-phase ramp scheme they served was
+// replaced by the ease-out integrators in _physicsStep (rampUp/rampDown act directly on
+// gasInput/brakeInput*). Kept only because resetSim() in main.js still writes them
+// (strict mode); delete all together.
 let gasPhase      = 0;
 let brakePhase    = 0;
+// Smoothed inputs (0→1) — what the physics uses.
 let gasInput      = 0;
 let brakeInputF   = 0;   // ramped FRONT brake input (0→1)
 let brakeInputR   = 0;   // ramped REAR  brake input (0→1)

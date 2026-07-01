@@ -109,8 +109,6 @@ const SPIN_I_FRAC = 0.1; // fraction of engine-reflected inertia resisting wheel
                          // (1.0) value makes the drivetrain too "heavy" to break loose in low
                          // gears; 0.1 (clutch compliance / slip) gives visible, graded wheelspin.
 const TERRAIN_PITCH_CAP = 450; // N·m  cap on the terrain pitch moment (anti-resonance on bumps)
-const DRIVE_V0  = 12;    // m/s  below this the drive force is flat; above it is power-limited (∝1/v)
-const K_CRUISE  = 400;   // N per (m/s) — cruise controller gain toward the speed-slider target
 
 // ── Drivetrain: engine + clutch + 6-speed gearbox ───────────────────────────
 // The engine spins at engineRPM. With the clutch OUT (engaged) the engine is geared to
@@ -152,8 +150,6 @@ function engTorqueFac(rpm) {
   }
   return 1;
 }
-const ENGINE_REV_RATE   = 12000; // RPM/s (legacy; rev dynamics now torque/inertia based)
-const ENGINE_DECAY_RATE = 8000;  // RPM/s (legacy)
 // Engine ROTATIONAL inertia for the rev dynamics (free-rev AND airborne-in-gear). dω/dt = T/I,
 // so the crank spins up/down at a flywheel-limited rate. Realistic effective value (the 0.35
 // I_ENGINE is a clutch-slip lump, far too high for honest rev rates). Idle→redline ~1.3 s.

@@ -89,7 +89,19 @@ function dampForce(rv, isComp, isRear) {
   const scaleKey = (isComp ? 'comp' : 'reb') + (isRear ? 'R' : 'F');
   const F_MAX   = baseMax * (curveScaleVals[scaleKey] / 100);
   const normV   = Math.abs(rv) / V_MAX_SIM;
-  const frac    = evalCurveLUT(lut, normV);
+  // Above the curve window (|rv| > V_MAX_SIM) a real damper keeps building force through
+  // its high-speed region — it does not saturate flat. evalCurveLUT clamps its input to
+  // [0,1], so extend past the window LINEARLY along the curve's end slope. Capped so a
+  // pathological hit can't command unbounded force, and the effective c (force/velocity)
+  // never exceeds what the sub-step integrator already sees inside the window.
+  let frac;
+  if (normV <= 1) {
+    frac = evalCurveLUT(lut, normV);
+  } else {
+    const yEnd  = evalCurveLUT(lut, 1);
+    const slope = (yEnd - evalCurveLUT(lut, 1 - 1 / 32)) * 32;   // end slope of the curve
+    frac = Math.min(3.0, yEnd + Math.max(0, slope) * (normV - 1));
+  }
   return gain * frac * F_MAX;
 }
 
@@ -414,7 +426,6 @@ function _physicsStep(dt_s) {
   // engine braking. (A cruise assist would either fight engine braking or — when gated to
   // clutch-in — wrongly accelerate the bike with the clutch pulled.) The speed slider sets
   // the speed directly (see its bind) and seeds the launch speed on reset.
-  const F_cruise = 0;
   // Resistive forces. Aero drag acts always; rolling resistance only when a wheel is down.
   const F_drag = -RHO_CDA * vChassisX * Math.abs(vChassisX);
   const F_rr   = (anyGround && Math.abs(vChassisX) > 0.05) ? -Math.sign(vChassisX) * C_RR * M_total * g : 0;
@@ -444,7 +455,7 @@ function _physicsStep(dt_s) {
 
   // Tractive/brake forces act at the contact patches (≈H_COM below CoM) → they
   // also produce the dive/squat pitch moment (computed in the pitch EOM below).
-  const F_contact_long = F_drive_term + F_brake_term + F_cruise;
+  const F_contact_long = F_drive_term + F_brake_term;
   // Engine ROTATIONAL inertia: when the clutch is locked, accelerating the bike must also spin
   // the crank up, which reflects to the wheel as added effective mass (I·ratio²/R²). Big in low
   // gears, ~nil in top — so the engine's spin-up inertia is now felt in the acceleration.
@@ -733,11 +744,15 @@ function _physicsStep(dt_s) {
   // Front tire: spring + carcass damping. No penetration cap — full spring force drives
   // fork compression, which the compression damper needs to see a velocity and respond.
   // Carcass damping (pressure-dependent) keeps a soft tire from springing back — it
-  // resists both compression and rebound. The wheel's vertical velocity is taken as a
-  // finite difference of its world Y; the coefficient is capped to m/dt for Euler stability.
+  // resists both compression and rebound. The wheel's vertical velocity is ANALYTIC —
+  // d/dt of the wheel-Y derivation above: heave + pitch sweep of the steer head + fork
+  // slide, all projected to world-vertical. It was a finite difference of wheel Y, but
+  // the POSITION corrections applied after integration (resolveTireBottom's vertical
+  // ejection, the chassis-contact push-out) landed in the diff as one-substep teleport
+  // velocities → spurious carcass-damper spikes/dropouts in f_tire_F on hard landings.
+  // The velocity states are impulse-corrected consistently, so this sees only real motion.
   const pen_f = Math.max(0, frontWheelY_m - nat_f);
-  const v_tire_f = (prevFrontWheelY_m === null) ? 0 : (frontWheelY_m - prevFrontWheelY_m) / dt_s;
-  prevFrontWheelY_m = frontWheelY_m;
+  const v_tire_f = vChassis + (A_FRONT_M * cosP + s_f * sinφ) * pitchRate + vForkSlide_f * cosφ;
   f_tire_F = tireForce(pen_f, v_tire_f, P.k_tire_f, P.m_unsprung_f, dt_s, TIRE_TRAVEL_F);
 
   // Rear tire spring — now safe to include in a_susp_r (see EOM below).
@@ -908,7 +923,7 @@ function _physicsStep(dt_s) {
   // lifts), brake & engine-braking compress it (pitch the nose down). The front friction
   // brake doesn't act here; the rear gets all of it only when the front wheel is airborne.
   const rearBrakeFrac = (f_tire_F !== 0) ? 0.4 : 1.0;
-  const F_rear_long = F_drive_term + F_cruise + F_brake_term * rearBrakeFrac; // N, + = forward
+  const F_rear_long = F_drive_term + F_brake_term * rearBrakeFrac; // N, + = forward
   // Gate the effect to the steep wheelie/stoppie regime. At low pitch (normal riding/whoops)
   // this swingarm coupling can pump into a pitch↔suspension feedback, so fade it in from
   // ~25° to ~45° of pitch — exactly where the rider wants the drive/brake/clutch to push the

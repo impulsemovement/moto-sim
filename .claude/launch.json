@@ -4,7 +4,7 @@
     {
       "name": "moto-sim static server",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/kristoffersmith/moto-sim && python3 -m http.server ${PORT:-8080}"],
+      "runtimeArgs": ["-c", "cd /Users/kristoffersmith/moto-sim-physics-core && python3 -m http.server ${PORT:-8080}"],
       "port": 8080,
       "autoPort": true
     }
