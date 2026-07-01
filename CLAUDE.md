@@ -36,9 +36,16 @@ Scripts load in this order (declared in `index.html`); later files depend on glo
 core.js → physics.js → render.js → graphs.js → ui.js → background.js → audio.js → main.js
 ```
 
+core.js was split into six domain files (loaded in original order — see the `<script>` block):
+
 | File | Owns | Notes |
 |---|---|---|
-| `js/core.js` (956 ln) | constants, the `P` parameter object, **all physics state globals**, `groundY_m`, `calcNaturalWY_m`, custom-track data + `rebuildCustomTrack`, terrain, value-noise, Catmull-Rom curve LUTs, rewind capture/restore | **CROSS-CUTTING — the #1 collision file.** Splitting it is the next foundational task (see ownership map). |
+| `js/core-config.js` | bike geometry + physics constants, canvas setup | shared / geometry |
+| `js/core-params.js` | the `P` parameter object, tire model, drivetrain/longitudinal constants | physics/engine |
+| `js/core-track.js` | custom-track data + `rebuildCustomTrack`, value noise | terrain |
+| `js/core-curves.js` | Catmull-Rom LUT, damping-curve presets + state (`compPts_*`/`*LUT_*`) | curves |
+| `js/core-terrain.js` | `groundY_m`, `calcNaturalWY_m` | terrain |
+| `js/core-state.js` | all physics state globals, force history, rewind capture/restore | physics |
 | `js/physics.js` (1058 ln) | `simStep`/`_physicsStep` integrator, `initPhysics` (static equilibrium), contact resolution (`resolveTireBottom`, chassis-body contacts), swingarm kinematics, damping force | The coupled core. **One owner at a time.** |
 | `js/render.js` (629 ln) | `draw` loop, screen-coordinate helpers, camera (`camY_m`, pan), `drawMinimap`, wheel/bike drawing | |
 | `js/graphs.js` (493 ln) | force/velocity history graphs, damping-curve editor, **custom-track builder editor** | |
@@ -138,9 +145,9 @@ Add a scenario when you fix a class of bug so it can't regress.
 Work is split along **file seams**, not physics sub-systems (tires/suspension/chassis are one
 coupled loop — they cannot be edited in parallel). Sequencing:
 
-**Wave 0 — Foundation (do first; unblocks the rest).** This file + the harness (done). Remaining:
-split `core.js` into per-domain files (geometry/constants, `P`+params, physics-state, terrain,
-curves) and component-ize the HTML cards, so the streams below stop colliding.
+**Wave 0 — Foundation (DONE).** This file, the harness, and the `core.js` → six-file split are
+complete. (Optional follow-on: component-ize the HTML cards so `index.html` collisions shrink
+further — nice-to-have, not blocking.)
 
 **Wave 1 — parallelizable after Wave 0:**
 - **Physics core** — `physics.js` + physics constants. *One owner.* Tire/suspension/chassis are
