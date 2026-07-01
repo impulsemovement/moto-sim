@@ -25,3 +25,5 @@ when `index.html?test=1` passes on the merged result.
 _(append one line per landed merge: date · branch · short summary · harness pass ✓)_
 
 - 2026-07-01 · (mainline) · Wave 0 foundation: CLAUDE.md + harness + core.js split · ✓ 31/31
+- 2026-07-01 · physics-core · analytic front-tire damper velocity, high-speed damper extension, dead-code cleanup; +hard-landing f_tire_F regression scenario · ✓ (validated in-session, FF merge) · now v=70
+- 2026-07-01 · (mainline) · fix launch.json: worktree-agnostic, auto port (was hardcoded to a worktree path + port 8080)
