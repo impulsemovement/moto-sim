@@ -150,6 +150,28 @@ const MotoValidate = (() => {
       gasPressed = brakeBothHeld = clutchPulled = false; gasInput = 0;
       return [['3000-step mixed-input sweep: no NaN', !nan, '']];
     },
+    function frontTireForceNoDropout() {
+      // Regression guard: the front carcass-damper velocity used to be a finite difference of
+      // wheel Y, so resolveTireBottom's vertical position ejection (and the chassis-contact
+      // push-out) read as one-substep teleport velocities → f_tire_F spuriously dropped to 0
+      // (or spiked) while the tire was deeply compressed on hard landings. Now analytic.
+      // A deeply compressed tire (pen > 25mm) still descending (vChassis > 0.5) must carry force.
+      P.terrain = 3; P.amp = 1.8; P.freq = 1.0; resetSim();
+      gear = 4; vChassisX = 120 / 3.6; omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;
+      let dropouts = 0, nan = false;
+      for (let i = 0; i < 900; i++) {
+        gasPressed = true; gasInput = 0.5;
+        simStep(0.016);
+        const pen = frontWheelY_m - calcNaturalWY_m(frontWheelX_m, WHEEL_R_F);
+        if (pen > 0.025 && f_tire_F === 0 && vChassis > 0.5) dropouts++;
+        if (!allFinite()) { nan = true; break; }
+      }
+      gasPressed = false; gasInput = 0;
+      return [
+        ['hard-landing f_tire_F: no NaN', !nan, ''],
+        ['hard-landing f_tire_F: no teleport force dropouts', dropouts === 0, `${dropouts} frames`],
+      ];
+    },
     function determinism() {
       const snap = () => { P.terrain = 3; P.amp = 1.8; P.freq = 1.0; resetSim();  // P before reset (see ride)
         gear = 4; vChassisX = 100 / 3.6; omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;
