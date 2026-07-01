@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=68">
+<link rel="stylesheet" href="css/styles.css?v=69">
 </head>
 <body>
 
@@ -304,15 +304,21 @@
   document.querySelectorAll(".donate-link").forEach(function (a) { a.href = DONATE_URL; });
 </script>
 
-<script src="js/core.js?v=68"></script>
-<script src="js/physics.js?v=68"></script>
-<script src="js/render.js?v=68"></script>
-<script src="js/graphs.js?v=68"></script>
-<script src="js/ui.js?v=68"></script>
-<script src="js/background.js?v=68"></script>
-<script src="js/audio.js?v=68"></script>
-<script src="js/main.js?v=68"></script>
+<!-- core.js was split into domain files (see CLAUDE.md); load order = original top-to-bottom -->
+<script src="js/core-config.js?v=69"></script>
+<script src="js/core-params.js?v=69"></script>
+<script src="js/core-track.js?v=69"></script>
+<script src="js/core-curves.js?v=69"></script>
+<script src="js/core-terrain.js?v=69"></script>
+<script src="js/core-state.js?v=69"></script>
+<script src="js/physics.js?v=69"></script>
+<script src="js/render.js?v=69"></script>
+<script src="js/graphs.js?v=69"></script>
+<script src="js/ui.js?v=69"></script>
+<script src="js/background.js?v=69"></script>
+<script src="js/audio.js?v=69"></script>
+<script src="js/main.js?v=69"></script>
 <!-- Validation harness: loaded ONLY with ?test in the URL (production unaffected). See CLAUDE.md. -->
-<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=68';document.body.appendChild(s);}</script>
+<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=69';document.body.appendChild(s);}</script>
 </body>
 </html>
