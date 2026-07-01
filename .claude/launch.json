@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "moto-sim static server",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/kristoffersmith/moto-sim-physics-core && python3 -m http.server ${PORT:-8080}"],
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "${PORT:-8080}"],
       "port": 8080,
       "autoPort": true
     }
