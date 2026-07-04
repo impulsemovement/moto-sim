@@ -136,6 +136,39 @@ const MotoValidate = (() => {
         ['rev limiter: BOUNCES (late min dips below ceiling)', lateMin < RPM_LIMIT - 100, `min ${lateMin|0}`],
       ];
     },
+    function gearShiftMechanics() {
+      // Shift torque cut + rev-match (drivetrain block): an upshift at speed must NOT
+      // snap the revs in one frame (the crank slews to the new ratio during the cut),
+      // the revs must end matched to the new gear with drive resumed, and a downshift
+      // must BLIP the revs UP. Guards the "instant gearbox" class of bugs (one-frame
+      // RPM teleports, a shift cut that never ends, phantom cuts on reset).
+      P.terrain = 6; P.speed = 0; resetSim(); gear = 1;            // flat ground, 2nd
+      vChassisX = 50 / 3.6; omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;
+      for (let i = 0; i < 100; i++) { gasPressed = true; gasInput = 0.5; clutchPulled = false; simStep(0.016); }
+      const rpm0 = engineRPM, v0 = vChassisX;
+      gear = 2;                                                    // upshift 2nd→3rd
+      simStep(0.016);
+      const oneFrameDrop = rpm0 - engineRPM;
+      for (let i = 0; i < 30; i++) simStep(0.016);                 // ride out the cut + relock
+      const lockedUp  = omega_r * effRatio(gear) * RADS2RPM;
+      const rpmAfterUp = engineRPM;                              // sample NOW — the downshift below moves engineRPM
+      const matched   = Math.abs(rpmAfterUp - lockedUp) < 300;
+      const resumed   = vChassisX > v0;
+      const rpmD0 = engineRPM;
+      gear = 1;                                                    // downshift 3rd→2nd
+      let rpmPeak = 0;
+      for (let i = 0; i < 20; i++) { simStep(0.016); rpmPeak = Math.max(rpmPeak, engineRPM); }
+      const nan = !allFinite();
+      gasPressed = false; gasInput = 0;
+      return [
+        ['shift: no NaN', !nan, ''],
+        ['upshift: no one-frame RPM snap (<600)', oneFrameDrop < 600 && oneFrameDrop > -100, `${oneFrameDrop|0} RPM in 16ms`],
+        ['upshift: revs matched to new gear after cut', matched, `rpm ${rpmAfterUp|0} vs locked ${lockedUp|0}`],
+        ['upshift: drive resumes after the cut', resumed, `${(vChassisX*3.6)|0} vs ${(v0*3.6)|0} km/h`],
+        ['downshift: revs blip UP toward the shorter gear', rpmPeak > rpmD0 + 400, `${rpmD0|0} → peak ${rpmPeak|0}`],
+        ['shift: engine still running', engineRunning, ''],
+      ];
+    },
     function longMixedSweep() {
       P.terrain = 1; P.amp = 1.2; P.freq = 1.0; resetSim(); gear = 4; vChassisX = 80 / 3.6;
       omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;

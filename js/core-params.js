@@ -127,7 +127,11 @@ const RPM_LIMIT    = 10800;   // hard rev limiter
 // fall LIMITER_BAND below it, then fires again → the revs bounce off the top (seen + heard).
 const LIMITER_BAND      = 350;   // RPM hysteresis band (bounce depth)
 const LIMITER_DROP_RATE = 16000; // RPM/s the (free) revs fall while the fuel is cut
-const ENGINE_K     = 5;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
+// Calibrated so the Gas-rate slider spans the REAL MT-07 product range: default 7 → 49 N·m
+// peak ≈ the A2-restricted MT-07 (35 kW version), slider max 9.5 → 66.5 N·m ≈ the full-power
+// bike's 68 N·m (giving ~220 km/h terminal in 6th vs the old 157). Was 5 (35 N·m — half a real
+// CP2, which made 0–100 take 8+ s and capped top speed at 157 km/h).
+const ENGINE_K     = 7;       // N·m of crank torque per unit of the Gas-rate slider (= PEAK torque)
 const I_ENGINE     = 0.35;    // kg·m²  crank + clutch-basket inertia (engine side, clutch-slip feel)
 // Engine ROTATIONAL inertia reflected to the wheel when the clutch is locked: spinning the crank
 // up costs torque, so it adds effective mass = I_ENGINE_REFLECT·ratio²/R² to the surge. Felt in
@@ -160,6 +164,16 @@ const CLUTCH_ENGAGE_TIME = 0.25; // s  to engage smoothly (release / dump) — n
 const CLUTCH_MAX_TORQUE  = 85;   // N·m  max torque the clutch can transmit (engine side)
 const K_CLUTCH_SLIP      = 0.02; // N·m per RPM of clutch slip
 const ENGINE_BRAKE_K     = 20;   // N·m crank-side engine-braking torque at redline (off-throttle)
+// ── Gear-shift mechanics ─────────────────────────────────────────────────────
+// A shift isn't free: drive torque is interrupted while the dogs swap, and the crank
+// must match the new ratio. The drivetrain block watches `gear` for changes and runs
+// this cut; during it the crank is unloaded and SLEWS toward the new locked speed —
+// falling on an upshift, BLIPPING up on a downshift — then the clutch re-locks with
+// (near-)matched revs instead of a one-frame RPM snap. The slew rate is roughly what
+// an unloaded CP2 crank can do (T/I_ENGINE_REV ≈ 20k RPM/s), so a big multi-gear drop
+// audibly takes longer to match than a single street shift.
+const SHIFT_CUT_TIME   = 0.16;   // s  drive interruption per shift (street-shift dog swap)
+const SHIFT_MATCH_RATE = 22000;  // RPM/s crank slew toward the new locked speed during the cut
 const GRIP_LONG_K  = 2500;  // N per m/s of contact longitudinal slip (capped by friction)
 const GRIP_MU      = 0.5;   // longitudinal grip coefficient (× tire normal force)
 const MU_BASE      = 1.3;   // peak longitudinal grip coeff at 100% grip slider / 36 psi (asphalt)

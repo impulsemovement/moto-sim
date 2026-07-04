@@ -326,6 +326,21 @@ function _physicsStep(dt_s) {
     clutchEngage  += Math.sign(ceTarget - clutchEngage) * Math.min(Math.abs(ceTarget - clutchEngage), ceStep);
     clutchEngage   = Math.max(0, Math.min(1, clutchEngage));
   }
+  // ── Gear-shift detection: torque cut + rev-match ────────────────────────────
+  // The UI writes `gear` directly (ui.js shiftGear); detect the change HERE so shift
+  // mechanics live entirely in the drivetrain. A clutchless (clutch-out) shift
+  // interrupts drive while the dogs swap (shiftTimer) and rev-matches the crank to the
+  // new ratio (RPM regime below). A shift with the clutch pulled needs no cut — the
+  // clutch is already open and the existing slip model handles re-engagement. While
+  // startGrace > 0 a reset/restart just re-seeded state (incl. gear): resync silently
+  // so there's no phantom cut on reset, rewind-restore, or scenario setup.
+  if (startGrace > 0) shiftTimer = 0;
+  if (gear !== gearPrev) {
+    if (startGrace <= 0 && engineRunning && clutchEngage > 0.5) shiftTimer = SHIFT_CUT_TIME;
+    gearPrev = gear;
+  }
+  shiftTimer = Math.max(0, shiftTimer - dt_s);
+  const shiftCut = shiftTimer > 0;
   // ── Stall state machine ─────────────────────────────────────────────────────
   // Lugging the engine — clutch OUT (engaged), in gear, crawling/stopped, no throttle — stalls
   // it after a short delay. The idle creep below keeps it alive when free to roll; holding the
@@ -347,6 +362,14 @@ function _physicsStep(dt_s) {
   // revs FALL — so held at WOT the engine bounces RPM_LIMIT↔RPM_LIMIT−LIMITER_BAND.
   if (!engineRunning) {
     engineRPM = Math.max(0, engineRPM - ENGINE_STALL_DECAY * dt_s);
+  } else if (shiftCut && clutchEngage > 0.5) {
+    // Mid-shift: the box is between gears, the crank is unloaded. Slew toward the NEW
+    // ratio's locked speed at the free-crank rate — revs FALL on an upshift, BLIP UP on
+    // a downshift — so the relock at the end of the cut is near-seamless instead of a
+    // one-frame RPM snap (which looked and sounded like teleporting revs).
+    const d = lockedRPM - engineRPM;
+    engineRPM += Math.sign(d) * Math.min(Math.abs(d), SHIFT_MATCH_RATE * dt_s);
+    engineRPM  = Math.max(RPM_IDLE, Math.min(RPM_LIMIT, engineRPM));
   } else if (clutchEngage > 0.98 && onGroundRear) {
     // Clutch locked ON THE GROUND: the bike's speed dictates the revs (idle floor).
     engineRPM = Math.min(RPM_LIMIT, Math.max(RPM_IDLE, lockedRPM));
@@ -376,18 +399,18 @@ function _physicsStep(dt_s) {
   // a hard fuel cut: zero drive while cutting, so the bike can't push past it (and bounces).
   const T_eng_peak  = GAS_ACCEL * ENGINE_K;
   const torqueFac   = engTorqueFac(engineRPM);
-  const F_throttle  = (revLimiterCut || !engineRunning) ? 0 : (T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage);
+  const F_throttle  = (revLimiterCut || !engineRunning || shiftCut) ? 0 : (T_eng_peak * gasInput * torqueFac * ratio / WHEEL_R_R * clutchEngage);
   // Idle creep: a running engine in gear with the clutch out pulls the bike forward at idle
   // (so it crawls from a stop instead of sitting dead). Idle crank torque through the gear,
   // eased off as it reaches the creep speed; scales with the ratio (1st crawls, 6th barely).
-  const F_idle = (engineRunning && clutchEngage > 0.5 && gasInput < 0.1 && vChassisX < IDLE_CREEP_SPEED)
+  const F_idle = (engineRunning && !shiftCut && clutchEngage > 0.5 && gasInput < 0.1 && vChassisX < IDLE_CREEP_SPEED)
     ? IDLE_CRANK_TORQUE * ratio / WHEEL_R_R * clutchEngage * Math.max(0, 1 - vChassisX / IDLE_CREEP_SPEED)
     : 0;
   // Clutch slip: engine spinning faster than the wheel transmits a big torque while the
   // clutch is engaging — this is the clutch-up wheelie. It also sheds engine RPM.
   let F_clutch = 0;
   const slipRPM = engineRPM - lockedRPM;
-  if (engineRunning && slipRPM > 0 && clutchEngage > 0.02 && clutchEngage < 0.999) {
+  if (engineRunning && !shiftCut && slipRPM > 0 && clutchEngage > 0.02 && clutchEngage < 0.999) {
     const clutchT = Math.min(CLUTCH_MAX_TORQUE, K_CLUTCH_SLIP * slipRPM) * clutchEngage; // N·m engine-side
     F_clutch  = clutchT * ratio / WHEEL_R_R;                       // extra wheel drive force
     engineRPM = Math.max(lockedRPM, engineRPM - (clutchT / I_ENGINE) * RADS2RPM * dt_s);
@@ -398,7 +421,8 @@ function _physicsStep(dt_s) {
   // clutch at idle with the wheel speed matched produces no braking force (no pitch).
   const offThr     = Math.max(0, 1 - gasInput / 0.15);   // 1 fully off-throttle, 0 above ~15%
   const revFrac    = Math.max(0, (engineRPM - RPM_IDLE) / (RPM_REDLINE - RPM_IDLE)); // 0 idle → 1 redline
-  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage * engOn;
+  // Zero during a shift cut: the box is between gears, so nothing brakes the wheel either.
+  const engBrakeT  = ENGINE_BRAKE_K * revFrac * offThr * clutchEngage * engOn * (shiftCut ? 0 : 1);
   const F_engbrake = (vChassisX > 0.1) ? engBrakeT * ratio / WHEEL_R_R : 0;
   // ── Tire friction limit (grip slider × pressure × normal load) ──────────────
   // Each tire can only transmit so much longitudinal force before it slides: μ·N, where
@@ -459,7 +483,7 @@ function _physicsStep(dt_s) {
   // Engine ROTATIONAL inertia: when the clutch is locked, accelerating the bike must also spin
   // the crank up, which reflects to the wheel as added effective mass (I·ratio²/R²). Big in low
   // gears, ~nil in top — so the engine's spin-up inertia is now felt in the acceleration.
-  const mEngReflect = (engineRunning && clutchEngage > 0.9 && onGroundRear)
+  const mEngReflect = (engineRunning && !shiftCut && clutchEngage > 0.9 && onGroundRear)
     ? I_ENGINE_REFLECT * ratio * ratio / (WHEEL_R_R * WHEEL_R_R) : 0;
   const a_x = (F_contact_long + F_drag + F_rr) / (M_total + mEngReflect);
   a_long = a_x;                       // load-transfer pitch source (terrain pitch handled separately)

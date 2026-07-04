@@ -59,6 +59,12 @@ const IDLE_CRANK_TORQUE = 6;    // N·m idle drive torque → creep force (× ge
 const IDLE_CREEP_SPEED  = 2.6;  // m/s creep settles here (idle pulls until this, then eases off)
 let clutchEngage  = 1;          // 0 = clutch fully IN (open), 1 = fully OUT (locked)
 let clutchPulled  = false;      // input: true while the clutch button/key is held
+// ── Gear-shift mechanics ────────────────────────────────────────────────────
+// The UI writes `gear` directly (ui.js shiftGear); the drivetrain block in physics.js
+// watches it for changes and runs a short torque cut + rev-match. Self-heals across
+// reset/rewind: while startGrace > 0 the detector resyncs silently (no phantom cut).
+let gearPrev   = 0;             // last gear value the drivetrain block saw
+let shiftTimer = 0;             // s remaining in the shift torque cut (0 = not shifting)
 
 // Playback controls
 let paused        = false;  // true → physics frozen, rendering continues
@@ -138,7 +144,7 @@ function captureState(dt) {
     dt,
     chassisY_m, vChassis, vChassisX, pitchAngle, pitchRate,
     forkSlide_f, vForkSlide_f, swingAngle, swingRate,
-    worldX_m, wheelAngle_f, wheelAngle_r, omega_f, omega_r, gear, engineRPM, clutchEngage, camY_m, camPanX_m,
+    worldX_m, wheelAngle_f, wheelAngle_r, omega_f, omega_r, gear, engineRPM, clutchEngage, gearPrev, shiftTimer, camY_m, camPanX_m,
     frontWheelX_m, frontWheelY_m, rearWheelX_m, rearWheelY_m,
     shockLen_cur, shockTravel_r, wheelTravel_r, rearSuspVel,
     disp_f, disp_r,
@@ -152,6 +158,7 @@ function applyState(s) {
   worldX_m=s.worldX_m; wheelAngle_f=s.wheelAngle_f; wheelAngle_r=s.wheelAngle_r;
   omega_f=s.omega_f||0; omega_r=s.omega_r||0; camY_m=s.camY_m; camPanX_m=s.camPanX_m;
   if(s.gear!=null) gear=s.gear; if(s.engineRPM!=null) engineRPM=s.engineRPM; if(s.clutchEngage!=null) clutchEngage=s.clutchEngage;
+  if(s.gearPrev!=null) gearPrev=s.gearPrev; if(s.shiftTimer!=null) shiftTimer=s.shiftTimer;
   frontWheelX_m=s.frontWheelX_m; frontWheelY_m=s.frontWheelY_m; rearWheelX_m=s.rearWheelX_m; rearWheelY_m=s.rearWheelY_m;
   shockLen_cur=s.shockLen_cur; shockTravel_r=s.shockTravel_r; wheelTravel_r=s.wheelTravel_r; rearSuspVel=s.rearSuspVel;
   disp_f=s.disp_f; disp_r=s.disp_r;

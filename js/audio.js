@@ -16,6 +16,7 @@ let audioCtx = null, engGain = null, engLPF = null;
 let oscA = null, oscB = null, oscSub = null, subGain = null;
 let shaper = null, noiseSrc = null, noiseBP = null, noiseGain = null;
 let slipNoiseSrc = null, slipBP = null, slipGain = null;   // tire-slip (lockup/spin) sound
+let lopeOsc = null, lopeGain = null;                       // idle-lope LFO (270° twin lumpy idle)
 let soundMuted = false;
 try { soundMuted = (localStorage.getItem('motosim-muted') === '1'); } catch (e) {}
 
@@ -70,7 +71,15 @@ function initAudio() {
   slipGain = audioCtx.createGain(); slipGain.gain.value = 0;
   slipNoiseSrc.connect(slipBP); slipBP.connect(slipGain); slipGain.connect(audioCtx.destination);
 
-  oscA.start(); oscB.start(); oscSub.start(); noiseSrc.start(); slipNoiseSrc.start();
+  // Idle lope — a 270° parallel twin idles with a lumpy, uneven beat (the two cylinders
+  // fire 270°/450° apart). An LFO riding on the engine gain wobbles the volume; the wobble
+  // frequency tracks the firing rate and the DEPTH fades out with revs and throttle (a
+  // pulled-up engine smooths out), set per-frame in updateEngineSound.
+  lopeOsc  = audioCtx.createOscillator(); lopeOsc.type = 'sine'; lopeOsc.frequency.value = 12;
+  lopeGain = audioCtx.createGain(); lopeGain.gain.value = 0;
+  lopeOsc.connect(lopeGain); lopeGain.connect(engGain.gain);
+
+  oscA.start(); oscB.start(); oscSub.start(); noiseSrc.start(); slipNoiseSrc.start(); lopeOsc.start();
 }
 
 // Tire-slip sound. slipV = contact slip speed (m/s); grip = the tire-grip slider (0..1+).
@@ -111,19 +120,42 @@ function playStallClatter() {
 function updateEngineSound(rpm, throttle) {
   if (!audioCtx || !oscA) return;
   const t = audioCtx.currentTime;
+  // Fuel state from the physics globals: the limiter and the gear-shift torque cut both
+  // kill combustion (heard as the rev-limiter "brap" and the upshift "vvv-RIP-vum"), and a
+  // stalled engine makes no throttle noise at all — the player may still be holding gas.
+  const running  = (typeof engineRunning === 'undefined') || engineRunning;
+  const shifting = (typeof shiftTimer !== 'undefined' && shiftTimer > 0);
+  const cutting  = (typeof revLimiterCut !== 'undefined' && revLimiterCut);
+  const load     = (running && !shifting && !cutting) ? throttle : 0;
   const f = 30 + (rpm / 60) * 1.62;                 // ~70 Hz idle → ~300 Hz redline
   oscA.frequency.setTargetAtTime(f, t, 0.03);
   oscB.frequency.setTargetAtTime(f, t, 0.03);
   oscSub.frequency.setTargetAtTime(f * 0.5, t, 0.03);
-  // Brightness opens with revs + throttle (kept low so it growls, not whines).
-  engLPF.frequency.setTargetAtTime(250 + (rpm / 10800) * 1000 + throttle * 500, t, 0.05);
+  // Brightness opens with revs + LOAD (kept low so it growls, not whines); the shift cut
+  // closes it like a throttle chop even though the player's gas is still pinned.
+  engLPF.frequency.setTargetAtTime(250 + (rpm / 10800) * 1000 + load * 500, t, 0.05);
   // Noise rasp tracks the revs and grows with load.
   noiseBP.frequency.setTargetAtTime(f * 2.2, t, 0.04);
-  noiseGain.gain.setTargetAtTime((0.018 + throttle * 0.05 + (rpm / 10800) * 0.03), t, 0.05);
-  // Volume: idle hum + throttle + a touch with revs; dips hard while the limiter cuts fuel.
-  const cutting = (typeof revLimiterCut !== 'undefined' && revLimiterCut);
-  let vol = 0.05 + throttle * 0.11 + (rpm / 10800) * 0.05;
-  if (cutting) vol *= 0.25;
+  noiseGain.gain.setTargetAtTime((0.018 + load * 0.05 + (rpm / 10800) * 0.03), t, 0.05);
+  // Off-throttle decel burble: unburnt mixture popping in the exhaust. Brief random noise
+  // spikes, more likely at higher revs; the per-frame base retarget above settles each one.
+  if (running && load < 0.08 && rpm > 4200 && Math.random() < 0.08 + (rpm / 10800) * 0.12) {
+    noiseGain.gain.setTargetAtTime(0.09 + Math.random() * 0.09, t, 0.008);
+  }
+  // Idle lope: wobble frequency ≈ per-cylinder firing rate (every other rev), depth dies
+  // out by ~2700 RPM and under load — a revving/pulling twin smooths right out.
+  if (lopeOsc) {
+    lopeOsc.frequency.setTargetAtTime(Math.max(6, (rpm / 60) * 0.5), t, 0.05);
+    const lopeDepth = Math.max(0, 1 - (rpm - 1500) / 1200) * (1 - Math.min(1, load * 3));
+    lopeGain.gain.setTargetAtTime(soundMuted || !running ? 0 : 0.028 * lopeDepth, t, 0.05);
+  }
+  // Volume: idle hum + throttle + a touch with revs; dips hard while the limiter cuts
+  // fuel, dips (less hard) through a shift cut, and FADES OUT with the dying crank on a
+  // stall (rpm → 0) instead of droning on at 30 Hz.
+  let vol = 0.05 + load * 0.11 + (rpm / 10800) * 0.05;
+  if (cutting)  vol *= 0.25;
+  if (shifting) vol *= 0.35;
+  if (!running) vol *= Math.max(0, Math.min(1, rpm / 1500));
   engGain.gain.setTargetAtTime(soundMuted ? 0 : vol, t, 0.012);
 }
 
