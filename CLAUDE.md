@@ -163,8 +163,79 @@ further — nice-to-have, not blocking.)
   WordPress/iframe integration. Credibility rests on front-fork model fidelity + the harness.
 - **Educational / tutorial layer** — annotations and guided "learn something" scenarios.
 
-**Coordination:** branch per stream; the harness must pass before merge; **physics core merges
-first each cycle** and everyone rebases onto it; this file is law.
+---
+
+## Parallel-work protocol — HARD RULES
+
+Each stream works in its own git worktree + branch (see `MERGES.md` for the folder/branch map).
+These rules exist because each one was violated in a previous round and cost an integration cleanup.
+**Read them before your first edit.**
+
+### 1. File ownership is absolute
+
+| File(s) | Owner |
+|---|---|
+| `js/physics.js` (contact/suspension/chassis), `js/core-state.js` | Physics core |
+| `js/physics.js` **drivetrain block only**, engine consts in `js/core-params.js`, `js/audio.js` | Engine |
+| `js/core-track.js`, `js/core-terrain.js`, track editor in `js/graphs.js` | Terrain |
+| `js/ui.js`, `js/main.js`, `index.html` cards, `css/styles.css` | UI |
+| `js/render.js`, `js/background.js` | Render |
+| `js/core-config.js`, `js/core-curves.js`, `CLAUDE.md` | **nobody — integration only** |
+
+**Never edit a file you don't own.** If your work requires it, STOP and write the exact change you
+need in your final summary. The integration session applies it. `physics.js` is shared by Physics
+core and Engine: Engine stays strictly inside the drivetrain block; Physics core owns everything else.
+
+### 2. Never bump `?v=` in `index.html`
+
+Version bumps are the #1 source of merge conflicts (every stream bumps the same 15 lines).
+**Leave the version alone.** The integration session does one consolidated bump at merge time.
+Cache-busting only matters for the deployed site, not your local preview.
+
+### 3. Never commit `.claude/launch.json`
+
+It is now gitignored — it holds machine/worktree-specific paths and ports. One session hardcoded its
+own worktree path into it and broke every other session's preview. If `preview_start` needs a config,
+let it create one locally; don't add it to git.
+
+### 4. `test/validate.js` is APPEND-ONLY
+
+Add your regression scenario as a **new named function at the end of the `scenarios` array**.
+Never modify an existing scenario or a shared helper (`ride`, `forkPct`, `rearPct`, `allFinite`, …) —
+that's how two streams silently break each other's checks. If a shared helper genuinely must change,
+flag it in your summary instead. (Appending is why four streams merged `validate.js` with zero
+conflicts last round.)
+
+### 5. New integrated physics state has THREE homes
+
+If you add a variable the integrator advances (like `shiftTimer`), it must be:
+1. declared in `js/core-state.js`,
+2. added to `captureState()` / `applyState()` there (or rewind desyncs),
+3. reset in `resetSim()` — which lives in `js/main.js`, **owned by UI**.
+
+You almost certainly cannot do (3) yourself. **Flag it in your summary.** Skipping it is the exact
+bug class the harness's determinism check exists to catch (see the `f_tire_F` incident).
+
+### 6. Green harness or it doesn't land
+
+Run `index.html?test=1` (or `MotoValidate.run()`), confirm **every** check passes, before you commit.
+If your change legitimately alters expected behavior, update the scenario **and say why**. Never
+commit with it red. Never weaken a threshold to make it pass.
+
+### 7. Merge discipline
+
+- **Physics core merges into mainline first each cycle**; every other stream then
+  `git rebase rigid-body-and-ui-features` in its worktree, re-runs the harness, and merges.
+- Don't merge your own branch to mainline — the integration session does it and logs it in `MERGES.md`.
+- Commit only your own work. Don't sweep up unrelated files.
+
+### 8. Gotchas that will bite you
+
+- `initPhysics()` settles on the **current `P.terrain`** → set `P` **before** `resetSim()`.
+- Y is **down**. Lifting the chassis means *decreasing* `chassisY_m`.
+- Gears are indexed **0–5 = 1st–6th**. There is **no neutral**; clutch-in is how you idle at a stop.
+- Rim bottoming must **compress the suspension DOF**, never pin the chassis (the "lockout" bug class).
+- The live rAF loop steps physics. Set `paused = true` before driving `simStep()` yourself in evals.
 
 ---
 
