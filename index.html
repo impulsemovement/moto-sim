@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=70">
+<link rel="stylesheet" href="css/styles.css?v=71">
 </head>
 <body>
 
@@ -26,15 +26,29 @@
   <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
   <button id="btn-pause"  class="top-btn" title="Pause / play (P)">⏸</button>
   <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
-  <button class="ride-btn" id="btn-brake" title="Brake — button = both wheels · ↓ front · ← rear">⬛ BRAKE</button>
-  <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
-  <button class="ride-btn shift-btn" id="btn-shift-dn" title="Downshift (A)">GEAR ▼</button>
-  <button class="ride-btn shift-btn" id="btn-shift-up" title="Upshift (D)">GEAR ▲</button>
-  <div id="gear-box" title="Gear (A down / D up)">
-    <div id="gear-num">1</div>
-    <div id="gear-rpm">0 rpm</div>
+  <!-- Ride controls. Desktop: the children stay absolutely positioned over the canvas, so this
+       wrapper collapses to a zero-height box. Mobile: it becomes a static grid BELOW the canvas
+       (see the media query) — the 260 px mobile canvas is too short to overlay buttons on the
+       bike without covering it. -->
+  <div id="ride-controls">
+    <button class="ride-btn shift-btn" id="btn-shift-dn" title="Downshift (A)">GEAR ▼</button>
+    <button class="ride-btn shift-btn" id="btn-shift-up" title="Upshift (D)">GEAR ▲</button>
+    <div id="gear-box" title="Gear (A down / D up)">
+      <div id="gear-num">1</div>
+      <div id="gear-rpm">0 rpm</div>
+    </div>
+    <!-- Front and rear brakes are independent DOFs in the physics, so they get independent
+         buttons — press both at once (multi-touch / two mouse-downs) for combined braking,
+         which is what the B key does. -->
+    <button class="ride-btn brake-btn" id="btn-brake-f" title="Front brake — hold (↓)">BRK <b>F</b></button>
+    <button class="ride-btn brake-btn" id="btn-brake-r" title="Rear brake — hold (←)">BRK <b>R</b></button>
+    <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
+    <button class="ride-btn" id="btn-gas" title="Gas — hold (G)">GAS ⬛</button>
+    <div id="touch-legend">
+      <span>Hold <b>BRK F</b>/<b>BRK R</b> · <b>GAS</b> · drag to pan · pinch to zoom</span>
+      <span id="touch-legend-x" title="Hide">✕</span>
+    </div>
   </div>
-  <button class="ride-btn" id="btn-gas">GAS ⬛</button>
   <button id="btn-start-engine" title="Engine stalled — click to restart">START ENGINE</button>
   <div id="key-legend">
     <span><b>G</b>/→ Gas · <b>↓</b> Front brake · <b>←</b> Rear brake · <b>B</b> Both · <b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>R</b> Reset</span>
@@ -305,20 +319,20 @@
 </script>
 
 <!-- core.js was split into domain files (see CLAUDE.md); load order = original top-to-bottom -->
-<script src="js/core-config.js?v=70"></script>
-<script src="js/core-params.js?v=70"></script>
-<script src="js/core-track.js?v=70"></script>
-<script src="js/core-curves.js?v=70"></script>
-<script src="js/core-terrain.js?v=70"></script>
-<script src="js/core-state.js?v=70"></script>
-<script src="js/physics.js?v=70"></script>
-<script src="js/render.js?v=70"></script>
-<script src="js/graphs.js?v=70"></script>
-<script src="js/ui.js?v=70"></script>
-<script src="js/background.js?v=70"></script>
-<script src="js/audio.js?v=70"></script>
-<script src="js/main.js?v=70"></script>
+<script src="js/core-config.js?v=71"></script>
+<script src="js/core-params.js?v=71"></script>
+<script src="js/core-track.js?v=71"></script>
+<script src="js/core-curves.js?v=71"></script>
+<script src="js/core-terrain.js?v=71"></script>
+<script src="js/core-state.js?v=71"></script>
+<script src="js/physics.js?v=71"></script>
+<script src="js/render.js?v=71"></script>
+<script src="js/graphs.js?v=71"></script>
+<script src="js/ui.js?v=71"></script>
+<script src="js/background.js?v=71"></script>
+<script src="js/audio.js?v=71"></script>
+<script src="js/main.js?v=71"></script>
 <!-- Validation harness: loaded ONLY with ?test in the URL (production unaffected). See CLAUDE.md. -->
-<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=70';document.body.appendChild(s);}</script>
+<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=71';document.body.appendChild(s);}</script>
 </body>
 </html>

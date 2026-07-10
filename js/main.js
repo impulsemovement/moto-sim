@@ -31,6 +31,9 @@ function resetSim() {
   gear = 0; engineRPM = RPM_IDLE; clutchEngage = 1; clutchPulled = false; revLimiterCut = false;
   engineRunning = true; stallLugTimer = 0; startGrace = STALL_START_GRACE; engineStalledEvt = false;
   gasPressed = false; brakeFrontHeld = false; brakeRearHeld = false; brakeBothHeld = false;
+  // Drop the input layer's holder sets alongside the intent globals it owns (see ui.js), so a
+  // control still physically held across a reset can re-assert itself on its next press.
+  if (typeof clearHolds === 'function') clearHolds();
   rearContact  = false;
   camY_m       = 0;
   camPanX_m    = 0;
@@ -152,19 +155,22 @@ window.addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════════════════
-//  ZOOM BUTTONS
+//  ZOOM  (buttons · wheel · pinch)
 // ═══════════════════════════════════════════════════════════
-(function() {
-  const ZOOM_MIN = 0.25, ZOOM_MAX = 4.0, ZOOM_STEP = 1.25;
-  document.getElementById('btn-zoom-in').addEventListener('click', () => {
-    userZoom = Math.min(ZOOM_MAX, userZoom * ZOOM_STEP);
-    PM = PM_base * userZoom;
-  });
-  document.getElementById('btn-zoom-out').addEventListener('click', () => {
-    userZoom = Math.max(ZOOM_MIN, userZoom / ZOOM_STEP);
-    PM = PM_base * userZoom;
-  });
-})();
+const ZOOM_MIN = 0.25, ZOOM_MAX = 4.0, ZOOM_STEP = 1.25;
+// PM (pixels per meter) is the render scale; PM_base is set per breakpoint by resizeMain().
+function setZoom(z) {
+  userZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+  PM = PM_base * userZoom;
+}
+document.getElementById('btn-zoom-in') .addEventListener('click', () => setZoom(userZoom * ZOOM_STEP));
+document.getElementById('btn-zoom-out').addEventListener('click', () => setZoom(userZoom / ZOOM_STEP));
+
+// Wheel zoom on the sim canvas. Non-passive so the page doesn't scroll under the cursor.
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  setZoom(userZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+}, { passive: false });
 
 // Re-run after layout fully settles so flex heights are computed
 setTimeout(() => { resizeCurveCanvas(); resizeTerrainCanvas(); resizeFG(); resizeVG(); }, 100);
@@ -200,23 +206,40 @@ setTimeout(() => { resizeCurveCanvas(); resizeTerrainCanvas(); resizeFG(); resiz
     canvas.style.cursor = 'grab';
   });
 
-  // Touch support
+  // Touch: one finger pans, two fingers pinch-zoom. A second finger landing ends the pan
+  // (rather than letting the pan chase the midpoint), and lifting back to one finger does NOT
+  // resume it — otherwise the pan would jump by however far that finger travelled while pinching.
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
+  const touchDist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
   canvas.addEventListener('touchstart', e => {
     if (e.touches.length === 1) {
       dragging = true;
       dragStartX = e.touches[0].clientX;
       dragStartPan = camPanX_m;
       e.preventDefault();
+    } else if (e.touches.length === 2) {
+      dragging = false;
+      pinchStartDist = touchDist(e.touches);
+      pinchStartZoom = userZoom;
+      e.preventDefault();
     }
   }, { passive: false });
 
   window.addEventListener('touchmove', e => {
-    if (!dragging || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - dragStartX;
-    camPanX_m = dragStartPan - dx / PM;
-  });
+    if (e.touches.length === 2 && pinchStartDist > 0) {
+      setZoom(pinchStartZoom * (touchDist(e.touches) / pinchStartDist));
+    } else if (dragging && e.touches.length === 1) {
+      const dx = e.touches[0].clientX - dragStartX;
+      camPanX_m = dragStartPan - dx / PM;
+    }
+  }, { passive: false });
 
-  window.addEventListener('touchend', () => { dragging = false; });
+  window.addEventListener('touchend', e => {
+    dragging = false;
+    if (e.touches.length < 2) pinchStartDist = 0;
+  });
 
   // Double-click to re-center camera on bike
   canvas.addEventListener('dblclick', () => {

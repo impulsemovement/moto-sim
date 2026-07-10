@@ -130,78 +130,117 @@ function setSetupStatus(msg) {
 })();
 
 // ═══════════════════════════════════════════════════════════
-//  GAS / BRAKE BUTTONS
+//  RIDER INPUT LAYER  (pointer / keyboard — gamepad plugs in here)
 // ═══════════════════════════════════════════════════════════
+// Physics reads five boolean "intent" globals (gasPressed, brakeFrontHeld, brakeRearHeld,
+// brakeBothHeld, clutchPulled) and ramps them into gasInput/brakeInputF/brakeInputR itself
+// (physics.js). Several input paths can hold the same control at once — a finger on GAS while
+// G is down — so each control counts its HOLDERS by source name rather than storing a bare
+// bool. Releasing one source must not release the control if another still holds it, which is
+// exactly the bug a plain `gasPressed = false` on mouseup produced.
+const HOLD_SRC = { gas: new Set(), brakeF: new Set(), brakeR: new Set(), brakeBoth: new Set(), clutch: new Set() };
+
+function refreshHoldGlow() {
+  const glow = (id, on) => { const el = document.getElementById(id); if (el) el.classList.toggle('held', on); };
+  // Derive glow from the physics-facing globals, not from one control's holders: the B key
+  // sets brakeBoth, which must light BOTH brake buttons without disturbing their own state.
+  glow('btn-gas',     gasPressed);
+  glow('btn-clutch',  clutchPulled);
+  glow('btn-brake-f', brakeFrontHeld || brakeBothHeld);
+  glow('btn-brake-r', brakeRearHeld  || brakeBothHeld);
+}
+function applyHold(ctl, on) {
+  switch (ctl) {
+    case 'gas':       gasPressed     = on; break;
+    case 'brakeF':    brakeFrontHeld = on; break;
+    case 'brakeR':    brakeRearHeld  = on; break;
+    case 'brakeBoth': brakeBothHeld  = on; break;
+    case 'clutch':    clutchPulled   = on; break;
+  }
+  refreshHoldGlow();
+}
+// src is an arbitrary tag ('key', a pointerId, later 'pad'); the control is held while ≥1 holds it.
+function setHold(ctl, src, on) {
+  const holders = HOLD_SRC[ctl];
+  if (on) holders.add(src); else holders.delete(src);
+  applyHold(ctl, holders.size > 0);
+}
+// resetSim() zeroes the intent globals directly, so the holder sets must be emptied with them
+// or a control the user is still physically holding would never re-fire its "on" transition.
+function clearHolds() {
+  Object.values(HOLD_SRC).forEach(s => s.clear());
+  refreshHoldGlow();
+}
+
+function shiftGear(dir) {
+  gear = Math.max(0, Math.min(NUM_GEARS - 1, gear + dir));
+}
+
 (function() {
-  function setGas(on) {
-    gasPressed = on;
-    document.getElementById('btn-gas').classList.toggle('held', on);
+  // ── Hold buttons (pointer events: one path for mouse, touch and pen) ──────
+  // Pointer capture routes the release to this element even if the finger slides off it, so a
+  // button can no longer get stuck "on" — the failure mode of the old mousedown/touchend pairs.
+  function bindHold(id, ctl) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const release = e => setHold(ctl, e.pointerId, false);
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();                    // no focus ring, no synthesized click
+      try { el.setPointerCapture(e.pointerId); } catch {}
+      setHold(ctl, e.pointerId, true);
+    });
+    el.addEventListener('pointerup',     release);
+    el.addEventListener('pointercancel', release);   // OS stole the gesture (call, notification…)
   }
-  // Independent brakes: ↓ = front only, ← = rear only, B / on-screen button = BOTH.
-  const brakeBtnEl = document.getElementById('btn-brake');
-  function syncBrakeBtn() {
-    // Button glows held whenever any brake intent is active.
-    brakeBtnEl.classList.toggle('held', brakeFrontHeld || brakeRearHeld || brakeBothHeld);
+  bindHold('btn-gas',     'gas');
+  bindHold('btn-clutch',  'clutch');
+  bindHold('btn-brake-f', 'brakeF');
+  bindHold('btn-brake-r', 'brakeR');
+
+  // ── Shift buttons (fire once per press, on the way down) ──────────────────
+  function bindTap(id, fn) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('pointerdown', e => { e.preventDefault(); fn(); });
   }
-  function setBrakeFront(on) { brakeFrontHeld = on; syncBrakeBtn(); }
-  function setBrakeRear(on)  { brakeRearHeld  = on; syncBrakeBtn(); }
-  function setBrakeBoth(on)  { brakeBothHeld  = on; syncBrakeBtn(); }
-  function setClutch(on) {
-    clutchPulled = on;
-    document.getElementById('btn-clutch').classList.toggle('held', on);
-  }
-  function shiftGear(dir) {
-    gear = Math.max(0, Math.min(NUM_GEARS - 1, gear + dir));
-  }
+  bindTap('btn-shift-up', () => shiftGear(+1));
+  bindTap('btn-shift-dn', () => shiftGear(-1));
 
-  const gasBtn    = document.getElementById('btn-gas');
-  const brakeBtn  = document.getElementById('btn-brake');
-  const clutchBtn = document.getElementById('btn-clutch');
-
-  // Mouse — the on-screen BRAKE button applies BOTH brakes (simple combined braking for touch).
-  gasBtn.addEventListener('mousedown',   () => setGas(true));
-  brakeBtn.addEventListener('mousedown', () => setBrakeBoth(true));
-  clutchBtn.addEventListener('mousedown',() => setClutch(true));
-  window.addEventListener('mouseup',     () => { setGas(false); setBrakeBoth(false); setClutch(false); });
-
-  // Touch (prevent scroll while holding)
-  gasBtn.addEventListener('touchstart',    e => { e.preventDefault(); setGas(true); },    {passive:false});
-  gasBtn.addEventListener('touchend',      e => { e.preventDefault(); setGas(false); },   {passive:false});
-  brakeBtn.addEventListener('touchstart',  e => { e.preventDefault(); setBrakeBoth(true); },  {passive:false});
-  brakeBtn.addEventListener('touchend',    e => { e.preventDefault(); setBrakeBoth(false); }, {passive:false});
-  clutchBtn.addEventListener('touchstart', e => { e.preventDefault(); setClutch(true); }, {passive:false});
-  clutchBtn.addEventListener('touchend',   e => { e.preventDefault(); setClutch(false); },{passive:false});
-
-  // Shift buttons (mobile-friendly gear change). Click for desktop; touchstart + preventDefault
-  // for touch (which also suppresses the synthesized click, so each tap shifts exactly once).
-  const shiftUpBtn = document.getElementById('btn-shift-up');
-  const shiftDnBtn = document.getElementById('btn-shift-dn');
-  shiftUpBtn.addEventListener('click', () => shiftGear(+1));
-  shiftDnBtn.addEventListener('click', () => shiftGear(-1));
-  shiftUpBtn.addEventListener('touchstart', e => { e.preventDefault(); shiftGear(+1); }, {passive:false});
-  shiftDnBtn.addEventListener('touchstart', e => { e.preventDefault(); shiftGear(-1); }, {passive:false});
-
-  // Keyboard: G/→ gas, ↓ FRONT brake, ← REAR brake, B BOTH brakes, C clutch (hold),
+  // ── Keyboard: G/→ gas, ↓ FRONT brake, ← REAR brake, B BOTH, C/Space clutch (hold),
   // A downshift, D upshift, R reset. Only a TEXT-entry field (the setup-name box) swallows
   // shortcuts — range sliders, dropdowns, etc. do NOT, so controls work with a slider focused.
+  const KEY_HOLD = {
+    g: 'gas', arrowright: 'gas',
+    arrowdown: 'brakeF',
+    arrowleft: 'brakeR',
+    b: 'brakeBoth',
+    c: 'clutch', ' ': 'clutch',
+  };
   window.addEventListener('keydown', e => {
     if (isTextEntry(e.target)) return;
-    if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') { e.preventDefault(); setGas(true); }
-    if (e.key === 'ArrowDown')                                    { e.preventDefault(); setBrakeFront(true); }
-    if (e.key === 'ArrowLeft')                                    { e.preventDefault(); setBrakeRear(true); }
-    if (e.key === 'b' || e.key === 'B')                           { e.preventDefault(); setBrakeBoth(true); }
-    if (e.key === 'c' || e.key === 'C' || e.key === ' ' || e.code === 'Space') { e.preventDefault(); setClutch(true); }
+    const ctl = KEY_HOLD[e.key.toLowerCase()];
+    if (ctl) { e.preventDefault(); setHold(ctl, 'key', true); }
     if (!e.repeat && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); shiftGear(+1); }
     if (!e.repeat && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); shiftGear(-1); }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); resetSim(); }
   });
   window.addEventListener('keyup', e => {
-    if (e.key === 'g' || e.key === 'G' || e.key === 'ArrowRight') setGas(false);
-    if (e.key === 'ArrowDown')          setBrakeFront(false);
-    if (e.key === 'ArrowLeft')          setBrakeRear(false);
-    if (e.key === 'b' || e.key === 'B') setBrakeBoth(false);
-    if (e.key === 'c' || e.key === 'C' || e.key === ' ' || e.code === 'Space') setClutch(false);
+    const ctl = KEY_HOLD[e.key.toLowerCase()];
+    if (ctl) setHold(ctl, 'key', false);
   });
+  // Keys have no "cancel" event: alt-tabbing away while holding G leaves the throttle pinned.
+  window.addEventListener('blur', () => {
+    Object.keys(HOLD_SRC).forEach(ctl => setHold(ctl, 'key', false));
+  });
+
+  // ── Mobile touch legend (dismissible, persisted) ──────────────────────────
+  const tl = document.getElementById('touch-legend');
+  if (tl) {
+    if (localStorage.getItem('motosim-hidetouchlegend') === '1') tl.style.display = 'none';
+    document.getElementById('touch-legend-x').addEventListener('click', () => {
+      tl.style.display = 'none';
+      try { localStorage.setItem('motosim-hidetouchlegend', '1'); } catch {}
+    });
+  }
 })();
 
 // ═══════════════════════════════════════════════════════════
