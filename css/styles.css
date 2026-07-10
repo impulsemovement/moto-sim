@@ -45,10 +45,15 @@ canvas { display: block; background: #080808; }
   border: none; border-radius: 8px;
   font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
   cursor: pointer; user-select: none; -webkit-user-select: none;
+  /* Pointer-event handlers own these buttons; without this the browser would steal the
+     gesture to scroll the page mid-hold and fire pointercancel (= a dropped throttle). */
+  touch-action: none;
   transition: filter 0.1s, transform 0.1s;
 }
 .ride-btn:hover { filter: brightness(1.15); }
 .ride-btn:active, .ride-btn.held { filter: brightness(1.35); transform: scale(0.96); }
+/* The canvas owns pan + pinch, so the page must not scroll from gestures started on it. */
+#c { touch-action: none; }
 
 /* Centered START ENGINE button — appears when the engine stalls, fades out once running */
 #btn-start-engine {
@@ -78,18 +83,20 @@ canvas { display: block; background: #080808; }
 #key-legend-x { cursor: pointer; color: #777; font-weight: 700; padding: 0 2px; }
 #key-legend-x:hover { color: #fff; }
 @media (max-width: 640px) { #key-legend { display: none; } }
-#btn-brake {
-  left: 20px;
+.brake-btn {
   background: rgba(220,38,38,0.18); color: #ef4444;
   border: 1px solid rgba(220,38,38,0.4);
 }
+.brake-btn b { color: #fff; font-weight: 800; }
+#btn-brake-f { left: 20px; }
+#btn-brake-r { left: 112px; }
 #btn-gas {
   right: 20px;
   background: rgba(34,197,94,0.18); color: #22c55e;
   border: 1px solid rgba(34,197,94,0.4);
 }
 #btn-clutch {
-  left: 112px;
+  left: 204px;
   background: rgba(59,130,246,0.18); color: #3b82f6;
   border: 1px solid rgba(59,130,246,0.4);
 }
@@ -108,6 +115,10 @@ canvas { display: block; background: #080808; }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   user-select: none; -webkit-user-select: none;
 }
+/* Desktop: the wrapper generates a zero-height box and every child positions against
+   #sim-wrap, exactly as before this element existed. Mobile overrides it into a grid. */
+#ride-controls { position: static; }
+#touch-legend { display: none; }
 #gear-num { font-size: 22px; font-weight: 700; color: #f0f0f0; line-height: 1; }
 #gear-rpm { font-size: 8px; color: #888; margin-top: 1px; letter-spacing: 0.04em; }
 
@@ -161,6 +172,38 @@ canvas { display: block; background: #080808; }
   }
   .stats { grid-template-columns: repeat(3,1fr); }
   .stat-n { font-size: 14px; }
+
+  /* The mobile canvas is only 260 px tall (resizeMain in core-config.js), and the ground line
+     sits 78 px off its bottom — so an overlaid control row lands squarely on the bike. Take the
+     controls out of the overlay and give them their own bar under the canvas instead. */
+  #ride-controls {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+  #ride-controls > * { position: static; width: auto; }
+  .ride-btn { height: 48px; font-size: 12px; }        /* ≥44 px: comfortable thumb target */
+  .shift-btn { height: 36px; font-size: 11px; }
+  #gear-box { grid-column: span 2; height: 36px; flex-direction: row; gap: 8px; }
+  #gear-num { font-size: 18px; }
+  #gear-rpm { margin-top: 0; }
+
+  /* The keyboard legend is hidden here (it has nothing to say to a thumb); this replaces it. */
+  #touch-legend {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 3px 6px; border-radius: 6px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+    color: #777; font-size: 9.5px; letter-spacing: 0.02em;
+    user-select: none; -webkit-user-select: none;
+  }
+  #touch-legend b { color: #bbb; font-weight: 700; }
+  #touch-legend-x { cursor: pointer; color: #666; font-weight: 700; padding: 0 2px; }
+
+  /* Fixed to the viewport corner, it hovers over whatever is there — including the GAS button
+     once the sim scrolls to the bottom of the screen. The in-page donate row still shows. */
+  #btn-donate-corner { display: none; }
 }
 
 .card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; position: relative; }
