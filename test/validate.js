@@ -205,6 +205,99 @@ const MotoValidate = (() => {
         ['hard-landing f_tire_F: no teleport force dropouts', dropouts === 0, `${dropouts} frames`],
       ];
     },
+    function customTrackFeatures() {
+      // Terrain 7 (Custom) had NO coverage: the whole feature-list → heightfield path was untested.
+      // Ride a track holding every bump-type feature, and assert the tiling contract that the whole
+      // design rests on — each feature reads baseline 0 at BOTH ends, so segments butt together and
+      // the lap loops without a step. (On a single-valued heightfield a step is a launch or a wall.)
+      const saved = customTrack.map(f => ({ ...f }));
+      try {
+        customTrack = [
+          { type:'flat', len:6 },   { type:'jump',   len:5, height:0.9 },
+          { type:'flat', len:5 },   { type:'rhythm', len:9, height:0.28, count:5 },
+          { type:'flat', len:4 },   { type:'table',  len:7, height:1.0 },
+          { type:'flat', len:4 },   { type:'stepup', len:4, height:0.6 },
+          { type:'stepdown', len:4, height:0.6 }, { type:'flat', len:7 },
+        ];
+        rebuildCustomTrack();
+        P.rough = 0;
+        const r = ride({ terrain: 7, amp: 1.0, freq: 1.0, speedKmh: 55, gas: 0.35, steps: 700 });
+        let worstEnd = 0;
+        for (const f of customTrack)
+          worstEnd = Math.max(worstEnd, Math.abs(featureHeight(f, 0)), Math.abs(featureHeight(f, f.len)));
+        return [
+          ['custom@55: no NaN', !r.nan, r],
+          ['custom@55: front rim out of ground (<30mm)', r.frontPenMM < 30, `${r.frontPenMM|0}mm`],
+          ['custom@55: rear rim out of ground (<30mm)', r.rearPenMM < 30, `${r.rearPenMM|0}mm`],
+          ['custom: every feature reads 0 at both ends (seamless tiling)', worstEnd < 1e-9, `${worstEnd}`],
+        ];
+      } finally { customTrack = saved; rebuildCustomTrack(); }
+    },
+    function shapeFeatureTiles() {
+      // Regression: 'shape' subtracted only terrainLUT[0].y, so it returned to baseline only when the
+      // saved terrainPts endpoints happened to share a Y. ui.js rebuilds the LUT from a loaded setup
+      // and nothing enforces that lock — unequal endpoints meant a step at the seam. Now the endpoint
+      // RAMP is subtracted, so the feature lands on baseline regardless of the control points.
+      const savedPts = terrainPts.map(p => ({ ...p })), savedLUT = terrainLUT;
+      try {
+        terrainPts = [{ x:0, y:0.2 }, { x:0.5, y:0.9 }, { x:1, y:0.7 }];  // deliberately unequal ends
+        terrainLUT = buildCurveLUT(terrainPts);
+        const f = { type:'shape', len:6, height:1 };
+        const a = featureHeight(f, 0), b = featureHeight(f, f.len), mid = featureHeight(f, 3);
+        return [
+          ['shape: starts on baseline 0', Math.abs(a) < 1e-9, `${a}`],
+          ['shape: ends on baseline 0 despite unequal endpoints', Math.abs(b) < 1e-9, `${b}`],
+          ['shape: still carries a profile between the ends', Math.abs(mid) > 0.05, `${mid.toFixed(3)}`],
+        ];
+      } finally { terrainPts = savedPts; terrainLUT = savedLUT; }
+    },
+    function wallCollider() {
+      // The solid-feature path (trackWalls → the barrier/endo block in physics.js) was untested.
+      const saved = customTrack.map(f => ({ ...f }));
+      const savedRough = P.rough;
+      try {
+        customTrack = [{ type:'flat', len:20 }, { type:'wall', len:2.5, height:0.9 }, { type:'flat', len:20 }];
+        rebuildCustomTrack();
+        const w = trackWalls[0];
+        const out = [];
+
+        // A wall's collider `top` is measured from the datum (height 0); physics compares the wheel
+        // bottom's height above 0 against it. Terrain noise under the wall would move the visible
+        // ground off that datum (±6cm at rough=1) without moving the collider.
+        P.terrain = 7; P.rough = 1.0;
+        let noiseUnderWall = 0, seamStep = 0;
+        for (let x = w.x0; x <= w.x1; x += 0.02)
+          noiseUnderWall = Math.max(noiseUnderWall, Math.abs(groundY_m(x) - customGroundAt(x)));
+        for (const sx of [w.sx0, w.sx1])
+          seamStep = Math.max(seamStep, Math.abs(groundY_m(sx - 1e-4) - groundY_m(sx + 1e-4)));
+        out.push(['wall: ground under the collider stays on the datum (noise suppressed)',
+                  noiseUnderWall < 1e-9, `${(noiseUnderWall*1000).toFixed(3)}mm`]);
+        out.push(['wall: the noise fade adds no step at the segment seams',
+                  seamStep < 1e-3, `${(seamStep*1000).toFixed(2)}mm`]);
+        P.rough = 0;
+
+        for (const kmh of [40, 90, 130]) {
+          P.terrain = 7; P.amp = 1.0; P.freq = 1.0; resetSim();
+          gear = 4; vChassisX = kmh / 3.6;
+          omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;
+          let nan = false, maxPitch = -Infinity, hit = false, minSpeedAfterHit = Infinity;
+          for (let i = 0; i < 700; i++) {
+            simStep(0.016);
+            const lx = lapX(frontWheelX_m);
+            if (-frontWheelY_m - WHEEL_R_F < w.top - 0.02 && lx + WHEEL_R_F > w.x0 && lx < w.x1) hit = true;
+            if (hit) minSpeedAfterHit = Math.min(minSpeedAfterHit, Math.abs(vChassisX));
+            maxPitch = Math.max(maxPitch, pitchAngle);
+            if (!allFinite()) { nan = true; break; }
+          }
+          out.push([`wall@${kmh}: no NaN`, !nan, '']);
+          out.push([`wall@${kmh}: the wall arrests the bike`, hit && minSpeedAfterHit < 0.5,
+                    `${minSpeedAfterHit.toFixed(2)} m/s`]);
+          out.push([`wall@${kmh}: hitting it pitches the bike over (endo)`,
+                    maxPitch > 30 * Math.PI / 180, `${(maxPitch*180/Math.PI)|0}°`]);
+        }
+        return out;
+      } finally { customTrack = saved; rebuildCustomTrack(); P.rough = savedRough; }
+    },
     function determinism() {
       const snap = () => { P.terrain = 3; P.amp = 1.8; P.freq = 1.0; resetSim();  // P before reset (see ride)
         gear = 4; vChassisX = 100 / 3.6; omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;

@@ -22,15 +22,18 @@ let customTrack = [
   { type:'flat',   len:7 },
 ];
 let trackTotalLen = 0;
-let trackWalls    = [];   // [{x0,x1,top}] solid colliders (world X within one lap)
+let trackWalls    = [];   // [{x0,x1,top,sx0,sx1}] solid colliders (world X within one lap)
 
-const FEATURE_TYPES = ['flat','jump','rhythm','table','stepup','stepdown','wall','shape'];
+const smoothstep = t => { t = Math.max(0, Math.min(1, t)); return t*t*(3 - 2*t); };
+
+// Wrap a world X into one lap, [0, trackTotalLen).
+function lapX(wx) { return (((wx % trackTotalLen) + trackTotalLen) % trackTotalLen); }
 
 // Local profile HEIGHT (m, +up) of a feature at distance u∈[0,len]. Baseline 0 at both ends so
 // features butt together cleanly. groundY (Y-down) uses −height.
 function featureHeight(f, u) {
   const L = f.len || 1, p = Math.max(0, Math.min(1, u / L)), h = f.height || 0;
-  const ss = t => { t = Math.max(0, Math.min(1, t)); return t*t*(3 - 2*t); };  // smoothstep
+  const ss = smoothstep;
   switch (f.type) {
     case 'jump':                                   // launch ramp → lip near the end → short backside
       return p < 0.82 ? h * (p/0.82)*(p/0.82) : h * Math.max(0, 1 - (p-0.82)/0.18);
@@ -45,7 +48,12 @@ function featureHeight(f, u) {
       return -h * (p < 0.15 ? ss(p/0.15) : p > 0.6 ? ss((1-p)/0.4) : 1);
     case 'shape': {                                // freeform hand-drawn profile, scaled by height
       if (!terrainLUT) return 0;
-      return (evalCurveLUT(terrainLUT, p) - terrainLUT[0].y) * h;
+      // Must read 0 at BOTH ends or the segment seam becomes a step — and on a single-valued
+      // heightfield a step is a launch (or an invisible wall). terrainPts' endpoints are supposed
+      // to be locked to the same Y, but a loaded setup (ui.js rebuilds the LUT from saved points)
+      // can violate that, so subtract the endpoint ramp instead of just the start value.
+      const n = terrainLUT.length, y0 = terrainLUT[0].y, y1 = terrainLUT[n-1].y;
+      return (evalCurveLUT(terrainLUT, p) - (y0 + (y1 - y0) * p)) * h;
     }
     case 'wall':                                   // solid — ground stays flat (collider handles it)
     case 'flat':
@@ -57,7 +65,7 @@ function featureHeight(f, u) {
 // AND by the track editor / minimap so they can draw the track regardless of the active terrain.
 function customGroundAt(wx) {
   if (!trackTotalLen) rebuildCustomTrack();
-  const x = (((wx % trackTotalLen) + trackTotalLen) % trackTotalLen);
+  const x = lapX(wx);
   for (let i = 0; i < customTrack.length; i++) {
     const seg = customTrack[i];
     if (x >= seg._x0 && x < seg._x0 + seg.len) return -featureHeight(seg, x - seg._x0);
@@ -65,12 +73,37 @@ function customGroundAt(wx) {
   return 0;
 }
 
+// How much terrain noise applies at a world X (1 = full, 0 = none).
+//
+// A wall is a BUILT structure standing on flat ground, and its collider's `top` is measured from
+// the datum (height 0) — physics.js compares the wheel-bottom height above 0 against w.top. Terrain
+// noise under the wall moves the visible ground off that datum (±6 cm at rough = 1) without moving
+// the collider, so the ride-over-vs-crash test drifts and the wall base floats or sinks in the dirt.
+// Fade the noise to zero across the wall segment. The fade reaches 0 well before the collider face
+// and returns to 1 exactly at the segment seams, so no step is introduced at either end.
+function customNoiseScaleAt(wx) {
+  if (!trackWalls.length) return 1;
+  if (!trackTotalLen) rebuildCustomTrack();
+  const x = lapX(wx);
+  for (const w of trackWalls) {
+    if (x < w.sx0 || x >= w.sx1) continue;
+    const p = (x - w.sx0) / ((w.sx1 - w.sx0) || 1);
+    return 1 - smoothstep(Math.min(p, 1 - p) / 0.25);   // 1 at the seams → 0 by 25% in
+  }
+  return 1;
+}
+
 // Recompute cached segment offsets, total length and the wall colliders. Call after any edit.
 function rebuildCustomTrack() {
   let off = 0; trackWalls = [];
   for (const f of customTrack) {
     f._x0 = off;
-    if (f.type === 'wall') trackWalls.push({ x0: off + f.len*0.4, x1: off + f.len*0.6, top: (f.height || 0.9) });
+    // x0/x1 = the solid face physics collides with; sx0/sx1 = the whole segment, i.e. the flat
+    // noise-free apron the wall stands on (see customNoiseScaleAt).
+    if (f.type === 'wall') trackWalls.push({
+      x0: off + f.len*0.4, x1: off + f.len*0.6, top: (f.height || 0.9),
+      sx0: off, sx1: off + f.len,
+    });
     off += f.len;
   }
   trackTotalLen = Math.max(1, off);

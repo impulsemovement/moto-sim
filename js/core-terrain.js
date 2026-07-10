@@ -64,8 +64,10 @@ function groundY_m(wx_m) {
     }
     case 6: // Flat — gentle long-wavelength
       return Math.sin(wx_m*0.5*freq)*0.025*amp + noise;
-    case 7: // Custom — the composed feature track (Track Builder), looped
-      return customGroundAt(wx_m) + noise;
+    case 7: // Custom — the composed feature track (Track Builder), looped.
+            // Noise is suppressed under solid walls so their colliders stay on the datum they
+            // were measured from (see customNoiseScaleAt).
+      return customGroundAt(wx_m) + (noise !== 0 ? noise * customNoiseScaleAt(wx_m) : 0);
   }
   return 0;
 }
