@@ -27,3 +27,16 @@ _(append one line per landed merge: date · branch · short summary · harness p
 - 2026-07-01 · (mainline) · Wave 0 foundation: CLAUDE.md + harness + core.js split · ✓ 31/31
 - 2026-07-01 · physics-core · analytic front-tire damper velocity, high-speed damper extension, dead-code cleanup; +hard-landing f_tire_F regression scenario · ✓ (validated in-session, FF merge) · now v=70
 - 2026-07-01 · (mainline) · fix launch.json: worktree-agnostic, auto port (was hardcoded to a worktree path + port 8080)
+- 2026-07-01 · **Wave 1 integration** — all four streams merged, versions normalized to v=76 · ✓ **57/57 harness**, no console errors
+  - `engine-drivetrain` · gear-shift torque cut + rev-match, MT-07 torque calibration (ENGINE_K 5→7 ≈ real CP2), richer audio · +gearPrev/shiftTimer (wired into rewind capture/restore)
+  - `terrain-designer` · seamless `shape` tiling, noise-free wall aprons, custom-track harness coverage
+  - `ui-controls` · mobile control bar, independent front/rear brake buttons, pointer input layer, pinch/wheel zoom
+  - `render-art` · bodywork + rider + brake discs, contact shadows, dust, atmospheric depth, scenery anchored to dirt
+  - Conflicts were `index.html` `?v=` lines only (expected); UI's structural changes auto-merged.
+
+## Known follow-ups (not merge blockers)
+- **Static sag is soft**: fork 43%, rear 50% of travel at rest (street norm ≈ 25–35%). Pre-existing —
+  no stream changed `P` defaults/springs/mass. Belongs to Physics core, ideally calibrated against
+  real MT-07 figures the way Engine just calibrated `ENGINE_K`.
+- `resetSim()` (main.js, UI-owned) does not reset Engine's `gearPrev`/`shiftTimer`. Engine self-heals
+  via the `startGrace` resync and determinism passes — but if either stream touches this, revisit.
