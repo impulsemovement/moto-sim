@@ -177,27 +177,54 @@ function drawBodywork() {
   ctx.restore();
 
   // ── Seat + tail unit ─────────────────────────────────────────────────────
+  // The frame polygon's rear section (A→B→C over L→A) tapers to a point at the tail vertex A.
+  // Drawn bare with only a thin seat sliver on top, the whole rear end read as a single spike
+  // jabbing out behind the rider. Give it real volume: a subframe box that fills the wedge,
+  // then a stepped seat and a tail cowl that ENDS in a blunt light rather than a point.
+
+  // Subframe / undertail box — hides the taper. It must reach PAST the frame's tail vertex A
+  // (-137,-86) or the bare polygon tip pokes out behind the cowl as a spike again.
   ctx.beginPath();
-  ctx.moveTo(-15, -83);
-  ctx.lineTo(-33, -93);
-  ctx.lineTo(-76, -97);
-  ctx.lineTo(-107, -95);
-  ctx.quadraticCurveTo(-124, -94, -133, -88);           // upswept tail
-  ctx.lineTo(-118, -84);
-  ctx.lineTo(-70, -82);
-  ctx.lineTo(-19, -78);
+  ctx.moveTo(-24, -80);
+  ctx.lineTo(-132, -84);
+  ctx.quadraticCurveTo(-141, -83, -141, -76);
+  ctx.lineTo(-134, -66);
+  ctx.lineTo(-30, -68);
   ctx.closePath();
-  const sg = ctx.createLinearGradient(0, -97, 0, -78);
-  sg.addColorStop(0, '#2a2a2e'); sg.addColorStop(1, '#111');
+  ctx.fillStyle = '#1b1c20'; ctx.fill();
+  ctx.strokeStyle = '#3a3b41'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Seat: rider pad, then a stepped pillion hump behind it.
+  ctx.beginPath();
+  ctx.moveTo(-16, -84);                                 // front lip, against the tank
+  ctx.quadraticCurveTo(-26, -100, -48, -105);           // rise onto the rider pad
+  ctx.lineTo(-84, -108);
+  ctx.quadraticCurveTo(-96, -109, -98, -117);           // step up to the pillion
+  ctx.lineTo(-104, -119);
+  ctx.quadraticCurveTo(-124, -120, -136, -110);         // tail cowl, blunt-ended
+  ctx.quadraticCurveTo(-142, -100, -138, -85);
+  ctx.lineTo(-24, -82);
+  ctx.closePath();
+  const sg = ctx.createLinearGradient(0, -119, 0, -82);
+  sg.addColorStop(0, '#33343a'); sg.addColorStop(0.5, '#1d1e22'); sg.addColorStop(1, '#0d0d10');
   ctx.fillStyle = sg; ctx.fill();
-  ctx.strokeStyle = '#45454a'; ctx.lineWidth = 1; ctx.stroke();
-  // Tail light
+  ctx.strokeStyle = '#4b4c53'; ctx.lineWidth = 1; ctx.stroke();
+  // Seat stitching, and the step between rider and pillion pads.
+  ctx.save();
+  ctx.globalAlpha = 0.55; ctx.strokeStyle = '#6d6f78'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(-22, -88); ctx.quadraticCurveTo(-50, -102, -86, -105); ctx.stroke();
+  ctx.restore();
+
+  // Tail light — blunt rear face of the cowl, not a point.
   ctx.fillStyle = '#e11d48';
-  ctx.beginPath(); ctx.roundRect(-136, -91, 6, 5, 2); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(-140, -108, 5, 13, 2); ctx.fill();
+  ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#ff6b8b';
+  ctx.beginPath(); ctx.roundRect(-141, -106, 3, 9, 1.5); ctx.fill();
+  ctx.restore();
 
   // Side-cover badge (moved off the engine, where the rider's thigh now sits).
-  ctx.fillStyle = '#e11d48'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('MT-07', -78, -70);
+  ctx.fillStyle = '#e11d48'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('MT-07', -74, -73);
 }
 
 // Handlebars — frame-fixed in this 2D sim (there is no steering DOF).
@@ -211,61 +238,114 @@ function drawHandlebars() {
   ctx.beginPath(); ctx.moveTo(74, -126); ctx.lineTo(63, -128); ctx.stroke();
 }
 
-// Rider silhouette. Gives the bike its sense of scale — a bare frame reads as a toy. Static
-// pose: this is a suspension sim, not a rider-model, so the rider is rigidly seated.
-function drawRider() {
-  const limb = (x0, y0, x1, y1, w, col) => {
-    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-  };
-  const HIP = [-48, -97], KNEE = [8, -76], FOOT = [-12, 14];
-  const SHO = [-6, -141], ELB = [30, -134], HAND = [66, -127];
+// ── Rider ────────────────────────────────────────────────────────────────────
+// Gives the bike its sense of scale — a bare frame reads as a toy. Static pose: this is a
+// suspension sim, not a rider model, so the rider is rigidly seated and pitches with the chassis.
+//
+// Built from TAPERED limbs, not constant-width strokes. A round-capped line of uniform width is
+// exactly what a stick figure is; a limb that narrows hip→knee→ankle reads as a body. Everything
+// is a few steps lighter than the black frame behind it, or the rider vanishes into the bike.
 
-  // Leg (behind the tank; the knee tucks into the scallop)
-  limb(HIP[0], HIP[1], KNEE[0], KNEE[1], 15, '#23262d');   // thigh
-  limb(KNEE[0], KNEE[1], FOOT[0], FOOT[1], 11, '#1b1e24'); // shin
-  ctx.fillStyle = '#0d0e10';                                // boot
-  ctx.beginPath(); ctx.roundRect(FOOT[0] - 9, FOOT[1] - 3, 20, 8, 2); ctx.fill();
-
-  // Neck — without it the helmet reads as floating free of the body.
-  limb(SHO[0] + 2, SHO[1] + 2, 10, -148, 9, '#2a2d34');
-
-  // Torso: hip → shoulder, leaned forward over the tank. Kept a few steps lighter than the
-  // seat and frame behind it, or the whole rider disappears into the black bike.
+// A limb segment as a tapered quad, with a round joint cap at each end so bends look continuous.
+// `edge` outlines it — the legs sit against the near-black engine and frame, and without a rim
+// light they read as holes rather than limbs.
+function riderLimb(x0, y0, x1, y1, w0, w1, col, edge) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;       // unit normal to the segment
+  const cap = (x, y, w) => { ctx.beginPath(); ctx.arc(x, y, w / 2, 0, Math.PI * 2); ctx.fill(); if (edge) ctx.stroke(); };
+  ctx.fillStyle = col;
+  if (edge) { ctx.strokeStyle = edge; ctx.lineWidth = 1; }
+  cap(x0, y0, w0); cap(x1, y1, w1);          // joint caps first, so the quad hides their seams
   ctx.beginPath();
-  ctx.moveTo(HIP[0] - 11, HIP[1] + 3);
-  ctx.lineTo(SHO[0] - 14, SHO[1] + 6);
-  ctx.lineTo(SHO[0] + 13, SHO[1] - 4);
-  ctx.lineTo(HIP[0] + 17, HIP[1] - 5);
+  ctx.moveTo(x0 + nx * w0 / 2, y0 + ny * w0 / 2);
+  ctx.lineTo(x1 + nx * w1 / 2, y1 + ny * w1 / 2);
+  ctx.lineTo(x1 - nx * w1 / 2, y1 - ny * w1 / 2);
+  ctx.lineTo(x0 - nx * w0 / 2, y0 - ny * w0 / 2);
   ctx.closePath();
-  const jg = ctx.createLinearGradient(HIP[0], HIP[1], SHO[0], SHO[1]);
-  jg.addColorStop(0, '#2c3038'); jg.addColorStop(1, '#4a505c');
+  ctx.fill();
+  if (edge) {                                 // outline only the two long sides
+    ctx.beginPath();
+    ctx.moveTo(x0 + nx * w0 / 2, y0 + ny * w0 / 2); ctx.lineTo(x1 + nx * w1 / 2, y1 + ny * w1 / 2);
+    ctx.moveTo(x0 - nx * w0 / 2, y0 - ny * w0 / 2); ctx.lineTo(x1 - nx * w1 / 2, y1 - ny * w1 / 2);
+    ctx.stroke();
+  }
+}
+
+function drawRider() {
+  // Joint positions (chassis-local px). Hip sits ON the seat pad; the hand lands on the grip.
+  const HIP = [-52, -101], KNEE = [20, -76], ANKLE = [-2, 20];
+  // NOTE: if the rider gets taller, bump RIDER_TOP_PX to match or the camera will clip the helmet.
+  const SHO = [-12, -158], ELB = [28, -148], HAND = [65, -128];
+  const HEAD = [4, -188], HEAD_R = 22;
+
+  // Lifted well off black: the leg overlaps the engine block (#0d0d1f) and the frame (#1a1a1a).
+  const DENIM = '#3d4552', DENIM_D = '#2f3641', LEATHER = '#434a57', RIM = '#6b7484';
+
+  // ── Footpeg + boot (drawn first: the boot rests on the peg) ───────────────
+  ctx.strokeStyle = '#6a6e76'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-16, 24); ctx.lineTo(4, 24); ctx.stroke();
+
+  // ── Leg: thigh tapers into the knee, calf into the ankle ─────────────────
+  riderLimb(HIP[0], HIP[1], KNEE[0], KNEE[1], 24, 17, DENIM, RIM);
+  riderLimb(KNEE[0], KNEE[1], ANKLE[0], ANKLE[1], 17, 12, DENIM_D, RIM);
+  ctx.fillStyle = '#17181c';                                 // boot
+  ctx.beginPath();
+  ctx.moveTo(-12, 12); ctx.lineTo(8, 12); ctx.lineTo(10, 22);
+  ctx.quadraticCurveTo(10, 27, 4, 27); ctx.lineTo(-16, 27);
+  ctx.quadraticCurveTo(-20, 27, -18, 22); ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#5c6472'; ctx.lineWidth = 1; ctx.stroke();
+
+  // ── Torso: a back that curves, a chest that leans over the tank ──────────
+  ctx.beginPath();
+  ctx.moveTo(-64, -96);                                      // seat / lower back
+  ctx.quadraticCurveTo(-52, -132, -26, -154);                // spine, arched forward
+  ctx.quadraticCurveTo(-16, -170, 4, -168);                  // shoulder / trapezius
+  ctx.lineTo(20, -156);                                      // front of shoulder
+  ctx.quadraticCurveTo(10, -128, -18, -100);                 // chest → belly → thigh crease
+  ctx.closePath();
+  const jg = ctx.createLinearGradient(-60, -100, 10, -160);
+  jg.addColorStop(0, '#2b3039'); jg.addColorStop(1, '#4d5462');
   ctx.fillStyle = jg; ctx.fill();
-  ctx.strokeStyle = '#586070'; ctx.lineWidth = 1; ctx.stroke();
-  // Racing stripe
-  ctx.save(); ctx.globalAlpha = 0.85;
-  limb(HIP[0] + 2, HIP[1] - 2, SHO[0] + 2, SHO[1] + 1, 3, '#e11d48');
+  ctx.strokeStyle = '#5b6373'; ctx.lineWidth = 1; ctx.stroke();
+  // Racing stripe up the spine
+  ctx.save(); ctx.globalAlpha = 0.8;
+  ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-56, -104); ctx.quadraticCurveTo(-44, -134, -22, -154); ctx.stroke();
   ctx.restore();
 
-  // Arm reaching to the grip
-  limb(SHO[0], SHO[1], ELB[0], ELB[1], 10, '#3b414b');
-  limb(ELB[0], ELB[1], HAND[0], HAND[1], 8, '#3b414b');
-  ctx.fillStyle = '#101114';                                // glove
-  ctx.beginPath(); ctx.arc(HAND[0], HAND[1], 5, 0, Math.PI * 2); ctx.fill();
+  // ── Neck: without it the helmet floats free of the body ──────────────────
+  riderLimb(-8, -162, 2, -176, 14, 13, '#262a31');
 
-  // Helmet, with a visor facing forward (+x)
-  ctx.beginPath(); ctx.arc(14, -159, 17, 0, Math.PI * 2);
-  ctx.fillStyle = '#d8d8dc'; ctx.fill();
-  ctx.strokeStyle = '#8e8e96'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.beginPath();                                          // chin bar
-  ctx.moveTo(14, -145); ctx.quadraticCurveTo(33, -146, 30, -157); ctx.lineTo(14, -157);
-  ctx.closePath(); ctx.fillStyle = '#c2c2c8'; ctx.fill();
-  ctx.beginPath();                                          // visor
-  ctx.moveTo(16, -170); ctx.quadraticCurveTo(32, -168, 30, -156);
-  ctx.quadraticCurveTo(20, -156, 16, -162); ctx.closePath();
+  // ── Arm reaching to the grip ─────────────────────────────────────────────
+  riderLimb(SHO[0] + 4, SHO[1] + 2, ELB[0], ELB[1], 16, 12, LEATHER, RIM);
+  riderLimb(ELB[0], ELB[1], HAND[0], HAND[1], 12, 9, LEATHER, RIM);
+  ctx.fillStyle = '#101114';                                 // glove
+  ctx.beginPath(); ctx.arc(HAND[0], HAND[1], 6, 0, Math.PI * 2); ctx.fill();
+
+  // ── Helmet: sized to the body (a head is ~28 cm across → r ≈ 22 px at PM=200) ──
+  ctx.beginPath(); ctx.arc(HEAD[0], HEAD[1], HEAD_R, 0, Math.PI * 2);
+  const hg = ctx.createLinearGradient(HEAD[0] - 14, HEAD[1] - 18, HEAD[0] + 16, HEAD[1] + 16);
+  hg.addColorStop(0, '#f2f2f5'); hg.addColorStop(1, '#b9bac1');
+  ctx.fillStyle = hg; ctx.fill();
+  ctx.strokeStyle = '#83848c'; ctx.lineWidth = 1; ctx.stroke();
+  // Chin bar wrapping to the front (+x)
+  ctx.beginPath();
+  ctx.moveTo(HEAD[0] + 2, HEAD[1] + HEAD_R - 1);
+  ctx.quadraticCurveTo(HEAD[0] + 24, HEAD[1] + 16, HEAD[0] + 23, HEAD[1] - 2);
+  ctx.lineTo(HEAD[0] + 8, HEAD[1] - 4);
+  ctx.closePath();
+  ctx.fillStyle = '#cbccd2'; ctx.fill(); ctx.strokeStyle = '#8d8e96'; ctx.stroke();
+  // Visor
+  ctx.beginPath();
+  ctx.moveTo(HEAD[0] + 5, HEAD[1] - 15);
+  ctx.quadraticCurveTo(HEAD[0] + 25, HEAD[1] - 12, HEAD[0] + 23, HEAD[1] - 1);
+  ctx.quadraticCurveTo(HEAD[0] + 12, HEAD[1] - 2, HEAD[0] + 5, HEAD[1] - 8);
+  ctx.closePath();
   ctx.fillStyle = '#1d2733'; ctx.fill();
-  ctx.save(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#9fd0ee'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(19, -167); ctx.lineTo(28, -163); ctx.stroke();
+  ctx.save(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#9fd0ee'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(HEAD[0] + 9, HEAD[1] - 11); ctx.lineTo(HEAD[0] + 20, HEAD[1] - 7); ctx.stroke();
   ctx.restore();
 }
 
@@ -275,6 +355,9 @@ function drawRider() {
 let camY_m = 0;   // smoothed camera Y reference — follows terrain, not the bike's bounce
 let camLeadX_m = 0;   // smoothed horizontal lead: the camera looks AHEAD when accelerating and
                       // BEHIND when braking, so the bike shifts back/forward in frame for a sense of g's
+// Tallest drawn point above the CoM, in chassis-local px (PM=200 basis): the top of the rider's
+// helmet, plus CHASSIS_VIS_DY_PX. The camera's deadzone reserves this much headroom — see draw().
+const RIDER_TOP_PX = 200;
 
 function screenY(y_m) {
   // Camera tracks X only; Y is fixed to camY_m so the bike's heave is visible on screen.
@@ -489,7 +572,12 @@ function draw(ts) {
   // Within the band, a very slow drift toward the terrain mean gently recenters.
   {
     const bikeSY = (chassisY_m - camY_m) * PM + groundBaseY;   // bike's current draw Y (px)
-    const topLim = H * 0.34;   // tighter vertical band — the camera tracks the bike's height sooner
+    // The band's top must reserve enough room for the tallest drawn point above the CoM — the
+    // rider's helmet, RIDER_TOP_PX up in chassis-local px. On a short (mobile) canvas H*0.34 is
+    // less than the rider is tall, so a jump pushed the helmet off the top edge. Taking the max
+    // leaves DESKTOP untouched (H*0.34 = 212 px already exceeds the 208 px rider) and only pulls
+    // the mobile band down, where the clipping actually happened.
+    const topLim = Math.max(H * 0.34, RIDER_TOP_PX * (PM / 200) + 8);
     const botLim = H * 0.60;
     let over = 0;
     if      (bikeSY < topLim) over = bikeSY - topLim;          // -ve: above the band (climbing)
