@@ -345,6 +345,24 @@ function drawParallaxBackground(W, H) {
   // dirt line) there's never an unpainted/torn band — the real dirt is drawn on top by render.js.
   if (skyBot < H) { ctx.fillStyle = '#a88048'; ctx.fillRect(0, skyBot, W, H - skyBot); }
 
+  // ── Sun (effectively at infinity — barely parallaxes) ────
+  {
+    const sunX = ((comX - panPx) + (-worldX_m * 0.004) * PM) % (W * 3);
+    const sunY = gB * 0.20;
+    const sg2 = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, gB * 0.30);
+    sg2.addColorStop(0,   'rgba(255,250,224,0.95)');
+    sg2.addColorStop(0.12,'rgba(255,241,190,0.55)');
+    sg2.addColorStop(1,   'rgba(255,241,190,0)');
+    ctx.fillStyle = sg2;
+    ctx.beginPath(); ctx.arc(sunX, sunY, gB * 0.30, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Atmospheric haze: a wash of sky colour laid over everything drawn SO FAR. Applied between
+  // layers, it desaturates and lightens the distant ones cumulatively — the mesas were reading
+  // as a wall directly behind the bike because nothing separated them from the foreground.
+  const hazeTo = () => Math.max(0, Math.min(H, horizY));
+  const haze = a => { ctx.fillStyle = `rgba(176,206,228,${a})`; ctx.fillRect(0, 0, W, hazeTo()); };
+
   // ── Clouds (speed 0.025) ─────────────────────────────────
   function drawCloud(cx, cy, r) {
     ctx.beginPath();
@@ -362,6 +380,7 @@ function drawParallaxBackground(W, H) {
 
   // ── Far purple mountains — fixed peak height (gB), base parallaxes gently (vy 0.40) ──
   drawFarMountains(W, H, vy(0.40), gB, worldX_m * 0.05 * PM_base + panPx);
+  haze(0.30);   // mountains sit deepest in the air column
 
   // ── Distant red-rock mesas (speed 0.10) — fixed size, base parallaxes (vy 0.62) ───────
   eachSlot(4.0, 0.10, 3.0, (n, sx) => {
@@ -369,13 +388,17 @@ function drawParallaxBackground(W, H) {
     const h = gB * (0.18 + bgH(n, 2) * 0.20);
     drawMesa(n, sx + bgH(n, 8) * 60, vy(0.62) + 5, w, h, '#7a4028', '#a05835');
   });
+  haze(0.16);
 
   // ── Mid red-rock mesas (speed 0.17) ──────────────────────
+  // Trimmed from 0.28–0.56 of gB: at full height they towered over the bike and read as a wall
+  // rather than as terrain sitting a few hundred metres back.
   eachSlot(5.0, 0.17, 3.0, (n, sx) => {
     const w = (180 + bgH(n, 3) * 200) * pzM;
-    const h = gB * (0.28 + bgH(n, 4) * 0.28);
+    const h = gB * (0.22 + bgH(n, 4) * 0.20);
     drawMesa(n, sx + bgH(n, 9) * 70, vy(0.78) + 8, w, h, '#9a4828', '#c86038');
   });
+  haze(0.07);
 
   // ── Sandy desert mid-ground strip (fixed thickness, anchored near the ground) ─────
   const stripTop = vy(0.9) - gB * 0.12;
