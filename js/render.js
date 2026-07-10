@@ -67,6 +67,82 @@ function screenY(y_m) {
 function screenLen(d_m) { return d_m * PM; }
 
 // ═══════════════════════════════════════════════════════════
+//  GROUND-CONTACT FX  (shadows + dust)  — render-only, never touches physics
+// ═══════════════════════════════════════════════════════════
+// Everything here is a pure function of the physics state; no global the integrator reads is
+// written, so the harness (and the A/B determinism check) is unaffected.
+
+// ── Contact shadow ──────────────────────────────────────────────────────────
+// A wheel with no shadow reads as floating. Project an ellipse onto the dirt directly beneath
+// the tire; it widens and fades as the gap grows, which is the cheap monocular depth cue that
+// tells you how high the bike actually is on a jump.
+const SHADOW_FADE_M = 1.2;       // m of air over which the shadow fades to nothing
+function drawContactShadow(wx_m, wy_m, r_m, w2sx) {
+  const gy   = groundY_m(wx_m);
+  const gap  = Math.max(0, gy - (wy_m + r_m));      // m of air under the tire (Y is DOWN)
+  const t    = 1 - gap / SHADOW_FADE_M;
+  if (t <= 0.02) return;
+  const rx = r_m * PM * (0.95 + gap * 0.55);        // spreads out as the bike climbs away
+  const ry = Math.max(2, r_m * PM * 0.20);
+  ctx.save();
+  ctx.globalAlpha = 0.42 * t * t;                   // squared → drops off fast, no muddy halo
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.ellipse(w2sx(wx_m), screenY(gy) + 1, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// ── Dust ────────────────────────────────────────────────────────────────────
+// Particles live in WORLD metres, so they stay planted on the ground while the camera pans and
+// the terrain scrolls. Slip (wheelspin / lockup) throws roost backwards; a bottom-out punches a
+// puff straight out from the contact patch.
+const dust = [];
+const DUST_MAX  = 240;           // hard cap — oldest are dropped, so a long skid can't unbound
+const DUST_DRAG = 2.4;           // 1/s  air drag on a particle
+const DUST_RISE = 3.4;           // m/s² buoyancy (dust hangs and lifts rather than falling)
+
+function emitDust(x_m, y_m, n, spread, backward) {
+  for (let i = 0; i < n; i++) {
+    if (dust.length >= DUST_MAX) dust.shift();
+    const a = Math.random() * Math.PI * 2;
+    dust.push({
+      x: x_m + (Math.random() - 0.5) * 0.10,
+      y: y_m - Math.random() * 0.05,
+      vx: backward + Math.cos(a) * spread,
+      vy: -Math.abs(Math.sin(a)) * spread * 0.7,   // biased upward (−y = up)
+      life: 1,
+      decay: 0.9 + Math.random() * 0.8,            // 1/s
+      r: 0.035 + Math.random() * 0.055,            // m
+    });
+  }
+}
+
+function updateDust(dt) {
+  for (let i = dust.length - 1; i >= 0; i--) {
+    const p = dust[i];
+    p.life -= p.decay * dt;
+    if (p.life <= 0) { dust.splice(i, 1); continue; }
+    const d = Math.max(0, 1 - DUST_DRAG * dt);
+    p.vx *= d; p.vy = p.vy * d - DUST_RISE * dt;   // −y = up: dust rises as it slows
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.r += 0.28 * dt;                              // puffs bloom as they dissipate
+  }
+}
+
+function drawDust(w2sx) {
+  ctx.save();
+  for (const p of dust) {
+    ctx.globalAlpha = 0.40 * p.life * p.life;
+    ctx.fillStyle = '#c8a878';
+    ctx.beginPath(); ctx.arc(w2sx(p.x), screenY(p.y), Math.max(1, p.r * PM), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Edge-detect state for the bottom-out puff (fire once per bottoming, not every frame while held).
+let wasBottomedF = false, wasBottomedR = false;
+const BOTTOM_EPS = 0.002;        // m  slop on the travel limit
+
+// ═══════════════════════════════════════════════════════════
 //  MAIN DRAW LOOP
 // ═══════════════════════════════════════════════════════════
 function draw(ts) {
@@ -210,6 +286,38 @@ function draw(ts) {
       camY_m += (groundY_m(comX_m_d) - camY_m) * 0.006;        // in band → very gentle recenter
     }
   }
+
+  // ── Ground-contact FX: dust emission, then shadows under the wheels ───────────────────
+  // Emission is driven purely by physics state (slip velocity, travel limits). FX time freezes
+  // with the sim so a paused or scrubbing-rewind frame doesn't keep spitting dirt.
+  const fxDt = (paused || rewindMode) ? 0 : dt;
+  if (fxDt > 0) {
+    // Roost: a spinning or locked tire sprays dirt. Rate and cone widen with slip speed; the
+    // spray is thrown backwards relative to the bike's travel.
+    const SLIP_MIN = 1.2;   // m/s of contact-patch slip before dirt starts flying
+    if (f_tire_F !== 0 && frontSlipV > SLIP_MIN) {
+      const s = Math.min(1, (frontSlipV - SLIP_MIN) / 6);
+      emitDust(frontWheelX_m, groundY_m(frontWheelX_m),
+               1 + (Math.random() < s ? 1 : 0), 0.8 + s * 1.4, -vChassisX * 0.18);
+    }
+    if (rearContact && rearSlipV > SLIP_MIN) {
+      const s = Math.min(1, (rearSlipV - SLIP_MIN) / 6);
+      emitDust(rearWheelX_m, groundY_m(rearWheelX_m),
+               1 + Math.round(s * 2), 0.9 + s * 1.8, -vChassisX * 0.22 - s * 1.2);
+    }
+    // Bottom-out: one puff on the TRANSITION into the hard stop, not every frame it's held there.
+    const botF = -disp_f        >= TRAVEL_MAX - BOTTOM_EPS;
+    const botR = wheelTravel_r  >= TRAVEL_MAX - BOTTOM_EPS;
+    if (botF && !wasBottomedF && f_tire_F !== 0)
+      emitDust(frontWheelX_m, groundY_m(frontWheelX_m), 10, 2.2, -vChassisX * 0.10);
+    if (botR && !wasBottomedR && rearContact)
+      emitDust(rearWheelX_m,  groundY_m(rearWheelX_m),  12, 2.4, -vChassisX * 0.10);
+    wasBottomedF = botF; wasBottomedR = botR;
+    updateDust(fxDt);
+  }
+  // Shadows go down before the bike so the wheels sit on top of them.
+  drawContactShadow(rearWheelX_m,  rearWheelY_m,  WHEEL_R_R, w2sx);
+  drawContactShadow(frontWheelX_m, frontWheelY_m, WHEEL_R_F, w2sx);
 
   // ── Kinematic screen positions (chassis-relative) ─────────
   // These use the X positions computed in the physics step from fork/swingarm geometry.
@@ -485,6 +593,9 @@ function draw(ts) {
   ctx.stroke();
 
   // (Front wheel drawn before fork — see above)
+
+  // ── Dust, on top of the bike (roost blows past the rider) ─────────────────
+  drawDust(w2sx);
 
   // ── AIR indicators ────────────────────────────────────────
   ctx.font='bold 10px sans-serif';

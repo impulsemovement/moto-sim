@@ -3,8 +3,20 @@
 //  ARIZONA PARALLAX BACKGROUND
 // ═══════════════════════════════════════════════════════════
 
-// (Vertical parallax disabled — the horizon is fixed at groundBaseY; no per-frame ground/camera
-//  trackers are needed. Horizontal parallax is unchanged.)
+// ── Horizon anchor ──────────────────────────────────────────────────────────
+// The dirt is drawn at screenY(groundY_m(x)), which slides DOWN the screen whenever the camera
+// (camY_m) lags the bike — i.e. on every jump. The old fix pinned the whole scene to a fixed
+// groundBaseY horizon ("vertical parallax disabled"), which welded the cacti to a line the dirt
+// had left: on big air the plants floated in mid-sky.
+//
+// Instead, anchor the scene to the DIRT UNDER THE BIKE, low-passed. The camY_m term keeps the
+// scenery glued to the ground through a jump; the low-pass on the terrain sample kills the
+// per-bump jitter that made the original vertical parallax janky. Layers then interpolate
+// between groundBaseY (depth 0 = infinitely far, never moves) and that line (depth 1 = sitting
+// on the dirt), so distance still reads as parallax.
+let bgGroundRef_m = null;        // m, low-passed groundY_m under the bike (null → snap on first frame)
+const BG_GROUND_LP  = 0.03;      // per-frame lerp toward the live terrain height (slow = no shake)
+const BG_HORIZ_CLAMP = 0.55;     // max horizon travel as a fraction of canvas H (keeps sky on screen)
 
 // Deterministic hash (slot index n → 0..1 float)
 function bgH(n, sub) {
@@ -272,15 +284,26 @@ function drawFarMountains(W, H, baseY, hRef, scrollOff) {
 
 // ── Main draw function ──────────────────────────────────────
 function drawParallaxBackground(W, H) {
-  // VERTICAL PARALLAX DISABLED (for now): the horizon is fixed at groundBaseY, so the whole desert
-  // scene — mountains, mesas, cacti, rocks — stays rock-solid vertically and never bounces/wobbles
-  // with bumps, jumps or climbs. (Horizontal parallax is unchanged.) The sand fill below the horizon
-  // still covers everything down to the canvas bottom, so big jumps don't tear. gB is also the fixed
-  // size reference so nothing scales.
+  // gB stays the fixed SIZE reference (nothing scales with the camera); the horizon is where the
+  // scene sits vertically. See the "Horizon anchor" note at the top of this file.
   const gB = groundBaseY;
-  const horizY = gB;
   const comX = COM_SX();
-  const vy = () => gB;          // every layer sits on the fixed horizon (no vertical movement)
+
+  // Low-passed dirt height under the bike, then its screen Y under the live camera.
+  const gNow = groundY_m(worldX_m - A_FRONT_M);
+  // Snap (don't lerp) on the first frame and across a terrain/reset jump — otherwise the scene
+  // would visibly slide into place over a second. resetSim() lives in main.js (not this stream's
+  // file), so detect the discontinuity here instead of hooking the reset.
+  if (bgGroundRef_m === null || Math.abs(gNow - bgGroundRef_m) > 3) bgGroundRef_m = gNow;
+  else bgGroundRef_m += (gNow - bgGroundRef_m) * BG_GROUND_LP;
+  const horizRaw = (bgGroundRef_m - camY_m) * PM + gB;
+  // Clamp the horizon's travel so a huge jump or a deep pit can never push the sky (or the dirt
+  // fill) entirely off-canvas — beyond the clamp the scene just stops following.
+  const lim = H * BG_HORIZ_CLAMP;
+  const horizY = gB + Math.max(-lim, Math.min(lim, horizRaw - gB));
+
+  // depth 0 = infinitely far (locked to gB, never moves) … depth 1 = standing on the dirt.
+  const vy = d => gB + (horizY - gB) * (d === undefined ? 1 : d);
 
   // Scene-element scale = world scale × zoom response. The world scale (PM_base 100 mobile /
   // 200 desktop) makes the scenery shrink WITH the bike on a small canvas; without it the
@@ -310,14 +333,17 @@ function drawParallaxBackground(W, H) {
   }
 
   // ── Sky gradient ─────────────────────────────────────────
-  const skyG = ctx.createLinearGradient(0, 0, 0, horizY);
+  // Gradient GEOMETRY is pinned to gB so the sky's colour ramp doesn't stretch as the horizon
+  // moves; only the fill boundary follows horizY.
+  const skyG = ctx.createLinearGradient(0, 0, 0, gB);
   skyG.addColorStop(0,   '#1a5fa0');
   skyG.addColorStop(0.5, '#4a9fd4');
   skyG.addColorStop(1,   '#aad8f0');
-  ctx.fillStyle = skyG; ctx.fillRect(0, 0, W, horizY);
+  const skyBot = Math.max(0, Math.min(H, horizY));
+  ctx.fillStyle = skyG; ctx.fillRect(0, 0, W, skyBot);
   // Fill EVERYTHING below the horizon with a sand base, so on big jumps (horizon high above the
   // dirt line) there's never an unpainted/torn band — the real dirt is drawn on top by render.js.
-  if (horizY < H) { ctx.fillStyle = '#a88048'; ctx.fillRect(0, horizY, W, H - horizY); }
+  if (skyBot < H) { ctx.fillStyle = '#a88048'; ctx.fillRect(0, skyBot, W, H - skyBot); }
 
   // ── Clouds (speed 0.025) ─────────────────────────────────
   function drawCloud(cx, cy, r) {
@@ -359,7 +385,7 @@ function drawParallaxBackground(W, H) {
 
   // ── Distant small plants (speed 0.25) — scale at √zoom ───
   eachSlot(0.7, 0.25, 1.0, (n, sx) => {
-    const by = horizY;
+    const by = vy(0.86);   // set back from the dirt — follows it, but slightly damped
     const type = bgH(n, 16) < 0.5 ? 'shrub' : 'small-saguaro';
     ctx.save(); ctx.globalAlpha = 0.55;
     if (type === 'shrub') {
@@ -372,7 +398,7 @@ function drawParallaxBackground(W, H) {
 
   // ── Foreground plants (speed 0.42) — scale with zoom like bike ───
   eachSlot(1.2, 0.42, 1.5, (n, sx) => {
-    const by = horizY;
+    const by = vy(0.95);
     const roll = bgH(n, 20);
     if (roll < 0.28) {
       drawSaguaro(sx, by, (60 + bgH(n, 21) * 50) * pz);
@@ -390,7 +416,7 @@ function drawParallaxBackground(W, H) {
   // ── Near foreground: small rocks & bushes (speed 0.6) — the CLOSEST layer, reads as the ground
   // rushing by; the extra depth is especially visible on big jumps when more ground is in frame. ──
   eachSlot(0.9, 0.6, 1.6, (n, sx) => {
-    const by = horizY;
+    const by = vy(1.0);    // closest layer — sits right on the dirt
     const roll = bgH(n, 30);
     if (roll < 0.42) {
       drawRock(sx, by, (10 + bgH(n, 31) * 14) * pz);
