@@ -33,6 +33,10 @@ _(append one line per landed merge: date · branch · short summary · harness p
   - `ui-controls` · mobile control bar, independent front/rear brake buttons, pointer input layer, pinch/wheel zoom
   - `render-art` · bodywork + rider + brake discs, contact shadows, dust, atmospheric depth, scenery anchored to dirt
   - Conflicts were `index.html` `?v=` lines only (expected); UI's structural changes auto-merged.
+- 2026-10-22 · **render round-2 integrated** (resync pass) · `render-art` fast-forwarded in: rider body
+  rework + one-piece seat over a visible rear-subframe truss (tail cowl). render.js-only, no conflicts.
+  Also: untracked `.DS_Store`, normalized to v=77. · ✓ **57/57 harness**, no console errors. All six
+  worktrees resynced — everything back on one track.
 
 ## Known follow-ups (not merge blockers)
 - **Static sag is soft**: fork 43%, rear 50% of travel at rest (street norm ≈ 25–35%). Pre-existing —
