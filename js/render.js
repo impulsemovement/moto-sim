@@ -176,50 +176,58 @@ function drawBodywork() {
   ctx.beginPath(); ctx.moveTo(12, -108); ctx.quadraticCurveTo(50, -119, 84, -110); ctx.stroke();
   ctx.restore();
 
-  // ── Seat + tail unit ─────────────────────────────────────────────────────
-  // The frame polygon's rear section (A→B→C over L→A) tapers to a point at the tail vertex A.
-  // Drawn bare with only a thin seat sliver on top, the whole rear end read as a single spike
-  // jabbing out behind the rider. Give it real volume: a subframe box that fills the wedge,
-  // then a stepped seat and a tail cowl that ENDS in a blunt light rather than a point.
+  // ── Rear subframe + seat ──────────────────────────────────────────────────
+  // Real MT-07 layout: a cast MAIN frame around the engine (the big polygon drawn already), with a
+  // separate tubular REAR SUBFRAME bolted to its back that carries a single LONG one-piece seat.
+  // Draw the subframe as a lighter-alloy truss so the two-piece frame reads, then the seat on top —
+  // the seat base sits high enough that the truss shows in the open gap beneath it (the naked-bike
+  // look), instead of the old stepped rider-pad-plus-pillion-hump that read as a two-piece seat.
 
-  // Subframe / undertail box — hides the taper. It must reach PAST the frame's tail vertex A
-  // (-137,-86) or the bare polygon tip pokes out behind the cowl as a spike again.
-  ctx.beginPath();
-  ctx.moveTo(-24, -80);
-  ctx.lineTo(-132, -84);
-  ctx.quadraticCurveTo(-141, -83, -141, -76);
-  ctx.lineTo(-134, -66);
-  ctx.lineTo(-30, -68);
-  ctx.closePath();
-  ctx.fillStyle = '#1b1c20'; ctx.fill();
-  ctx.strokeStyle = '#3a3b41'; ctx.lineWidth = 1; ctx.stroke();
+  // Rear subframe truss. Two rails that converge at the tail + a diagonal brace, bolted to the main
+  // frame at two front anchors (bolt eyes drawn last). Shadow / body / highlight passes like the
+  // fork and swingarm, in a cooler steel tone distinct from the main frame's black casting.
+  const sfTop = [[-28, -85], [-96, -90], [-134, -87]];   // upper seat rail
+  const sfBot = [[-46, -68], [-100, -85], [-126, -86]];  // lower stay (converges toward the tail)
+  const sfDia = [[-46, -68], [-72, -87]];                // diagonal brace
+  const truss = (pts, w, col) => {
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+  };
+  for (const [w, col] of [[6, '#17181c'], [3.5, '#44474e'], [1.4, '#656974']]) {
+    truss(sfBot, w, col); truss(sfDia, w, col); truss(sfTop, w, col);
+  }
+  // Bolt eyes where the subframe mounts to the main frame — the visible seam between the two pieces.
+  ctx.fillStyle = '#0d0d10'; ctx.strokeStyle = '#6a6e78'; ctx.lineWidth = 1;
+  for (const [bx, by] of [[-28, -85], [-46, -68]]) {
+    ctx.beginPath(); ctx.arc(bx, by, 3.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
 
-  // Seat: rider pad, then a stepped pillion hump behind it.
+  // Long one-piece seat. Top edge runs nearly flat from the tank tail to the rear kick — a single
+  // continuous pad, no step. Base is lifted off the main frame so the truss above shows through.
   ctx.beginPath();
-  ctx.moveTo(-16, -84);                                 // front lip, against the tank
-  ctx.quadraticCurveTo(-26, -100, -48, -105);           // rise onto the rider pad
-  ctx.lineTo(-84, -108);
-  ctx.quadraticCurveTo(-96, -109, -98, -117);           // step up to the pillion
-  ctx.lineTo(-104, -119);
-  ctx.quadraticCurveTo(-124, -120, -136, -110);         // tail cowl, blunt-ended
-  ctx.quadraticCurveTo(-142, -100, -138, -85);
-  ctx.lineTo(-24, -82);
+  ctx.moveTo(-16, -84);                                 // front, tucked under the tank tail
+  ctx.quadraticCurveTo(-22, -103, -42, -106);           // rise onto the seat
+  ctx.lineTo(-118, -105);                               // LONG flat run — the one piece
+  ctx.quadraticCurveTo(-133, -104, -139, -97);          // rear kick
+  ctx.quadraticCurveTo(-143, -90, -134, -87);           // wrap under the tail
+  ctx.lineTo(-30, -88);                                 // base run forward (raised → truss shows)
+  ctx.quadraticCurveTo(-20, -88, -16, -84);
   ctx.closePath();
-  const sg = ctx.createLinearGradient(0, -119, 0, -82);
-  sg.addColorStop(0, '#33343a'); sg.addColorStop(0.5, '#1d1e22'); sg.addColorStop(1, '#0d0d10');
+  const sg = ctx.createLinearGradient(0, -107, 0, -84);
+  sg.addColorStop(0, '#3a3b42'); sg.addColorStop(0.55, '#1d1e22'); sg.addColorStop(1, '#121317');
   ctx.fillStyle = sg; ctx.fill();
   ctx.strokeStyle = '#4b4c53'; ctx.lineWidth = 1; ctx.stroke();
-  // Seat stitching, and the step between rider and pillion pads.
+  // Single continuous stitch line along the crown — one seam for one piece.
   ctx.save();
-  ctx.globalAlpha = 0.55; ctx.strokeStyle = '#6d6f78'; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(-22, -88); ctx.quadraticCurveTo(-50, -102, -86, -105); ctx.stroke();
+  ctx.globalAlpha = 0.5; ctx.strokeStyle = '#6d6f78'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(-34, -101); ctx.lineTo(-120, -100); ctx.stroke();
   ctx.restore();
 
-  // Tail light — blunt rear face of the cowl, not a point.
+  // Tail light — blunt rear face of the seat tail.
   ctx.fillStyle = '#e11d48';
-  ctx.beginPath(); ctx.roundRect(-140, -108, 5, 13, 2); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(-142, -99, 5, 11, 2); ctx.fill();
   ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#ff6b8b';
-  ctx.beginPath(); ctx.roundRect(-141, -106, 3, 9, 1.5); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(-143, -97, 3, 7, 1.5); ctx.fill();
   ctx.restore();
 
   // Side-cover badge (moved off the engine, where the rider's thigh now sits).
