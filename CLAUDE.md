@@ -239,6 +239,27 @@ commit with it red. Never weaken a threshold to make it pass.
 
 ---
 
+## Impulse presentation / design system
+
+This sim is a **sales tool for the Impulse Movement Prime Series emulator** (live at
+`/Impulse-Tester-sim/` on impulse-movement.com) and must share the look of the rest of the site.
+Target feel: **apple.com — clean, fluid, confident, lots of breathing room.** Every stream that
+touches anything visible uses these tokens; do not introduce off-brand colors (no blue, no crimson).
+
+- **Font:** the system stack, no webfont —
+  `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif`.
+- **Backgrounds:** page `#000`; panels `#0f1115` / `#111114`; raised `#171a21`. (Replaces the old
+  grey `#1f1f1f` / `#0f0f0f`.)
+- **Text:** primary `#f5f5f7`; muted `#a1a1a6`; hairlines / borders `#2a2a2e`.
+- **Brand accent (logo red):** `#F80000`. On black, small text/icons use the lifted `#ff4d40`.
+  Buttons are red with white text. **Kill the old `#e11d48` crimson and the stray `#3b82f6` blue.**
+- **Comparison-widget semantic colors (reserve for the Wave 2 A/B widget, to match the site's
+  emulator-explainer):** aftermarket/emulator = cyan `#3ac7e0`; heavier oil / "stiff" = amber
+  `#e0a23a`; stock = grey `#8a93a3`. Don't repurpose these for chrome.
+
+Define them once as CSS custom properties on `:root` in `styles.css`; canvas-drawn chrome
+(`render.js`) should use the same hex values so the DOM and the canvas read as one surface.
+
 ## Coding conventions
 
 - Match the surrounding code: dense, explanatory comments that say *why* (the physics rationale),
