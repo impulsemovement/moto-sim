@@ -1,49 +1,72 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Impulse Movement design system (see CLAUDE.md → "Impulse presentation").
+   apple.com feel: system font, true black, logo-red #F80000 accent, breathing room.
+   All colors flow from these tokens — no off-brand crimson/blue in the chrome.
+   ──────────────────────────────────────────────────────────────────────────── */
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bg: #000;            /* page */
+  --panel: #0f1115;      /* cards / stats */
+  --panel-2: #111114;    /* popups */
+  --raised: #171a21;     /* hover / inset raised */
+  --input-bg: #0a0c10;   /* text inputs / selects */
+  --text: #f5f5f7;       /* primary text */
+  --muted: #a1a1a6;      /* secondary text */
+  --dim: #6b7280;        /* faint helper text */
+  --line: #2a2a2e;       /* hairline borders */
+  --im-red: #F80000;     /* brand accent (logo red) — sliders, active states */
+  --accent-text: #ff4d40;/* lifted red for small text/icons on black */
+  --go: #2fd36b;         /* gas = "go" (functional green, not chrome) */
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #080808; color: #f0f0f0; font-family: sans-serif; padding: 10px; }
-canvas { display: block; background: #080808; }
-#c { border: 1px solid #1f1f1f; border-radius: 8px; }
-#minimap { display: block; width: 100%; height: 64px; background: #080808; border: 1px solid #1f1f1f; border-radius: 8px; margin-top: 6px; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); padding: 12px; -webkit-font-smoothing: antialiased; }
+canvas { display: block; background: var(--bg); }
+#c { border: 1px solid var(--line); border-radius: 12px; }
+#minimap { display: block; width: 100%; height: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; }
 
 #sim-wrap { position: relative; display: inline-block; width: 100%; }
 #zoom-btns {
-  position: absolute; top: 10px; left: 10px;
-  display: flex; flex-direction: row; gap: 4px; z-index: 10;
+  position: absolute; top: 12px; left: 12px;
+  display: flex; flex-direction: row; gap: 6px; z-index: 10;
 }
-#btn-mute { display: flex; align-items: center; justify-content: center; padding: 0; color: #f0f0f0; }
-#btn-mute.muted { color: #6b6b6b; }                 /* gray the speaker when muted */
-#btn-mute.muted .mute-waves { display: none; }      /* and drop the sound-wave arcs */
+#btn-mute { display: flex; align-items: center; justify-content: center; padding: 0; color: var(--text); }
+#btn-mute.muted { color: var(--dim); }               /* gray the speaker when muted */
+#btn-mute.muted .mute-waves { display: none; }        /* and drop the sound-wave arcs */
 #zoom-btns button {
-  width: 32px; height: 32px;
-  border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
-  background: rgba(0,0,0,0.45); color: #f0f0f0;
-  font-size: 18px; font-weight: 700; line-height: 1;
+  width: 34px; height: 34px;
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 9px;
+  background: rgba(0,0,0,0.5); color: var(--text);
+  font-size: 18px; font-weight: 600; line-height: 1;
   cursor: pointer; user-select: none; -webkit-user-select: none;
-  transition: background 0.1s;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: background 0.12s, border-color 0.12s;
 }
-#zoom-btns button:hover { background: rgba(255,255,255,0.10); }
-#zoom-btns button:active { background: rgba(255,255,255,0.15); }
+#zoom-btns button:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.24); }
+#zoom-btns button:active { background: rgba(255,255,255,0.16); }
 .top-btn {
-  position: absolute; top: 10px; z-index: 10;
-  height: 26px;
-  border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
-  background: rgba(0,0,0,0.45); color: #aaa;
-  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  position: absolute; top: 12px; z-index: 10;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 9px;
+  background: rgba(0,0,0,0.5); color: var(--muted);
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
   cursor: pointer; user-select: none; -webkit-user-select: none;
-  transition: background 0.1s, color 0.1s;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.top-btn:hover  { background: rgba(255,255,255,0.08); color: #ddd; }
+.top-btn:hover  { background: rgba(255,255,255,0.08); color: var(--text); border-color: rgba(255,255,255,0.22); }
 .top-btn:active { background: rgba(255,255,255,0.12); color: #fff; }
-#btn-reset  { right: 10px;  width: 52px; }
-#btn-pause  { right: 70px;  width: 34px; font-size: 13px; }
-#btn-rewind { right: 112px; width: 34px; font-size: 13px; }
-#btn-step   { right: 156px; width: 34px; font-size: 13px; }
-#rewind-bar { display: none; align-items: center; gap: 8px; margin: 6px 0; }
-#rewind-bar input[type=range] { flex: 1; margin: 0; accent-color: #e11d48; }
+#btn-reset  { right: 12px;  width: 54px; }
+#btn-pause  { right: 74px;  width: 36px; font-size: 13px; }
+#btn-rewind { right: 118px; width: 36px; font-size: 13px; }
+#btn-step   { right: 162px; width: 36px; font-size: 13px; }
+#rewind-bar { display: none; align-items: center; gap: 8px; margin: 8px 0; }
+#rewind-bar input[type=range] { flex: 1; margin: 0; accent-color: var(--im-red); }
 .ride-btn {
   position: absolute; bottom: 16px;
   width: 80px; height: 44px;
-  border: none; border-radius: 8px;
-  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  border: 1px solid transparent; border-radius: 11px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #fff;
   cursor: pointer; user-select: none; -webkit-user-select: none;
   /* Pointer-event handlers own these buttons; without this the browser would steal the
      gesture to scroll the page mid-hold and fire pointercancel (= a dropped throttle). */
@@ -58,60 +81,65 @@ canvas { display: block; background: #080808; }
 /* Centered START ENGINE button — appears when the engine stalls, fades out once running */
 #btn-start-engine {
   position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 30; padding: 14px 30px; border-radius: 10px;
-  background: #e11d48; color: #fff; border: none;
-  font-size: 16px; font-weight: 800; letter-spacing: 0.1em;
+  z-index: 30; padding: 14px 32px; border-radius: 12px;
+  background: var(--im-red); color: #fff; border: none;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.1em;
   cursor: pointer; user-select: none; -webkit-user-select: none;
-  box-shadow: 0 4px 22px rgba(0,0,0,0.6);
+  box-shadow: 0 6px 26px rgba(248,0,0,0.35);
   opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
 }
 #btn-start-engine.show { opacity: 1; pointer-events: auto; }
-#btn-start-engine:hover  { filter: brightness(1.12); }
+#btn-start-engine:hover  { filter: brightness(1.1); }
 #btn-start-engine:active { transform: translate(-50%, -50%) scale(0.96); }
 
 #key-legend {
   position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
   z-index: 9; max-width: calc(100% - 220px);
   display: flex; align-items: center; gap: 8px;
-  padding: 4px 8px; border-radius: 6px;
-  background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.08);
-  color: #999; font-size: 10px; letter-spacing: 0.02em; white-space: nowrap;
+  padding: 5px 10px; border-radius: 9px;
+  background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.08);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: var(--muted); font-size: 10px; letter-spacing: 0.02em; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
   user-select: none; -webkit-user-select: none;
 }
-#key-legend b { color: #ccc; font-weight: 700; }
-#key-legend-x { cursor: pointer; color: #777; font-weight: 700; padding: 0 2px; }
+#key-legend b { color: var(--text); font-weight: 700; }
+#key-legend-x { cursor: pointer; color: var(--dim); font-weight: 700; padding: 0 2px; }
 #key-legend-x:hover { color: #fff; }
 @media (max-width: 640px) { #key-legend { display: none; } }
+
+/* Ride controls. Functional color coding: GAS = go (green), BRAKE = stop (brand red),
+   CLUTCH / shifts = neutral. (The old blue clutch is gone — no off-brand blue.) */
 .brake-btn {
-  background: rgba(220,38,38,0.18); color: #ef4444;
-  border: 1px solid rgba(220,38,38,0.4);
+  background: rgba(248,0,0,0.20); color: #fff;
+  border: 1px solid rgba(248,0,0,0.55);
 }
 .brake-btn b { color: #fff; font-weight: 800; }
 #btn-brake-f { left: 20px; }
 #btn-brake-r { left: 112px; }
 #btn-gas {
   right: 20px;
-  background: rgba(34,197,94,0.18); color: #22c55e;
-  border: 1px solid rgba(34,197,94,0.4);
+  background: rgba(47,211,107,0.20); color: #fff;
+  border: 1px solid rgba(47,211,107,0.55);
 }
 #btn-clutch {
   left: 204px;
-  background: rgba(59,130,246,0.18); color: #3b82f6;
-  border: 1px solid rgba(59,130,246,0.4);
+  background: rgba(255,255,255,0.07); color: var(--text);
+  border: 1px solid rgba(255,255,255,0.22);
 }
 /* Shift buttons sit just above the brake/clutch row (gives mobile a way to change gears) */
 .shift-btn {
   bottom: 68px; height: 30px;
-  background: rgba(255,255,255,0.06); color: #d0d0d0;
+  background: rgba(255,255,255,0.06); color: var(--text);
   border: 1px solid rgba(255,255,255,0.22); font-size: 12px;
 }
 #btn-shift-dn { left: 20px; }
 #btn-shift-up { left: 112px; }
 #gear-box {
   position: absolute; right: 112px; bottom: 16px; z-index: 10;
-  width: 64px; height: 44px; border-radius: 8px;
-  background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15);
+  width: 64px; height: 44px; border-radius: 11px;
+  background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   user-select: none; -webkit-user-select: none;
 }
@@ -119,20 +147,20 @@ canvas { display: block; background: #080808; }
    #sim-wrap, exactly as before this element existed. Mobile overrides it into a grid. */
 #ride-controls { position: static; }
 #touch-legend { display: none; }
-#gear-num { font-size: 22px; font-weight: 700; color: #f0f0f0; line-height: 1; }
-#gear-rpm { font-size: 8px; color: #888; margin-top: 1px; letter-spacing: 0.04em; }
+#gear-num { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
+#gear-rpm { font-size: 8px; color: var(--dim); margin-top: 1px; letter-spacing: 0.04em; }
 
-.stats { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin: 8px 0; }
-.stat { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 6px; padding: 6px 4px; text-align: center; }
-.stat-n { font-size: 17px; font-weight: 700; color: #f0f0f0; }
-.stat-l { font-size: 9px; color: #777; margin-top: 2px; }
+.stats { display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; margin: 10px 0; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 4px; text-align: center; }
+.stat-n { font-size: 17px; font-weight: 700; color: var(--text); }
+.stat-l { font-size: 9px; color: var(--muted); margin-top: 3px; letter-spacing: 0.02em; }
 
 /* Desktop: 2-column grid, cards in order */
 .ui {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-auto-rows: auto;
-  gap: 8px;
+  gap: 10px;
 }
 /* Named grid areas — explicit placement so mobile reorder works */
 .card-susp   { grid-area: susp; }
@@ -143,29 +171,29 @@ canvas { display: block; background: #080808; }
 .card-geom   { grid-area: geom; }
 .card-custom { grid-area: custom; }
 .ui { grid-template-areas: "susp curve" "custom custom" "terrain fhist" "vhist geom"; }
-#terrain-canvas { display:block; width:100%; cursor:pointer; border-radius:4px; }
+#terrain-canvas { display:block; width:100%; cursor:pointer; border-radius:6px; }
 /* Custom-track builder: Add-feature icon popup + per-feature controls */
 .feature-popup {
   position:absolute; top:30px; left:0; z-index:40; display:none;
-  grid-template-columns:repeat(4,1fr); gap:6px; padding:8px;
-  background:#141414; border:1px solid #333; border-radius:8px; box-shadow:0 6px 22px rgba(0,0,0,0.6);
+  grid-template-columns:repeat(4,1fr); gap:6px; padding:10px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.7);
 }
 .feature-popup.open { display:grid; }
 .feature-popup button {
   display:flex; flex-direction:column; align-items:center; gap:3px; width:58px;
-  background:#0f0f0f; border:1px solid #1f1f1f; border-radius:6px; padding:6px 4px;
-  cursor:pointer; color:#bbb; font-size:8px; letter-spacing:0.03em; transition:background .12s,border-color .12s,color .12s;
+  background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 4px;
+  cursor:pointer; color:var(--muted); font-size:8px; letter-spacing:0.03em; transition:background .12s,border-color .12s,color .12s;
 }
-.feature-popup button:hover { background:#1c1c1c; border-color:#e11d48; color:#fff; }
+.feature-popup button:hover { background:var(--raised); border-color:var(--im-red); color:var(--text); }
 .feature-popup svg { width:40px; height:24px; }
 #feature-controls { display:none; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap; }
 #feature-controls.show { display:flex; }
-#feat-type-label { font-size:11px; color:#e11d48; font-weight:700; letter-spacing:0.06em; min-width:64px; }
+#feat-type-label { font-size:11px; color:var(--accent-text); font-weight:700; letter-spacing:0.06em; min-width:64px; }
 .feat-ctl { flex:1; min-width:110px; }
 
 /* Mobile: single column, curve + fhist drop below terrain */
 @media (max-width: 640px) {
-  body { padding: 2px; }
+  body { padding: 4px; }
   .ui {
     grid-template-columns: 1fr;
     grid-template-areas: "susp" "terrain" "geom" "curve" "custom" "fhist" "vhist";
@@ -180,7 +208,7 @@ canvas { display: block; background: #080808; }
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 6px;
-    margin-top: 6px;
+    margin-top: 8px;
   }
   #ride-controls > * { position: static; width: auto; }
   .ride-btn { height: 48px; font-size: 12px; }        /* ≥44 px: comfortable thumb target */
@@ -193,77 +221,77 @@ canvas { display: block; background: #080808; }
   #touch-legend {
     grid-column: 1 / -1;
     display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 3px 6px; border-radius: 6px;
+    padding: 4px 8px; border-radius: 9px;
     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
-    color: #777; font-size: 9.5px; letter-spacing: 0.02em;
+    color: var(--muted); font-size: 9.5px; letter-spacing: 0.02em;
     user-select: none; -webkit-user-select: none;
   }
-  #touch-legend b { color: #bbb; font-weight: 700; }
-  #touch-legend-x { cursor: pointer; color: #666; font-weight: 700; padding: 0 2px; }
+  #touch-legend b { color: var(--text); font-weight: 700; }
+  #touch-legend-x { cursor: pointer; color: var(--dim); font-weight: 700; padding: 0 2px; }
 
   /* Fixed to the viewport corner, it hovers over whatever is there — including the GAS button
      once the sim scrolls to the bottom of the screen. The in-page donate row still shows. */
   #btn-donate-corner { display: none; }
 }
 
-.card { background: #0f0f0f; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; position: relative; }
-label { font-size: 11px; color: #777; display: flex; justify-content: space-between; margin-bottom: 3px; }
-label span { color: #f0f0f0; font-weight: 600; }
-input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; position: relative; }
+label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 4px; }
+label span { color: var(--text); font-weight: 600; }
+input[type=range] { width: 100%; margin-bottom: 10px; accent-color: var(--im-red); }
 
-.toggle-group { display:flex; border:1px solid #1f1f1f; border-radius:6px; overflow:hidden; margin-bottom:10px; }
+.toggle-group { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; margin-bottom:12px; }
 .toggle-btn {
-  background:#0f0f0f; color:#777; border:none; padding:5px 14px;
+  background:var(--panel); color:var(--muted); border:none; padding:6px 14px;
   font-size:11px; cursor:pointer; flex:1; transition:background 0.15s,color 0.15s;
 }
-.toggle-btn:not(:last-child) { border-right:1px solid #1f1f1f; }
-.toggle-btn.active { background:#1a0000; color:#e11d48; font-weight:700; }
-.toggle-btn:hover:not(.active) { background:#1a1a1a; color:#ccc; }
+.toggle-btn:not(:last-child) { border-right:1px solid var(--line); }
+.toggle-btn.active { background:rgba(248,0,0,0.12); color:var(--accent-text); font-weight:700; }
+.toggle-btn:hover:not(.active) { background:var(--raised); color:var(--text); }
 
 .preset-btn {
-  background:#0f0f0f; color:#777; border:1px solid #1f1f1f; border-radius:4px;
-  padding:3px 7px; font-size:10px; cursor:pointer; transition:background 0.15s,color 0.15s;
+  background:var(--panel); color:var(--muted); border:1px solid var(--line); border-radius:7px;
+  padding:4px 9px; font-size:10px; cursor:pointer; transition:background 0.15s,color 0.15s,border-color 0.15s;
 }
-.preset-btn:hover { background:#1f1f1f; color:#f0f0f0; }
+.preset-btn:hover { background:var(--raised); color:var(--text); border-color:rgba(255,255,255,0.2); }
 
-/* --- Donate buttons (PayPal) --- */
+/* --- Donate button (PayPal) — on-brand red, not PayPal blue --- */
 .donate-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  border: none; border-radius: 8px;
-  background: #0070ba; color: #fff;
+  border: none; border-radius: 10px;
+  background: var(--im-red); color: #fff;
   font-weight: 700; letter-spacing: 0.04em; text-decoration: none;
-  cursor: pointer; transition: background 0.12s, transform 0.1s;
+  cursor: pointer; transition: filter 0.12s, transform 0.1s;
 }
-.donate-btn:hover  { background: #005c99; }
+.donate-btn:hover  { filter: brightness(1.1); }
 .donate-btn:active { transform: scale(0.97); }
 .donate-btn .heart { color: #ffc439; }
 
 /* floating corner button on the sim */
 #btn-donate-corner {
   position: fixed; right: 16px; bottom: 16px; z-index: 50;
-  padding: 8px 14px; font-size: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  padding: 9px 15px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(248,0,0,0.3);
 }
 
 /* full-width row under the controls */
 #donate-row {
   display: flex; justify-content: center; align-items: center; gap: 10px;
-  margin: 22px 0 10px; color: #777; font-size: 12px;
+  margin: 24px 0 10px; color: var(--muted); font-size: 12px;
 }
-#donate-row .donate-btn { padding: 9px 18px; font-size: 13px; }
+#donate-row .donate-btn { padding: 10px 20px; font-size: 13px; }
 
-.card-header { font-size:11px; color:#555; margin-bottom:8px; font-weight:600; letter-spacing:0.05em; }
-#curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:4px; flex:1; min-height:0; }
+.card-header { font-size:11px; color:var(--dim); margin-bottom:8px; font-weight:600; letter-spacing:0.05em; }
+#curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:6px; flex:1; min-height:0; }
 #curve-card   { display:flex; flex-direction:column; }
 .card-title {
   display:flex; align-items:center; justify-content:space-between;
   cursor:pointer; user-select:none;
-  font-size:11px; font-weight:700; letter-spacing:0.08em; color:#888;
-  padding-bottom:8px; margin-bottom:8px;
-  border-bottom:1px solid #1f1f1f;
+  font-size:11px; font-weight:700; letter-spacing:0.09em; color:var(--muted);
+  padding-bottom:10px; margin-bottom:10px;
+  border-bottom:1px solid var(--line);
 }
-.card-title:hover { color:#bbb; }
-.card-title .card-arrow { font-size:9px; color:#555; }
+.card-title:hover { color:var(--text); }
+.card-title .card-arrow { font-size:9px; color:var(--dim); }
 .card-body.collapsed { display:none !important; }
 .graph-yscale-wrap {
   position: absolute;
@@ -281,7 +309,7 @@ input[type=range] { width: 100%; margin-bottom: 8px; accent-color: #e11d48; }
   height: 20px;
   margin: 0; padding: 0;
   cursor: pointer;
-  accent-color: #e11d48;
+  accent-color: var(--im-red);
   opacity: 0.3;
   transition: opacity 0.15s;
 }

@@ -46,9 +46,9 @@
 <canvas id="minimap" title="Track map — bike position on the terrain"></canvas>
 
 <div id="rewind-bar">
-  <span style="font-size:10px;color:#e11d48;font-weight:700;letter-spacing:0.06em">REWIND</span>
+  <span style="font-size:10px;color:var(--accent-text);font-weight:700;letter-spacing:0.06em">REWIND</span>
   <input type="range" id="rewind-scrub" min="0" max="0" value="0" title="Scrub through recorded history">
-  <span id="rewind-time" style="font-size:10px;color:#888;min-width:54px;text-align:right">0.0s</span>
+  <span id="rewind-time" style="font-size:10px;color:var(--muted);min-width:54px;text-align:right">0.0s</span>
   <button class="preset-btn" id="btn-resume">Resume ▶</button>
 </div>
 
@@ -114,8 +114,8 @@
           <button class="toggle-btn active" id="btn-comp">COMP</button>
           <button class="toggle-btn"        id="btn-reb" >REB</button>
         </div>
-        <span id="curve-label" style="font-size:10px;color:#e11d48;font-weight:700">FRONT</span>
-        <span style="font-size:10px;color:#333">click=add · right-click=remove</span>
+        <span id="curve-label" style="font-size:10px;color:var(--accent-text);font-weight:700">FRONT</span>
+        <span style="font-size:10px;color:var(--dim)">click=add · right-click=remove</span>
       </div>
       <div style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="preset-btn" data-preset="linear">Linear</button>
@@ -135,9 +135,9 @@
     <div class="card-title">CUSTOM TRACK<span class="card-arrow">▼</span></div>
     <div class="card-body">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;position:relative">
-      <button id="btn-add-feature" class="preset-btn" style="font-weight:700;color:#e11d48">+ Add feature</button>
-      <span style="font-size:10px;color:#444">click a feature to select · build left → right · the track loops</span>
-      <span id="custom-hint" style="font-size:10px;color:#888;margin-left:auto">set Terrain → Cust to ride it</span>
+      <button id="btn-add-feature" class="preset-btn" style="font-weight:700;color:var(--accent-text)">+ Add feature</button>
+      <span style="font-size:10px;color:var(--dim)">click a feature to select · build left → right · the track loops</span>
+      <span id="custom-hint" style="font-size:10px;color:var(--muted);margin-left:auto">set Terrain → Cust to ride it</span>
       <div id="feature-popup" class="feature-popup"><!-- icon buttons injected by graphs.js --></div>
     </div>
     <canvas id="terrain-canvas" height="150"></canvas>
@@ -151,7 +151,7 @@
         <input type="range" id="featcount" min="2" max="12" value="5" step="1" style="margin-bottom:0"></div>
       <button id="btn-feat-left"  class="preset-btn" title="Move earlier">◀</button>
       <button id="btn-feat-right" class="preset-btn" title="Move later">▶</button>
-      <button id="btn-feat-del"   class="preset-btn" title="Delete feature" style="color:#e11d48">✕ Delete</button>
+      <button id="btn-feat-del"   class="preset-btn" title="Delete feature" style="color:var(--accent-text)">✕ Delete</button>
     </div>
     </div><!-- .card-body -->
   </div>
@@ -162,7 +162,7 @@
     <div class="card-body">
     <label>Terrain <span id="lterrain">Bumps</span></label>
     <input type="range" id="terrain" min="0" max="7" value="0" step="1">
-    <div style="display:flex;gap:0;font-size:7px;color:#444;margin-top:-5px;margin-bottom:8px">
+    <div style="display:flex;gap:0;font-size:7px;color:var(--dim);margin-top:-5px;margin-bottom:8px">
       <span style="flex:1;text-align:left">Bump</span>
       <span style="flex:1;text-align:center">Whoop</span>
       <span style="flex:1;text-align:center">Step</span>
@@ -194,7 +194,7 @@
     <input type="range" id="speed" min="0" max="160" value="30">
     <label>Time scale <span id="ltimescale">1.00×</span></label>
     <input type="range" id="timescale" min="5" max="150" value="100">
-    <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
+    <div style="border-top:1px solid var(--line);margin:8px 0 6px"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
       <div>
         <label>Gas rate <span id="lgasrate">7 m/s²</span></label>
@@ -221,14 +221,14 @@
     <input type="range" id="bounceF" min="0" max="100" value="35">
     <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
     <input type="range" id="bounceR" min="0" max="100" value="20">
-    <div style="border-top:1px solid #1f1f1f;margin:8px 0 6px"></div>
-    <label>Setups <span id="lsetup-status" style="color:#555;font-weight:400"></span></label>
+    <div style="border-top:1px solid var(--line);margin:8px 0 6px"></div>
+    <label>Setups <span id="lsetup-status" style="color:var(--muted);font-weight:400"></span></label>
     <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
       <input type="text" id="setup-name" placeholder="name…" maxlength="24"
-        style="flex:1;min-width:70px;background:#0a0a0a;border:1px solid #1f1f1f;border-radius:4px;color:#f0f0f0;font-size:11px;padding:4px 6px;">
+        style="flex:1;min-width:70px;background:var(--input-bg);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;">
       <button class="preset-btn" id="btn-setup-save">Save</button>
       <select id="setup-select"
-        style="flex:1;min-width:70px;background:#0a0a0a;border:1px solid #1f1f1f;border-radius:4px;color:#f0f0f0;font-size:11px;padding:4px;"></select>
+        style="flex:1;min-width:70px;background:var(--input-bg);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px;padding:4px;"></select>
       <button class="preset-btn" id="btn-setup-load">Load</button>
       <button class="preset-btn" id="btn-setup-del">Del</button>
     </div>
