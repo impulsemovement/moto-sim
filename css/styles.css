@@ -230,8 +230,8 @@ canvas { display: block; background: var(--bg); }
   #touch-legend-x { cursor: pointer; color: var(--dim); font-weight: 700; padding: 0 2px; }
 
   /* Fixed to the viewport corner, it hovers over whatever is there — including the GAS button
-     once the sim scrolls to the bottom of the screen. The in-page donate row still shows. */
-  #btn-donate-corner { display: none; }
+     once the sim scrolls to the bottom of the screen. The in-page buy row still shows. */
+  #btn-buy-corner { display: none; }
 }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; position: relative; }
@@ -254,31 +254,30 @@ input[type=range] { width: 100%; margin-bottom: 10px; accent-color: var(--im-red
 }
 .preset-btn:hover { background:var(--raised); color:var(--text); border-color:rgba(255,255,255,0.2); }
 
-/* --- Donate button (PayPal) — on-brand red, not PayPal blue --- */
-.donate-btn {
+/* --- Buy CTA button — primary red, drives purchase of the Prime emulator --- */
+.buy-btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: none; border-radius: 10px;
   background: var(--im-red); color: #fff;
   font-weight: 700; letter-spacing: 0.04em; text-decoration: none;
   cursor: pointer; transition: filter 0.12s, transform 0.1s;
 }
-.donate-btn:hover  { filter: brightness(1.1); }
-.donate-btn:active { transform: scale(0.97); }
-.donate-btn .heart { color: #ffc439; }
+.buy-btn:hover  { filter: brightness(1.1); }
+.buy-btn:active { transform: scale(0.97); }
 
 /* floating corner button on the sim */
-#btn-donate-corner {
+#btn-buy-corner {
   position: fixed; right: 16px; bottom: 16px; z-index: 50;
   padding: 9px 15px; font-size: 12px;
   box-shadow: 0 4px 16px rgba(248,0,0,0.3);
 }
 
 /* full-width row under the controls */
-#donate-row {
+#buy-row {
   display: flex; justify-content: center; align-items: center; gap: 10px;
   margin: 24px 0 10px; color: var(--muted); font-size: 12px;
 }
-#donate-row .donate-btn { padding: 10px 20px; font-size: 13px; }
+#buy-row .buy-btn { padding: 10px 20px; font-size: 13px; }
 
 .card-header { font-size:11px; color:var(--dim); margin-bottom:8px; font-weight:600; letter-spacing:0.05em; }
 #curve-canvas { display:block; width:100%; cursor:crosshair; border-radius:6px; flex:1; min-height:0; }

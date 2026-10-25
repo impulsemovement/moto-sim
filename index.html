@@ -284,24 +284,21 @@
 
 </div><!-- .ui -->
 
-<!-- Donate row under the controls -->
-<div id="donate-row">
-  <span>Like the sim? Help keep it running.</span>
-  <a class="donate-btn donate-link" target="_blank" rel="noopener">
-    <span class="heart">♥</span> Donate
-  </a>
+<!-- Buy CTA row under the controls — the sim is a sales tool for the Prime emulator -->
+<div id="buy-row">
+  <span>Love how it rides? Get the real thing.</span>
+  <a class="buy-btn buy-link" target="_blank" rel="noopener">Shop Prime →</a>
 </div>
 
-<!-- Floating corner donate button -->
-<a id="btn-donate-corner" class="donate-btn donate-link" target="_blank" rel="noopener"
-   title="Support this project">
-  <span class="heart">♥</span> Donate
-</a>
+<!-- Floating corner buy CTA (opens in a NEW TAB — the sim runs in an iframe) -->
+<a id="btn-buy-corner" class="buy-btn buy-link" target="_blank" rel="noopener"
+   title="Shop the Prime Series fork emulator">Shop Prime →</a>
 
 <script>
-  // ▼▼ Paste your PayPal link here (e.g. https://www.paypal.com/donate?... or https://paypal.me/yourname) ▼▼
-  var DONATE_URL = "https://www.paypal.com/donate";
-  document.querySelectorAll(".donate-link").forEach(function (a) { a.href = DONATE_URL; });
+  // TODO: confirm live Prime product URL
+  // Single source for the buy link — swapping the real URL is this one line.
+  var BUY_URL = "https://impulse-movement.com/product/prime-series-emulator/";
+  document.querySelectorAll(".buy-link").forEach(function (a) { a.href = BUY_URL; });
 </script>
 
 <!-- core.js was split into domain files (see CLAUDE.md); load order = original top-to-bottom -->
