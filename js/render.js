@@ -14,11 +14,11 @@ function drawWheel(cx, cy, r_px, rotAngle, calAng) {
   // Draw order is back→front: SPOKES first, then the TIRE on top, so the tire (and its
   // inner edge) sits in front of the wheel and tucks the spoke ends under it.
 
-  // Spokes (behind) — thick, high-contrast pink (matches the fork spring & rear shock).
+  // Spokes (behind) — thick, high-contrast brand red (matches the fork spring & rear shock).
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(rotAngle || 0);
-  ctx.strokeStyle = '#e11d48';
+  ctx.strokeStyle = '#F80000';
   ctx.lineWidth = Math.max(2, r_px * 0.255);   // scales with wheel size (no fixed-px floor)
   ctx.lineCap = 'round';
   const spokeInner = r_px * 0.10;              // spoke start radius — scales with the wheel
@@ -148,90 +148,15 @@ function drawBodywork() {
   ctx.beginPath(); ctx.roundRect(-26, -7, 6, 14, 3); ctx.fill();
   ctx.restore();
 
-  // ── Fuel tank: bottom edge rides the frame's upper spar (D→E→F); the top surface
-  //    bulges above it. Without this the frame polygon read as a featureless slab.
-  ctx.beginPath();
-  ctx.moveTo(-14, -84);
-  ctx.lineTo(5, -72);                                   // D  mid-frame
-  ctx.lineTo(45, -99);                                  // E  upper spar peak
-  ctx.lineTo(92, -105);                                 // F  head tube top
-  ctx.quadraticCurveTo(97, -119, 62, -121);             // over the top of the tank
-  ctx.quadraticCurveTo(28, -123, 3, -110);
-  ctx.quadraticCurveTo(-9, -100, -14, -84);
-  ctx.closePath();
-  const tg = ctx.createLinearGradient(0, -122, 0, -72);
-  tg.addColorStop(0,   '#e11d48');                      // crimson, matching the springs/spokes
-  tg.addColorStop(0.55,'#b0173a');
-  tg.addColorStop(1,   '#6d0f24');
-  ctx.fillStyle = tg; ctx.fill();
-  ctx.strokeStyle = '#f4517a'; ctx.lineWidth = 1; ctx.stroke();
-  // Knee scallop — the shadowed dish the rider's knee tucks into.
-  ctx.save();
-  ctx.globalAlpha = 0.30; ctx.fillStyle = '#3a0a16';
-  ctx.beginPath(); ctx.ellipse(34, -95, 24, 10, -0.30, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
-  // Specular streak along the tank's crown.
-  ctx.save();
-  ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ff9ab4'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(12, -108); ctx.quadraticCurveTo(50, -119, 84, -110); ctx.stroke();
-  ctx.restore();
+  // Fuel tank, rear subframe and seat removed by design: the bike is drawn as a bare,
+  // suspension-focused machine (no tank/seat/rider) so the eye lands on the fork and shock —
+  // this sim sells the Prime fork emulator. The solid cast frame polygon + engine stay as-is.
 
-  // ── Rear subframe + seat ──────────────────────────────────────────────────
-  // Real MT-07 layout: a cast MAIN frame around the engine (the big polygon drawn already), with a
-  // separate tubular REAR SUBFRAME bolted to its back that carries a single LONG one-piece seat.
-  // Draw the subframe as a lighter-alloy truss so the two-piece frame reads, then the seat on top —
-  // the seat base sits high enough that the truss shows in the open gap beneath it (the naked-bike
-  // look), instead of the old stepped rider-pad-plus-pillion-hump that read as a two-piece seat.
+  // (Rear subframe, one-piece seat and tail light removed with the rider — the bare frame tail
+  //  stands on its own now.)
 
-  // Rear subframe truss. Two rails that converge at the tail + a diagonal brace, bolted to the main
-  // frame at two front anchors (bolt eyes drawn last). Shadow / body / highlight passes like the
-  // fork and swingarm, in a cooler steel tone distinct from the main frame's black casting.
-  const sfTop = [[-28, -85], [-96, -90], [-134, -87]];   // upper seat rail
-  const sfBot = [[-46, -68], [-100, -85], [-126, -86]];  // lower stay (converges toward the tail)
-  const sfDia = [[-46, -68], [-72, -87]];                // diagonal brace
-  const truss = (pts, w, col) => {
-    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
-  };
-  for (const [w, col] of [[6, '#17181c'], [3.5, '#44474e'], [1.4, '#656974']]) {
-    truss(sfBot, w, col); truss(sfDia, w, col); truss(sfTop, w, col);
-  }
-  // Bolt eyes where the subframe mounts to the main frame — the visible seam between the two pieces.
-  ctx.fillStyle = '#0d0d10'; ctx.strokeStyle = '#6a6e78'; ctx.lineWidth = 1;
-  for (const [bx, by] of [[-28, -85], [-46, -68]]) {
-    ctx.beginPath(); ctx.arc(bx, by, 3.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  }
-
-  // Long one-piece seat. Top edge runs nearly flat from the tank tail to the rear kick — a single
-  // continuous pad, no step. Base is lifted off the main frame so the truss above shows through.
-  ctx.beginPath();
-  ctx.moveTo(-16, -84);                                 // front, tucked under the tank tail
-  ctx.quadraticCurveTo(-22, -103, -42, -106);           // rise onto the seat
-  ctx.lineTo(-118, -105);                               // LONG flat run — the one piece
-  ctx.quadraticCurveTo(-133, -104, -139, -97);          // rear kick
-  ctx.quadraticCurveTo(-143, -90, -134, -87);           // wrap under the tail
-  ctx.lineTo(-30, -88);                                 // base run forward (raised → truss shows)
-  ctx.quadraticCurveTo(-20, -88, -16, -84);
-  ctx.closePath();
-  const sg = ctx.createLinearGradient(0, -107, 0, -84);
-  sg.addColorStop(0, '#3a3b42'); sg.addColorStop(0.55, '#1d1e22'); sg.addColorStop(1, '#121317');
-  ctx.fillStyle = sg; ctx.fill();
-  ctx.strokeStyle = '#4b4c53'; ctx.lineWidth = 1; ctx.stroke();
-  // Single continuous stitch line along the crown — one seam for one piece.
-  ctx.save();
-  ctx.globalAlpha = 0.5; ctx.strokeStyle = '#6d6f78'; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(-34, -101); ctx.lineTo(-120, -100); ctx.stroke();
-  ctx.restore();
-
-  // Tail light — blunt rear face of the seat tail.
-  ctx.fillStyle = '#e11d48';
-  ctx.beginPath(); ctx.roundRect(-142, -99, 5, 11, 2); ctx.fill();
-  ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#ff6b8b';
-  ctx.beginPath(); ctx.roundRect(-143, -97, 3, 7, 1.5); ctx.fill();
-  ctx.restore();
-
-  // Side-cover badge (moved off the engine, where the rider's thigh now sits).
-  ctx.fillStyle = '#e11d48'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
+  // Side-cover badge on the bare frame — brand red.
+  ctx.fillStyle = '#F80000'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('MT-07', -74, -73);
 }
 
@@ -319,7 +244,7 @@ function drawRider() {
   ctx.strokeStyle = '#5b6373'; ctx.lineWidth = 1; ctx.stroke();
   // Racing stripe up the spine
   ctx.save(); ctx.globalAlpha = 0.8;
-  ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+  ctx.strokeStyle = '#F80000'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-56, -104); ctx.quadraticCurveTo(-44, -134, -22, -154); ctx.stroke();
   ctx.restore();
 
@@ -518,7 +443,7 @@ function draw(ts) {
     if (gn) {
       gn.textContent = clutchPulled || clutchEngage < 0.5 ? 'N' : (gear + 1);
       const overRev = engineRPM > RPM_REDLINE * 0.97;
-      gn.style.color = overRev ? '#e11d48' : '#f0f0f0';
+      gn.style.color = overRev ? '#ff4d40' : '#f0f0f0';
     }
     if (gr) gr.textContent = Math.round(engineRPM) + ' rpm';
   }
@@ -819,11 +744,10 @@ function draw(ts) {
   ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(92,-104); ctx.lineTo(119,-90); ctx.stroke();
 
-  // ── Bodywork, rider, bars (all chassis-fixed → they pitch with the frame) ────
-  // Order matters: tank/seat first, then the rider sitting on them, then the bars over
-  // the rider's hands.
+  // ── Bodywork + bars (chassis-fixed → they pitch with the frame) ────
+  // Rider removed: this is a bare, suspension-focused machine. (drawRider/riderLimb are left
+  // defined but unused.)
   drawBodywork();
-  drawRider();
   drawHandlebars();
 
   ctx.restore();
@@ -888,8 +812,8 @@ function draw(ts) {
 
     const coils = 6, amp = 5.5 * sc, segs = coils * 8;
     const tf = Math.max(0, Math.min(1, wheelTravel_r / TRAVEL_MAX));   // compression fraction
-    ctx.strokeStyle = `hsl(${350 - tf * 20},${60 + tf * 40}%,${42 + tf * 13}%)`;
-    ctx.lineWidth = 2.5 * sc;
+    ctx.strokeStyle = `hsl(0,92%,${44 + tf * 16}%)`;   // brand red; the shock coil is a hero element
+    ctx.lineWidth = 3 * sc;                            // bold
     ctx.beginPath();
     for (let i = 0; i <= segs; i++) {
       const t  = i / segs;
@@ -948,8 +872,8 @@ function draw(ts) {
   const sliderMidX = steerX + forkDX * 0.50;
   const sliderMidY = steerY_px + forkDY * 0.50;
   const travelFrac_F = Math.max(0, Math.min(1, (-disp_f + TRAVEL_MAX * 0.5) / TRAVEL_MAX));
-  const springColor  = `hsl(${350 - travelFrac_F*20},${60+travelFrac_F*40}%,${30+travelFrac_F*20}%)`;
-  ctx.strokeStyle = springColor; ctx.lineWidth = 2;
+  const springColor  = `hsl(0,92%,${42 + travelFrac_F*16}%)`;   // brand red; the fork spring is the hero
+  ctx.strokeStyle = springColor; ctx.lineWidth = 2.8;
   ctx.beginPath();
   for (let i = 0; i <= nSegs*4; i++) {
     const tt  = i / (nSegs*4);
@@ -959,6 +883,32 @@ function draw(ts) {
   }
   ctx.stroke();
 
+  // ── PRIME callout: the Impulse Prime Series emulator lives INSIDE the fork — point at it. ──
+  // A soft red glow on the slider pulls the eye to the suspension, and a small "PRIME" tag in the
+  // open air names the product. Small and clean: a product pointer, not a billboard.
+  {
+    const aX = sliderMidX, aY = sliderMidY;              // anchor on the fork slider
+    ctx.save();
+    const glow = ctx.createRadialGradient(aX, aY, 0, aX, aY, 20 * sc);
+    glow.addColorStop(0, 'rgba(248,0,0,0.34)');
+    glow.addColorStop(1, 'rgba(248,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(aX, aY, 20 * sc, 0, Math.PI * 2); ctx.fill();
+
+    const tagCx = aX + 52 * sc, tagCy = aY - 26 * sc;    // tag out to the upper-right, in open air
+    const tw = 42 * sc, th = 15 * sc;
+    ctx.strokeStyle = '#F80000'; ctx.lineWidth = 1.2 * sc; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(tagCx - tw / 2, tagCy); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(tagCx - tw / 2, tagCy - th / 2, tw, th, 3 * sc);
+    ctx.fillStyle = 'rgba(10,10,12,0.9)'; ctx.fill();
+    ctx.strokeStyle = '#F80000'; ctx.lineWidth = 1.2 * sc; ctx.stroke();
+    ctx.fillStyle = '#ff4d40';
+    ctx.font = `bold ${Math.round(8.5 * sc)}px -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('PRIME', tagCx, tagCy + 0.5 * sc);
+    ctx.restore();
+  }
+
   // (Front wheel drawn before fork — see above)
 
   // ── Dust, on top of the bike (roost blows past the rider) ─────────────────
@@ -967,11 +917,11 @@ function draw(ts) {
   // ── AIR indicators ────────────────────────────────────────
   ctx.font='bold 10px sans-serif';
   if (f_tire_F===0) {
-    ctx.fillStyle='#e11d48'; ctx.textAlign='left';
+    ctx.fillStyle='#ff4d40'; ctx.textAlign='left';
     ctx.fillText('AIR', fwX_px+Math.round(WHEEL_R_F*PM)+5, fwY_px+4);
   }
   if (!rearContact) {
-    ctx.fillStyle='#e11d48'; ctx.textAlign='right';
+    ctx.fillStyle='#ff4d40'; ctx.textAlign='right';
     ctx.fillText('AIR', rwX_px-Math.round(WHEEL_R_R*PM)-5, rwY_px+4);
   }
 
@@ -1093,7 +1043,7 @@ function drawMinimap() {
   c2.strokeStyle = 'rgba(255,255,255,0.10)'; c2.lineWidth = 1;
   c2.beginPath(); c2.moveTo(W / 2, 0); c2.lineTo(W / 2, H); c2.stroke();
   const by = sy(chassisY_m);
-  c2.fillStyle = '#e11d48';
+  c2.fillStyle = '#F80000';
   c2.beginPath(); c2.arc(W / 2, by, 4, 0, Math.PI * 2); c2.fill();
   c2.strokeStyle = '#fff'; c2.lineWidth = 1; c2.stroke();
 
