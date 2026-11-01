@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=78">
+<link rel="stylesheet" href="css/styles.css?v=79">
 </head>
 <body>
 
@@ -295,27 +295,27 @@
    title="Shop the Prime Series fork emulator">Shop Prime →</a>
 
 <script>
-  // TODO: confirm live Prime product URL
-  // Single source for the buy link — swapping the real URL is this one line.
-  var BUY_URL = "https://impulse-movement.com/product/prime-series-emulator/";
+  // Prime product page, with analytics tags (confirmed by the Impulse site session). Query string
+  // before the #anchor so it parses correctly. Single source — swapping the URL is this one line.
+  var BUY_URL = "https://impulse-movement.com/product/prime-series-emulator/?utm_source=motosim&utm_medium=sim&utm_campaign=shop-btn#buy";
   document.querySelectorAll(".buy-link").forEach(function (a) { a.href = BUY_URL; });
 </script>
 
 <!-- core.js was split into domain files (see CLAUDE.md); load order = original top-to-bottom -->
-<script src="js/core-config.js?v=78"></script>
-<script src="js/core-params.js?v=78"></script>
-<script src="js/core-track.js?v=78"></script>
-<script src="js/core-curves.js?v=78"></script>
-<script src="js/core-terrain.js?v=78"></script>
-<script src="js/core-state.js?v=78"></script>
-<script src="js/physics.js?v=78"></script>
-<script src="js/render.js?v=78"></script>
-<script src="js/graphs.js?v=78"></script>
-<script src="js/ui.js?v=78"></script>
-<script src="js/background.js?v=78"></script>
-<script src="js/audio.js?v=78"></script>
-<script src="js/main.js?v=78"></script>
+<script src="js/core-config.js?v=79"></script>
+<script src="js/core-params.js?v=79"></script>
+<script src="js/core-track.js?v=79"></script>
+<script src="js/core-curves.js?v=79"></script>
+<script src="js/core-terrain.js?v=79"></script>
+<script src="js/core-state.js?v=79"></script>
+<script src="js/physics.js?v=79"></script>
+<script src="js/render.js?v=79"></script>
+<script src="js/graphs.js?v=79"></script>
+<script src="js/ui.js?v=79"></script>
+<script src="js/background.js?v=79"></script>
+<script src="js/audio.js?v=79"></script>
+<script src="js/main.js?v=79"></script>
 <!-- Validation harness: loaded ONLY with ?test in the URL (production unaffected). See CLAUDE.md. -->
-<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=78';document.body.appendChild(s);}</script>
+<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=79';document.body.appendChild(s);}</script>
 </body>
 </html>
