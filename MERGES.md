@@ -38,7 +38,20 @@ _(append one line per landed merge: date · branch · short summary · harness p
   Also: untracked `.DS_Store`, normalized to v=77. · ✓ **57/57 harness**, no console errors. All six
   worktrees resynced — everything back on one track.
 
+- 2026-11-01 · **Presentation pass integrated** (reskin + buy CTA + new bike) · merged `ui-controls`
+  (apple-style reskin to the Impulse design system; Donate → red "Shop Prime" CTA at the Prime product
+  URL, opens in a new tab) and `render-art` (suspension-focused bike: kept the solid chassis, removed
+  rider/tank/seat, fork + shock as the brand-red hero with a PRIME fork tag). Normalized to v=78.
+  Buy URL confirmed by the WordPress coordinating session. · harness: pending re-verify on merge.
+
 ## Known follow-ups (not merge blockers)
+- **Cross-marketing build-out (proposed, not built):** stock-fork ⇄ Prime toggle (the Wave 2
+  comparison widget, branded), end-of-run results card, clickable PRIME fork tag, UTM + carried
+  bike/setup params on outbound links. Needs real stock-vs-Prime fork specs from the website side and
+  the static-sag calibration first. See the proposal sent to the WordPress session.
+- **graphs.js data-viz palette still off-brand:** the force/velocity graph series + damping-curve
+  editor line (and their legend swatches in index.html ~L247–250/264–265) still use crimson/blue.
+  Rebrand the series + swatches together when graphs.js's owner is in.
 - **Static sag is soft**: fork 43%, rear 50% of travel at rest (street norm ≈ 25–35%). Pre-existing —
   no stream changed `P` defaults/springs/mass. Belongs to Physics core, ideally calibrated against
   real MT-07 figures the way Engine just calibrated `ENGINE_K`.
