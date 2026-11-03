@@ -44,7 +44,22 @@ _(append one line per landed merge: date · branch · short summary · harness p
   rider/tank/seat, fork + shock as the brand-red hero with a PRIME fork tag). Normalized to v=78.
   Buy URL confirmed by the WordPress coordinating session. · harness: pending re-verify on merge.
 
+- 2026-11-02 · **Shop Prime UTM + static-sag calibration** · (1) buy button → …/prime-series-emulator/
+  ?utm_source=motosim&utm_medium=sim&utm_campaign=shop-btn#buy (v=79). (2) Sprung the stock bike to
+  realistic street sag: `k_f` 18→23 (front **35%**, proper 25–35%), `k_r` 18→26 (rear **38%**, down
+  from 50%). Default slider values in index.html updated to match (authoritative on load). Added a
+  static-sag harness scenario. v=83. · ✓ **59/59 harness**. The calibration surfaced a contact bug
+  (next item) that caps how firm the rear can go.
+
 ## Known follow-ups (not merge blockers)
+- **Rear-contact robustness (blocks a firmer rear sag):** stiffening the springs for sag revealed an
+  *erratic* `resolveTireBottom` instability — on hard kicker landings the REAR rim tunnels through the
+  ground (e.g. `k_r` 49mm at one setting, ~500mm one step stiffer), and a stiffer front (`k_f`≥24)
+  trips the `f_tire_F` force dropout. Non-monotonic in spring rate, so it's a genuine contact bug, not
+  just tuning. Because of it the rear sag is held plush (~38%, `k_r`=26) instead of a true 30–35%.
+  **Physics core:** make the contact robust across the spring-slider range, then firm `k_r` up and
+  tighten the rear-sag harness band back to 25–35%. This also hardens the Prime toggle (users move the
+  sliders). The front (35%) is already correct, so the comparison's key end is calibrated.
 - **Cross-marketing build-out (proposed, not built):** stock-fork ⇄ Prime toggle (the Wave 2
   comparison widget, branded), end-of-run results card, clickable PRIME fork tag, UTM + carried
   bike/setup params on outbound links. Needs real stock-vs-Prime fork specs from the website side and
@@ -52,8 +67,5 @@ _(append one line per landed merge: date · branch · short summary · harness p
 - **graphs.js data-viz palette still off-brand:** the force/velocity graph series + damping-curve
   editor line (and their legend swatches in index.html ~L247–250/264–265) still use crimson/blue.
   Rebrand the series + swatches together when graphs.js's owner is in.
-- **Static sag is soft**: fork 43%, rear 50% of travel at rest (street norm ≈ 25–35%). Pre-existing —
-  no stream changed `P` defaults/springs/mass. Belongs to Physics core, ideally calibrated against
-  real MT-07 figures the way Engine just calibrated `ENGINE_K`.
 - `resetSim()` (main.js, UI-owned) does not reset Engine's `gearPrev`/`shiftTimer`. Engine self-heals
   via the `startGrace` resync and determinism passes — but if either stream touches this, revisit.

@@ -308,6 +308,24 @@ const MotoValidate = (() => {
       const same = a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
       return [['determinism: identical inputs ⇒ identical state', same, same ? '' : `${a} vs ${b}`]];
     },
+    function staticSag() {
+      // The stock bike must REST at realistic street sag (25–35% of travel) with the rider mass on
+      // it — not sink to ~44%/50% like the old soft default. This is the calibrated baseline the
+      // Prime comparison relies on; keep front and rear springs set so sag stays in band.
+      P.terrain = 6; P.speed = 0; resetSim();
+      for (let i = 0; i < 300; i++) { gasPressed = false; clutchPulled = true; simStep(0.016); }
+      const forkPct = (-forkSlide_f) / TRAVEL_MAX * 100;
+      const rearPct = (PHI_REST - swingAngle) / (PHI_REST - PHI_FULL_BUMP) * 100;
+      clutchPulled = false;
+      // Front is held to proper street sag (25–35%). The rear band is 25–40% rather than 25–35%
+      // ON PURPOSE: the firmest contact-stable rear is ~38% (see core-params.js / MERGES.md — a
+      // stiffer k_r tunnels the rear rim on hard landings). TIGHTEN the rear to 35% once the
+      // resolveTireBottom contact-robustness follow-up lands and k_r can go up.
+      return [
+        ['static sag: front in street range (25–35%)', forkPct >= 25 && forkPct <= 35, `${forkPct.toFixed(0)}%`],
+        ['static sag: rear in range (25–40%, contact-capped)', rearPct >= 25 && rearPct <= 40, `${rearPct.toFixed(0)}%`],
+      ];
+    },
   ];
 
   function run() {

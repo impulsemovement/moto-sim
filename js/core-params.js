@@ -70,10 +70,20 @@ function tireForce(pen, v, k_tire, m_unsprung, dt, travel, dampScale) {
   return -Fup;                                    // negative = upward
 }
 
+// Default spring rates calibrated so the stock bike RESTS at realistic street sag — ~35% front /
+// ~38% rear of travel with the rider mass below — a big firm-up from the old soft 44%/50%. This is
+// the "correctly sprung stock MT-07" baseline the Prime fork emulator (a damping product) gets
+// compared against; the FRONT (the Prime-relevant end) is dialed to proper 25–35% street sag.
+// The rear is held a touch plush (~38%) ON PURPOSE: it's the firmest the contact code can currently
+// take. Stiffer springs destabilize hard landings in an erratic resolveTireBottom instability —
+// k_f≥24 trips the f_tire_F force dropout (fast fork rebound lets the carcass damper cancel the
+// spring), and k_r≥~28 makes the REAR rim tunnel through the ground on a hard kicker landing (49mm
+// one setting, 500mm the next). Firming the rear to a true 30–35% needs that contact fix first — a
+// physics-core follow-up (see MERGES.md). The HTML slider defaults (index.html) must match these.
 let P = {
-  k_f:18, pre_f:0, damp_f:0.5, air_f:0.15,
+  k_f:23, pre_f:0, damp_f:0.5, air_f:0.15,
   k_tire_f: psiToKtire(36), m_unsprung_f: 13, psi_f: 36,   // front tire / wheel (psi kept for grip)
-  k_r:18, pre_r:0, damp_r:0.5,
+  k_r:26, pre_r:0, damp_r:0.5,
   k_tire_r: psiToKtire(36), m_unsprung_r: 17, psi_r: 36,   // rear  tire / wheel
   mass:75,
   terrain:0, amp:0.4, freq:1.0, rough:0, duty:0.30,

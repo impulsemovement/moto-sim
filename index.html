@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT-07 Suspension Simulator</title>
-<link rel="stylesheet" href="css/styles.css?v=79">
+<link rel="stylesheet" href="css/styles.css?v=83">
 </head>
 <body>
 
@@ -74,8 +74,8 @@
 
     <!-- Front sliders (shown when FRONT active) -->
     <div id="susp-front">
-      <label>Spring rate <span id="lk_f">18 N/mm</span></label>
-      <input type="range" id="k_f" min="5" max="100" value="18" step="0.5">
+      <label>Spring rate <span id="lk_f">23 N/mm</span></label>
+      <input type="range" id="k_f" min="5" max="100" value="23" step="0.5">
       <label>Air gap / progression <span id="lair_f">15%</span></label>
       <input type="range" id="air_f" min="0" max="100" value="15">
       <label>Preload <span id="lpre_f">0 mm</span></label>
@@ -90,8 +90,8 @@
 
     <!-- Rear sliders (shown when REAR active) -->
     <div id="susp-rear" style="display:none">
-      <label>Spring rate <span id="lk_r">18 N/mm</span></label>
-      <input type="range" id="k_r" min="5" max="100" value="18" step="0.5">
+      <label>Spring rate <span id="lk_r">26 N/mm</span></label>
+      <input type="range" id="k_r" min="5" max="100" value="26" step="0.5">
       <label>Preload <span id="lpre_r">0 mm</span></label>
       <input type="range" id="pre_r" min="-30" max="30" value="0">
       <label>Damping gain / oil visc. <span id="ldamp_r">0.50×</span></label>
@@ -302,20 +302,20 @@
 </script>
 
 <!-- core.js was split into domain files (see CLAUDE.md); load order = original top-to-bottom -->
-<script src="js/core-config.js?v=79"></script>
-<script src="js/core-params.js?v=79"></script>
-<script src="js/core-track.js?v=79"></script>
-<script src="js/core-curves.js?v=79"></script>
-<script src="js/core-terrain.js?v=79"></script>
-<script src="js/core-state.js?v=79"></script>
-<script src="js/physics.js?v=79"></script>
-<script src="js/render.js?v=79"></script>
-<script src="js/graphs.js?v=79"></script>
-<script src="js/ui.js?v=79"></script>
-<script src="js/background.js?v=79"></script>
-<script src="js/audio.js?v=79"></script>
-<script src="js/main.js?v=79"></script>
+<script src="js/core-config.js?v=83"></script>
+<script src="js/core-params.js?v=83"></script>
+<script src="js/core-track.js?v=83"></script>
+<script src="js/core-curves.js?v=83"></script>
+<script src="js/core-terrain.js?v=83"></script>
+<script src="js/core-state.js?v=83"></script>
+<script src="js/physics.js?v=83"></script>
+<script src="js/render.js?v=83"></script>
+<script src="js/graphs.js?v=83"></script>
+<script src="js/ui.js?v=83"></script>
+<script src="js/background.js?v=83"></script>
+<script src="js/audio.js?v=83"></script>
+<script src="js/main.js?v=83"></script>
 <!-- Validation harness: loaded ONLY with ?test in the URL (production unaffected). See CLAUDE.md. -->
-<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=79';document.body.appendChild(s);}</script>
+<script>if(/[?&]test/.test(location.search)){var s=document.createElement('script');s.src='test/validate.js?v=83';document.body.appendChild(s);}</script>
 </body>
 </html>
