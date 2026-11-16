@@ -22,33 +22,289 @@
       </svg>
     </button>
   </div>
-  <button id="btn-step"   class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
-  <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
-  <button id="btn-pause"  class="top-btn" title="Pause / play (P)">⏸</button>
-  <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
-  <button class="ride-btn" id="btn-brake" title="Brake — button = both wheels · ↓ front · ← rear">⬛ BRAKE</button>
-  <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
-  <button class="ride-btn shift-btn" id="btn-shift-dn" title="Downshift (A)">GEAR ▼</button>
-  <button class="ride-btn shift-btn" id="btn-shift-up" title="Upshift (D)">GEAR ▲</button>
-  <div id="gear-box" title="Gear (A down / D up)">
-    <div id="gear-num">1</div>
-    <div id="gear-rpm">0 rpm</div>
+  <!-- Transport + the Tune toggle. One flex row, so a button appearing (STEP, when paused) pushes
+       its neighbours instead of needing a hand-maintained `right:` offset per button. -->
+  <div id="top-btns">
+    <button id="btn-step"   class="top-btn" title="Step one frame (.)" style="display:none">⏭</button>
+    <button id="btn-rewind" class="top-btn" title="Rewind / scrub history">⏪</button>
+    <button id="btn-pause"  class="top-btn" title="Pause / play (P)">⏸</button>
+    <button id="btn-reset"  class="top-btn" title="Reset simulation (R)">RESET</button>
+    <button id="btn-tune"   class="top-btn" title="Show / hide the tuning panel (T)" aria-controls="tune" aria-expanded="false">
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+        <path d="M2 4h6M12 4h2M2 8h2M8 8h6M2 12h8M14 12h0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+        <circle cx="10" cy="4" r="1.9" fill="currentColor"/><circle cx="6" cy="8" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/>
+      </svg><span class="tune-lbl">TUNE</span></button>
   </div>
-  <button class="ride-btn" id="btn-gas">GAS ⬛</button>
+
+  <!-- Ride controls. Desktop: the children stay absolutely positioned over the canvas, so this
+       wrapper collapses to a zero-height box. Mobile: it becomes a static grid BELOW the canvas
+       (see the media query) — the 260 px mobile canvas is too short to overlay buttons on the
+       bike without covering it.
+       ui.js binds these ids (btn-brake-f / btn-brake-r / …). An integration merge once kept
+       ui.js but restored the old single #btn-brake here, leaving the brake dead — the harness's
+       "UI wiring" scenario now fails if this markup and ui.js drift apart again. -->
+  <div id="ride-controls">
+    <button class="ride-btn shift-btn" id="btn-shift-dn" title="Downshift (A)">GEAR ▼</button>
+    <button class="ride-btn shift-btn" id="btn-shift-up" title="Upshift (D)">GEAR ▲</button>
+    <div id="gear-box" title="Gear (A down / D up)">
+      <div id="gear-num">1</div>
+      <div id="gear-rpm">0 rpm</div>
+    </div>
+    <!-- Front and rear brakes are independent DOFs in the physics, so they get independent
+         buttons — press both at once (multi-touch) for combined braking, which is what B does. -->
+    <button class="ride-btn brake-btn" id="btn-brake-f" title="Front brake — hold (↓)">BRK <b>F</b></button>
+    <button class="ride-btn brake-btn" id="btn-brake-r" title="Rear brake — hold (←)">BRK <b>R</b></button>
+    <button class="ride-btn" id="btn-clutch" title="Clutch — hold (C)">CLUTCH</button>
+    <button class="ride-btn" id="btn-gas" title="Gas — hold (G)">GAS</button>
+    <div id="touch-legend">
+      <span>Hold <b>BRK F</b>/<b>BRK R</b> · <b>GAS</b> · drag to pan · pinch to zoom</span>
+      <span id="touch-legend-x" title="Hide">✕</span>
+    </div>
+  </div>
   <button id="btn-start-engine" title="Engine stalled — click to restart">START ENGINE</button>
   <div id="key-legend">
-    <span><b>G</b>/→ Gas · <b>↓</b> Front brake · <b>←</b> Rear brake · <b>B</b> Both · <b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>R</b> Reset</span>
+    <span><b>G</b>/→ Gas · <b>↓</b> Front brake · <b>←</b> Rear brake · <b>B</b> Both · <b>C</b> Clutch · <b>A</b>/<b>D</b> Gear · <b>R</b> Reset · <b>T</b> Tune</span>
     <span id="key-legend-x" title="Hide">✕</span>
   </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════════════
+       TUNE PANEL — every setup control lives here, inside the player, so the bike stays in view
+       while you change it. Desktop: a drawer floating over the sky. Mobile: a fixed-height sheet
+       directly under the ride controls (canvas + controls + sheet fit one screen).
+
+       How the two modes work (ui.js → "TUNE PANEL"):
+         • Each control exists ONCE. A row tagged `.std` shows in Standard mode; everything else
+           is Advanced-only. Standard therefore can't drift out of sync with Advanced — it is the
+           same sliders, filtered — and core-params.js's bind() ids are untouched.
+         • Advanced shows one `.pane` at a time (the tab strip); Standard shows the `.std` rows of
+           every pane as one short list.
+       ADDING A CONTROL (other streams): drop a `.ctl` row into the pane it belongs to — label,
+       input, then the value span whose id bind() writes to. Add `std` only if a first-time rider
+       needs it.
+       ═══════════════════════════════════════════════════════════════════════════════════════ -->
+  <aside id="tune" class="is-closed" data-mode="std" data-tab="susp" aria-label="Tuning panel">
+    <header class="tune-head">
+      <span class="tune-title">Tune</span>
+      <div class="toggle-group" id="tune-mode" role="group" aria-label="Control detail">
+        <button class="toggle-btn active" data-mode="std">Standard</button>
+        <button class="toggle-btn"        data-mode="adv">Advanced</button>
+      </div>
+      <button class="tune-icon" id="tune-wide"  title="Wider panel" aria-label="Toggle wide panel">
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 3 2 8l4 5M10 3l4 5-4 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      </button>
+      <button class="tune-icon" id="tune-close" title="Close (T)" aria-label="Close tuning panel">
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 3l10 10M13 3 3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </header>
+
+    <nav class="tune-tabs" id="tune-tabs" aria-label="Tuning sections">
+      <button class="tune-tab active" data-tab="susp">Suspension</button>
+      <button class="tune-tab" data-tab="damp">Damping</button>
+      <button class="tune-tab" data-tab="terrain">Terrain</button>
+      <button class="tune-tab" data-tab="bike">Chassis</button>
+      <button class="tune-tab" data-tab="graphs">Graphs</button>
+    </nav>
+
+    <div class="tune-body" id="tune-body">
+
+      <!-- ── SUSPENSION ─────────────────────────────────────────────────────────── -->
+      <!-- #susp-front / #susp-rear are still toggled by setWheelMode() (core-track.js); the CSS
+           pins both visible, because front and rear now show together and the FRONT/REAR
+           switch only picks which damping curve the editor is on. -->
+      <section class="pane has-std" data-pane="susp">
+        <div id="susp-front">
+          <h3 class="grp std">Front fork</h3>
+          <div class="ctl std"><label for="k_f">Spring rate</label>
+            <input type="range" id="k_f" min="5" max="100" value="23" step="0.5"><span class="val" id="lk_f">23 N/mm</span></div>
+          <div class="ctl"><label for="air_f" title="Air gap / progression">Air gap</label>
+            <input type="range" id="air_f" min="0" max="100" value="15"><span class="val" id="lair_f">15%</span></div>
+          <div class="ctl std"><label for="pre_f">Preload</label>
+            <input type="range" id="pre_f" min="-30" max="30" value="0"><span class="val" id="lpre_f">0 mm</span></div>
+          <div class="ctl std"><label for="damp_f" title="Damping gain / oil viscosity">Damping</label>
+            <input type="range" id="damp_f" min="0" max="200" value="50"><span class="val" id="ldamp_f">0.50×</span></div>
+          <div class="ctl"><label for="ktire_f">Tire pressure</label>
+            <input type="range" id="ktire_f" min="10" max="60" value="36" step="1"><span class="val" id="lktire_f">36 psi</span></div>
+          <div class="ctl"><label for="munsp_f">Wheel mass</label>
+            <input type="range" id="munsp_f" min="5" max="25" value="13" step="0.5"><span class="val" id="lmunsp_f">13 kg</span></div>
+        </div>
+        <div id="susp-rear">
+          <h3 class="grp std">Rear shock</h3>
+          <div class="ctl std"><label for="k_r">Spring rate</label>
+            <input type="range" id="k_r" min="5" max="100" value="26" step="0.5"><span class="val" id="lk_r">26 N/mm</span></div>
+          <div class="ctl std"><label for="pre_r">Preload</label>
+            <input type="range" id="pre_r" min="-30" max="30" value="0"><span class="val" id="lpre_r">0 mm</span></div>
+          <div class="ctl std"><label for="damp_r" title="Damping gain / oil viscosity">Damping</label>
+            <input type="range" id="damp_r" min="0" max="200" value="50"><span class="val" id="ldamp_r">0.50×</span></div>
+          <div class="ctl"><label for="ktire_r">Tire pressure</label>
+            <input type="range" id="ktire_r" min="10" max="60" value="36" step="1"><span class="val" id="lktire_r">36 psi</span></div>
+          <div class="ctl"><label for="munsp_r">Wheel mass</label>
+            <input type="range" id="munsp_r" min="5" max="25" value="17" step="0.5"><span class="val" id="lmunsp_r">17 kg</span></div>
+        </div>
+      </section>
+
+      <!-- ── DAMPING CURVES ─────────────────────────────────────────────────────── -->
+      <section class="pane" data-pane="damp">
+        <div class="row">
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="btn-front">Front</button>
+            <button class="toggle-btn"        id="btn-rear" >Rear</button>
+          </div>
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="btn-comp" title="Compression">Comp</button>
+            <button class="toggle-btn"        id="btn-reb"  title="Rebound">Reb</button>
+          </div>
+        </div>
+        <canvas id="curve-canvas" height="190"></canvas>
+        <div class="row">
+          <span class="hint"><span id="curve-label">FRONT</span><span class="if-mouse"> · click = add point · right-click = remove</span><span class="if-touch"> · drag a point to reshape the curve</span></span>
+        </div>
+        <div class="row">
+          <span class="hint">Shape</span>
+          <button class="preset-btn" data-preset="linear">Linear</button>
+          <button class="preset-btn" data-preset="progressive">Progressive</button>
+          <button class="preset-btn" data-preset="digressive">Digressive</button>
+          <button class="preset-btn" data-preset="quadratic">Quadratic</button>
+        </div>
+        <div class="ctl"><label for="curve-scale" title="Damping curve gain">Curve gain</label>
+          <input type="range" id="curve-scale" min="10" max="200" value="100"><span class="val" id="lcurve-scale">100%</span></div>
+      </section>
+
+      <!-- ── TERRAIN ────────────────────────────────────────────────────────────── -->
+      <section class="pane has-std" data-pane="terrain">
+        <h3 class="grp std">Terrain <span class="grp-val" id="lterrain">Bumps</span></h3>
+        <!-- The range input stays the single source of truth (bind() + saved setups read it);
+             ui.js builds one chip per TERRAINS entry and drives this input from them. -->
+        <input type="range" id="terrain" min="0" max="7" value="0" step="1" class="vh" tabindex="-1" aria-hidden="true">
+        <div class="chips std" id="terrain-chips" role="group" aria-label="Terrain"></div>
+        <div class="ctl std"><label for="speed">Speed</label>
+          <input type="range" id="speed" min="0" max="160" value="30"><span class="val" id="lspeed">30 km/h</span></div>
+        <div class="ctl"><label for="timescale" title="Slow motion ← → fast forward">Time scale</label>
+          <input type="range" id="timescale" min="5" max="150" value="100"><span class="val" id="ltimescale">1.00×</span></div>
+
+        <h3 class="grp">Shape</h3>
+        <div class="ctl"><label for="amp">Amplitude</label>
+          <input type="range" id="amp" min="-200" max="200" value="40"><span class="val" id="lamp">0.40×</span></div>
+        <div class="ctl"><label for="freq">Frequency</label>
+          <input type="range" id="freq" min="20" max="300" value="100"><span class="val" id="lfreq">1.00×</span></div>
+        <div class="ctl"><label for="rough">Roughness</label>
+          <input type="range" id="rough" min="0" max="100" value="0"><span class="val" id="lrough">0%</span></div>
+        <div class="ctl"><label for="duty">Duty cycle</label>
+          <input type="range" id="duty" min="5" max="60" value="30"><span class="val" id="lduty">30%</span></div>
+
+        <!-- Custom-track builder: only on screen while the Custom terrain is selected. -->
+        <div class="blk custom-only" id="custom-card">
+          <h3 class="grp">Custom track</h3>
+          <div class="row" style="position:relative">
+            <button id="btn-add-feature" class="preset-btn accent">+ Add feature</button>
+            <span class="hint">tap a section to select · the track loops</span>
+            <div id="feature-popup" class="feature-popup"><!-- icon buttons injected by graphs.js --></div>
+          </div>
+          <canvas id="terrain-canvas" height="130"></canvas>
+          <div id="feature-controls">
+            <div class="row">
+              <span id="feat-type-label">JUMP</span>
+              <button id="btn-feat-left"  class="preset-btn" title="Move earlier">◀</button>
+              <button id="btn-feat-right" class="preset-btn" title="Move later">▶</button>
+              <button id="btn-feat-del"   class="preset-btn accent" title="Delete feature">✕ Delete</button>
+            </div>
+            <div class="ctl ctx"><label for="featlen">Length</label>
+              <input type="range" id="featlen" min="1" max="40" value="5" step="0.5"><span class="val" id="lfeatlen">5 m</span></div>
+            <div class="ctl ctx" id="feathei-wrap"><label for="feathei">Height</label>
+              <input type="range" id="feathei" min="0" max="250" value="90" step="5"><span class="val" id="lfeathei">90 cm</span></div>
+            <div class="ctl ctx" id="featcount-wrap"><label for="featcount">Count</label>
+              <input type="range" id="featcount" min="2" max="12" value="5" step="1"><span class="val" id="lfeatcount">5</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── CHASSIS ────────────────────────────────────────────────────────────── -->
+      <section class="pane has-std" data-pane="bike">
+        <h3 class="grp std">Rider</h3>
+        <div class="ctl std"><label for="mass">Rider mass</label>
+          <input type="range" id="mass" min="40" max="140" value="75"><span class="val" id="lmass">75 kg</span></div>
+        <div class="ctl"><label for="gasrate" title="Peak throttle acceleration">Gas rate</label>
+          <input type="range" id="gasrate" min="1" max="9.5" value="7" step="0.5"><span class="val" id="lgasrate">7 m/s²</span></div>
+        <div class="ctl"><label for="brakerate" title="Peak braking deceleration">Brake rate</label>
+          <input type="range" id="brakerate" min="1" max="9.5" value="7" step="0.5"><span class="val" id="lbrakerate">7 m/s²</span></div>
+
+        <h3 class="grp">Geometry</h3>
+        <div class="ctl"><label for="comheight" title="Centre-of-mass height">CoM height</label>
+          <input type="range" id="comheight" min="40" max="90" value="65" step="1"><span class="val" id="lcomheight">0.65 m</span></div>
+        <div class="ctl"><label for="pitchinertia">Pitch inertia</label>
+          <input type="range" id="pitchinertia" min="40" max="180" value="90" step="1"><span class="val" id="lpitchinertia">90 kg·m²</span></div>
+        <div class="ctl"><label for="rake">Fork rake</label>
+          <input type="range" id="rake" min="18" max="32" value="24.8" step="0.1"><span class="val" id="lrake">24.8°</span></div>
+        <div class="ctl"><label for="wheelbase">Wheelbase</label>
+          <input type="range" id="wheelbase" min="120" max="165" value="140" step="1"><span class="val" id="lwheelbase">1.40 m</span></div>
+
+        <h3 class="grp">Physics model</h3>
+        <div class="ctl"><label for="pitchmom" title="How strongly bumps pitch the bike">Bump pitch</label>
+          <input type="range" id="pitchmom" min="0" max="100" value="70"><span class="val" id="lpitchmom">70%</span></div>
+        <div class="ctl"><label for="drivepitch" title="Throttle / brake load-transfer pitch">Drive pitch</label>
+          <input type="range" id="drivepitch" min="0" max="150" value="100"><span class="val" id="ldrivepitch">100%</span></div>
+        <div class="ctl"><label for="tiregrip" title="Tire grip (surface)">Tire grip</label>
+          <input type="range" id="tiregrip" min="10" max="120" value="100"><span class="val" id="ltiregrip">100%</span></div>
+        <div class="ctl"><label for="terrainbite" title="Terrain bite (slope)">Terrain bite</label>
+          <input type="range" id="terrainbite" min="0" max="150" value="100"><span class="val" id="lterrainbite">100%</span></div>
+        <div class="ctl"><label for="terrainpitch" title="Terrain pitch (slope)">Terrain pitch</label>
+          <input type="range" id="terrainpitch" min="0" max="150" value="50"><span class="val" id="lterrainpitch">50%</span></div>
+        <div class="ctl"><label for="bounceF" title="Front bottom-out bounce">Bottom-out F</label>
+          <input type="range" id="bounceF" min="0" max="100" value="35"><span class="val" id="lbounceF">35%</span></div>
+        <div class="ctl"><label for="bounceR" title="Rear bottom-out bounce">Bottom-out R</label>
+          <input type="range" id="bounceR" min="0" max="100" value="20"><span class="val" id="lbounceR">20%</span></div>
+      </section>
+
+      <!-- ── GRAPHS ─────────────────────────────────────────────────────────────── -->
+      <!-- Legend swatch colors are inline because they must match the series colors hard-coded
+           in graphs.js (see MERGES.md follow-up: rebrand both together). -->
+      <section class="pane" data-pane="graphs">
+        <h3 class="grp">Force</h3>
+        <div class="graph-box">
+          <canvas id="fgraph" height="150"></canvas>
+          <div class="graph-yscale-wrap" style="height:150px">
+            <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:150px" title="Y-axis zoom">
+          </div>
+        </div>
+        <div class="legend">
+          <span class="leg" data-graph="f" data-key="fs" style="color:#e11d48">— F.Spring</span>
+          <span class="leg" data-graph="f" data-key="fd" style="color:#ff8800">— F.Damp</span>
+          <span class="leg" data-graph="f" data-key="rs" style="color:#3b82f6">— R.Spring</span>
+          <span class="leg" data-graph="f" data-key="rd" style="color:#22c55e">— R.Damp</span>
+        </div>
+        <h3 class="grp">Suspension velocity</h3>
+        <div class="graph-box">
+          <canvas id="vgraph" height="120"></canvas>
+          <div class="graph-yscale-wrap" style="height:120px">
+            <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:120px" title="Y-axis zoom">
+          </div>
+        </div>
+        <div class="legend">
+          <span class="leg" data-graph="v" data-key="fv" style="color:#ff8800">— F.Vel m/s</span>
+          <span class="leg" data-graph="v" data-key="rv" style="color:#22c55e">— R.Vel m/s</span>
+        </div>
+      </section>
+    </div><!-- .tune-body -->
+
+    <!-- Saved setups apply to everything, so they sit outside the tabs (Advanced only). -->
+    <footer class="tune-foot">
+      <input type="text" id="setup-name" placeholder="Name this setup…" maxlength="24" aria-label="Setup name">
+      <button class="preset-btn" id="btn-setup-save">Save</button>
+      <span class="foot-sep"></span>
+      <select id="setup-select" aria-label="Saved setups"></select>
+      <button class="preset-btn" id="btn-setup-load">Load</button>
+      <button class="preset-btn" id="btn-setup-del" title="Delete the selected setup">Del</button>
+      <span id="lsetup-status" role="status"></span>
+    </footer>
+  </aside>
 </div>
 
 <!-- Minimap: terrain profile + bike position (helps build/test tracks) -->
 <canvas id="minimap" title="Track map — bike position on the terrain"></canvas>
 
 <div id="rewind-bar">
-  <span style="font-size:10px;color:var(--accent-text);font-weight:700;letter-spacing:0.06em">REWIND</span>
+  <span class="rewind-tag">REWIND</span>
   <input type="range" id="rewind-scrub" min="0" max="0" value="0" title="Scrub through recorded history">
-  <span id="rewind-time" style="font-size:10px;color:var(--muted);min-width:54px;text-align:right">0.0s</span>
+  <span id="rewind-time">0.0s</span>
   <button class="preset-btn" id="btn-resume">Resume ▶</button>
 </div>
 
@@ -60,229 +316,6 @@
   <div class="stat"><div class="stat-n" id="st-fspring">0</div><div class="stat-l">F.Spring N</div></div>
   <div class="stat"><div class="stat-n" id="st-fdamp">0</div><div class="stat-l">F.Damp N</div></div>
 </div>
-
-<div class="ui">
-
-  <!-- TOP-LEFT: Suspension card -->
-  <div class="card card-susp">
-    <div class="card-title">SUSPENSION<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <div class="toggle-group">
-      <button class="toggle-btn active" id="btn-front">FRONT</button>
-      <button class="toggle-btn"        id="btn-rear" >REAR</button>
-    </div>
-
-    <!-- Front sliders (shown when FRONT active) -->
-    <div id="susp-front">
-      <label>Spring rate <span id="lk_f">23 N/mm</span></label>
-      <input type="range" id="k_f" min="5" max="100" value="23" step="0.5">
-      <label>Air gap / progression <span id="lair_f">15%</span></label>
-      <input type="range" id="air_f" min="0" max="100" value="15">
-      <label>Preload <span id="lpre_f">0 mm</span></label>
-      <input type="range" id="pre_f" min="-30" max="30" value="0">
-      <label>Damping gain / oil visc. <span id="ldamp_f">0.50×</span></label>
-      <input type="range" id="damp_f" min="0" max="200" value="50">
-      <label>Tire pressure <span id="lktire_f">36 psi</span></label>
-      <input type="range" id="ktire_f" min="10" max="60" value="36" step="1">
-      <label>Wheel mass <span id="lmunsp_f">13 kg</span></label>
-      <input type="range" id="munsp_f" min="5" max="25" value="13" step="0.5">
-    </div>
-
-    <!-- Rear sliders (shown when REAR active) -->
-    <div id="susp-rear" style="display:none">
-      <label>Spring rate <span id="lk_r">26 N/mm</span></label>
-      <input type="range" id="k_r" min="5" max="100" value="26" step="0.5">
-      <label>Preload <span id="lpre_r">0 mm</span></label>
-      <input type="range" id="pre_r" min="-30" max="30" value="0">
-      <label>Damping gain / oil visc. <span id="ldamp_r">0.50×</span></label>
-      <input type="range" id="damp_r" min="0" max="200" value="50">
-      <label>Tire pressure <span id="lktire_r">36 psi</span></label>
-      <input type="range" id="ktire_r" min="10" max="60" value="36" step="1">
-      <label>Wheel mass <span id="lmunsp_r">17 kg</span></label>
-      <input type="range" id="munsp_r" min="5" max="25" value="17" step="0.5">
-    </div>
-    </div><!-- .card-body -->
-  </div>
-
-  <!-- TOP-RIGHT: Damping curve card -->
-  <div class="card card-curve" id="curve-card">
-    <div class="card-title">DAMPING CURVES<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div class="toggle-group" style="margin-bottom:0">
-          <button class="toggle-btn active" id="btn-comp">COMP</button>
-          <button class="toggle-btn"        id="btn-reb" >REB</button>
-        </div>
-        <span id="curve-label" style="font-size:10px;color:var(--accent-text);font-weight:700">FRONT</span>
-        <span style="font-size:10px;color:var(--dim)">click=add · right-click=remove</span>
-      </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">
-        <button class="preset-btn" data-preset="linear">Linear</button>
-        <button class="preset-btn" data-preset="progressive">Prog</button>
-        <button class="preset-btn" data-preset="digressive">Dig</button>
-        <button class="preset-btn" data-preset="quadratic">Quad</button>
-      </div>
-    </div>
-    <canvas id="curve-canvas" height="170"></canvas>
-    <label style="margin-top:6px;">Damping curve gain <span id="lcurve-scale">100%</span></label>
-    <input type="range" id="curve-scale" min="10" max="200" value="100" style="margin-bottom:0;">
-    </div><!-- .card-body -->
-  </div>
-
-  <!-- CUSTOM TRACK builder (full-width row) -->
-  <div class="card card-custom" id="custom-card">
-    <div class="card-title">CUSTOM TRACK<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;position:relative">
-      <button id="btn-add-feature" class="preset-btn" style="font-weight:700;color:var(--accent-text)">+ Add feature</button>
-      <span style="font-size:10px;color:var(--dim)">click a feature to select · build left → right · the track loops</span>
-      <span id="custom-hint" style="font-size:10px;color:var(--muted);margin-left:auto">set Terrain → Cust to ride it</span>
-      <div id="feature-popup" class="feature-popup"><!-- icon buttons injected by graphs.js --></div>
-    </div>
-    <canvas id="terrain-canvas" height="150"></canvas>
-    <div id="feature-controls">
-      <span id="feat-type-label">JUMP</span>
-      <div class="feat-ctl"><label>Length <span id="lfeatlen">5 m</span></label>
-        <input type="range" id="featlen" min="1" max="40" value="5" step="0.5" style="margin-bottom:0"></div>
-      <div class="feat-ctl" id="feathei-wrap"><label>Height <span id="lfeathei">90 cm</span></label>
-        <input type="range" id="feathei" min="0" max="250" value="90" step="5" style="margin-bottom:0"></div>
-      <div class="feat-ctl" id="featcount-wrap"><label>Count <span id="lfeatcount">5</span></label>
-        <input type="range" id="featcount" min="2" max="12" value="5" step="1" style="margin-bottom:0"></div>
-      <button id="btn-feat-left"  class="preset-btn" title="Move earlier">◀</button>
-      <button id="btn-feat-right" class="preset-btn" title="Move later">▶</button>
-      <button id="btn-feat-del"   class="preset-btn" title="Delete feature" style="color:var(--accent-text)">✕ Delete</button>
-    </div>
-    </div><!-- .card-body -->
-  </div>
-
-  <!-- BOTTOM-LEFT: Terrain card -->
-  <div class="card card-terrain">
-    <div class="card-title">TERRAIN AND CHASSIS<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <label>Terrain <span id="lterrain">Bumps</span></label>
-    <input type="range" id="terrain" min="0" max="7" value="0" step="1">
-    <div style="display:flex;gap:0;font-size:7px;color:var(--dim);margin-top:-5px;margin-bottom:8px">
-      <span style="flex:1;text-align:left">Bump</span>
-      <span style="flex:1;text-align:center">Whoop</span>
-      <span style="flex:1;text-align:center">Step</span>
-      <span style="flex:1;text-align:center">Kick</span>
-      <span style="flex:1;text-align:center">Roll</span>
-      <span style="flex:1;text-align:center">Pass</span>
-      <span style="flex:1;text-align:center">Flat</span>
-      <span style="flex:1;text-align:right">Cust</span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
-      <div>
-        <label>Amplitude <span id="lamp">0.40×</span></label>
-        <input type="range" id="amp" min="-200" max="200" value="40">
-      </div>
-      <div>
-        <label>Frequency <span id="lfreq">1.00×</span></label>
-        <input type="range" id="freq" min="20" max="300" value="100">
-      </div>
-      <div>
-        <label>Roughness <span id="lrough">0%</span></label>
-        <input type="range" id="rough" min="0" max="100" value="0">
-      </div>
-      <div>
-        <label>Duty cycle <span id="lduty">30%</span></label>
-        <input type="range" id="duty" min="5" max="60" value="30">
-      </div>
-    </div>
-    <label>Speed <span id="lspeed">30 km/h</span></label>
-    <input type="range" id="speed" min="0" max="160" value="30">
-    <label>Time scale <span id="ltimescale">1.00×</span></label>
-    <input type="range" id="timescale" min="5" max="150" value="100">
-    <div style="border-top:1px solid var(--line);margin:8px 0 6px"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">
-      <div>
-        <label>Gas rate <span id="lgasrate">7 m/s²</span></label>
-        <input type="range" id="gasrate" min="1" max="9.5" value="7" step="0.5">
-      </div>
-      <div>
-        <label>Brake rate <span id="lbrakerate">7 m/s²</span></label>
-        <input type="range" id="brakerate" min="1" max="9.5" value="7" step="0.5">
-      </div>
-    </div>
-    <label>Rider mass <span id="lmass">75 kg</span></label>
-    <input type="range" id="mass" min="40" max="140" value="75">
-    <label>Bump pitch effect <span id="lpitchmom">70%</span></label>
-    <input type="range" id="pitchmom" min="0" max="100" value="70">
-    <label>Throttle/brake pitch <span id="ldrivepitch">100%</span></label>
-    <input type="range" id="drivepitch" min="0" max="150" value="100">
-    <label>Tire grip (surface) <span id="ltiregrip">100%</span></label>
-    <input type="range" id="tiregrip" min="10" max="120" value="100">
-    <label>Terrain bite (slope) <span id="lterrainbite">100%</span></label>
-    <input type="range" id="terrainbite" min="0" max="150" value="100">
-    <label>Terrain pitch (slope) <span id="lterrainpitch">50%</span></label>
-    <input type="range" id="terrainpitch" min="0" max="150" value="50">
-    <label>F bottom-out bounce <span id="lbounceF">35%</span></label>
-    <input type="range" id="bounceF" min="0" max="100" value="35">
-    <label>R bottom-out bounce <span id="lbounceR">20%</span></label>
-    <input type="range" id="bounceR" min="0" max="100" value="20">
-    <div style="border-top:1px solid var(--line);margin:8px 0 6px"></div>
-    <label>Setups <span id="lsetup-status" style="color:var(--muted);font-weight:400"></span></label>
-    <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
-      <input type="text" id="setup-name" placeholder="name…" maxlength="24"
-        style="flex:1;min-width:70px;background:var(--input-bg);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px;padding:4px 6px;">
-      <button class="preset-btn" id="btn-setup-save">Save</button>
-      <select id="setup-select"
-        style="flex:1;min-width:70px;background:var(--input-bg);border:1px solid var(--line);border-radius:4px;color:var(--text);font-size:11px;padding:4px;"></select>
-      <button class="preset-btn" id="btn-setup-load">Load</button>
-      <button class="preset-btn" id="btn-setup-del">Del</button>
-    </div>
-    </div><!-- .card-body -->
-  </div>
-
-  <!-- BOTTOM-RIGHT: Force history graph -->
-  <div class="card card-fhist">
-    <div class="card-title">FORCE GRAPHS<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <canvas id="fgraph" height="255" style="display:block;width:100%;border-radius:4px;"></canvas>
-    <div class="graph-yscale-wrap right" style="top:36px;height:255px;">
-      <input type="range" id="fgraph-scale" min="20" max="100" value="100" style="width:255px;" title="Y-axis zoom">
-    </div>
-    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
-      <span class="leg" data-graph="f" data-key="fs" style="font-size:10px;color:#e11d48;cursor:pointer;user-select:none">— F.Spring</span>
-      <span class="leg" data-graph="f" data-key="fd" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Damp</span>
-      <span class="leg" data-graph="f" data-key="rs" style="font-size:10px;color:#3b82f6;cursor:pointer;user-select:none">— R.Spring</span>
-      <span class="leg" data-graph="f" data-key="rd" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Damp</span>
-    </div>
-    </div><!-- .card-body -->
-  </div>
-
-  <!-- BOTTOM-LEFT: Suspension velocity history graph -->
-  <div class="card card-vhist">
-    <div class="card-title">VELOCITY GRAPHS<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <canvas id="vgraph" height="180" style="display:block;width:100%;border-radius:4px;"></canvas>
-    <div class="graph-yscale-wrap right" style="top:36px;height:180px;">
-      <input type="range" id="vgraph-scale" min="20" max="100" value="100" style="width:180px;" title="Y-axis zoom">
-    </div>
-    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
-      <span class="leg" data-graph="v" data-key="fv" style="font-size:10px;color:#ff8800;cursor:pointer;user-select:none">— F.Vel m/s</span>
-      <span class="leg" data-graph="v" data-key="rv" style="font-size:10px;color:#22c55e;cursor:pointer;user-select:none">— R.Vel m/s</span>
-    </div>
-    </div><!-- .card-body -->
-  </div>
-
-  <!-- BIKE GEOMETRY card -->
-  <div class="card card-geom">
-    <div class="card-title">BIKE GEOMETRY<span class="card-arrow">▼</span></div>
-    <div class="card-body">
-    <label>CoM height <span id="lcomheight">0.65 m</span></label>
-    <input type="range" id="comheight" min="40" max="90" value="65" step="1">
-    <label>Pitch inertia <span id="lpitchinertia">90 kg·m²</span></label>
-    <input type="range" id="pitchinertia" min="40" max="180" value="90" step="1">
-    <label>Fork rake <span id="lrake">24.8°</span></label>
-    <input type="range" id="rake" min="18" max="32" value="24.8" step="0.1">
-    <label>Wheelbase <span id="lwheelbase">1.40 m</span></label>
-    <input type="range" id="wheelbase" min="120" max="165" value="140" step="1">
-    </div><!-- .card-body -->
-  </div>
-
-</div><!-- .ui -->
 
 <!-- Buy CTA row under the controls — the sim is a sales tool for the Prime emulator -->
 <div id="buy-row">

@@ -326,6 +326,115 @@ const MotoValidate = (() => {
         ['static sag: rear in range (25–40%, contact-capped)', rearPct >= 25 && rearPct <= 40, `${rearPct.toFixed(0)}%`],
       ];
     },
+    function uiWiring() {
+      // The DOM ⇄ JS contract. Every other scenario pokes globals directly, so the page can be
+      // physically perfect while a control is wired to nothing — which shipped once: an
+      // integration merge kept ui.js but restored an older index.html, leaving the on-screen
+      // brake bound to an id that no longer existed. This drives the REAL elements (pointer
+      // events on the ride buttons, 'input' on every slider, clicks on chips/tabs) and checks
+      // the model moved. If you add or rename a control, this is the scenario that tells you
+      // whether it is actually connected. It restores everything it touches.
+      const out = [];
+      const $ = id => document.getElementById(id);
+      const fire = el => el.dispatchEvent(new Event('input', { bubbles: true }));
+      // Everything a slider can write to: P, the slider-backed tuning globals, the curve gains.
+      const model = () => JSON.stringify([P, GAS_ACCEL, BRAKE_DECEL, TERRAIN_BITE, TERRAIN_PITCH,
+                                          H_COM, I_YY, RAKE_RAD, WHEELBASE, curveScaleVals]);
+      const savedTune = Object.assign({}, tuneState);
+      const savedWheel = wheelMode, savedCurve = curveMode;
+      const terrainEl = $('terrain'), savedTerrain = terrainEl.value;
+      try {
+        // 1 ── ride buttons: a press on the element must reach the intent global physics reads.
+        const press = (id, read) => {
+          const el = $(id); if (!el) return 'missing #' + id;
+          el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 901, bubbles: true, cancelable: true }));
+          const down = read();
+          el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 901, bubbles: true, cancelable: true }));
+          return down && !read() ? '' : `held=${down} after-release=${read()}`;
+        };
+        const rideFails = [
+          press('btn-gas',     () => gasPressed),     press('btn-clutch',  () => clutchPulled),
+          press('btn-brake-f', () => brakeFrontHeld), press('btn-brake-r', () => brakeRearHeld),
+        ].filter(Boolean);
+        const g0 = gear = 2;
+        ['btn-shift-up', 'btn-shift-dn'].forEach(id => { const el = $(id);
+          if (el) el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 902, bubbles: true, cancelable: true })); });
+        if (gear !== g0) rideFails.push('shift up+down did not net to zero');
+        gear = 3; if ($('btn-shift-up')) $('btn-shift-up').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 902, bubbles: true, cancelable: true }));
+        if (gear !== 4) rideFails.push('shift-up did not change gear');
+        out.push(['ui: ride buttons (gas / clutch / front + rear brake / shift) drive the sim', rideFails.length === 0, rideFails.join('; ')]);
+
+        // 2 ── every slider: moving it must change its readout AND the model.
+        const sliders = Array.from(document.querySelectorAll('#tune .ctl:not(.ctx) input[type=range]'));
+        const dead = [];
+        // Earlier scenarios write P.amp / P.speed / … directly, so the model can start out of
+        // step with the sliders. Put it back in step first, or "did it restore?" compares
+        // against a state no slider position produced.
+        sliders.forEach(fire);
+        sliders.forEach(el => {
+          const lbl = $('l' + el.id), before = el.value, m0 = model(), t0 = lbl ? lbl.textContent : null;
+          el.value = (+before === +el.max) ? el.min : el.max; fire(el);
+          if (!lbl) dead.push(el.id + ' (no readout)');
+          else if (lbl.textContent === t0) dead.push(el.id + ' (readout)');
+          else if (model() === m0) dead.push(el.id + ' (model)');
+          el.value = before; fire(el);
+          if (model() !== m0) dead.push(el.id + ' (did not restore)');
+        });
+        out.push([`ui: all ${sliders.length} tuning sliders are wired (readout + model)`, sliders.length >= 30 && dead.length === 0, dead.join(', ')]);
+
+        // 3 ── Standard is a filtered view of the SAME controls; Advanced reaches all of them.
+        const shown = () => sliders.filter(el => el.offsetParent !== null).map(el => el.id);
+        setTuneOpen(true); setTuneMode('std');
+        const std = shown(), stdWant = sliders.filter(el => el.closest('.ctl').classList.contains('std')).map(el => el.id);
+        out.push(['ui: Standard mode shows exactly the .std controls', std.length > 0 && std.join() === stdWant.join(), `${std.length} shown / ${stdWant.length} tagged`]);
+        setTuneMode('adv');
+        terrainEl.value = TERRAINS.length - 1; fire(terrainEl);          // Custom → track builder on screen
+        const reached = new Set(), blank = [];
+        TUNE_TABS.forEach(t => {
+          setTuneTab(t); shown().forEach(id => reached.add(id));
+          // graphs.js sizes each editor/graph canvas from its on-screen box; a pane that never
+          // gets laid out leaves a 0-px canvas (blank editor). Same calls refreshTuneCanvases makes.
+          resizeCurveCanvas(); resizeTerrainCanvas(); resizeFG(); resizeVG();
+          document.querySelectorAll(`#tune .pane[data-pane="${t}"] canvas`).forEach(c => {
+            if (!(c.width > 50 && c.height > 50)) blank.push(`${c.id} ${c.width}×${c.height}`); });
+        });
+        const unreachable = sliders.filter(el => !reached.has(el.id)).map(el => el.id);
+        out.push(['ui: every slider is reachable from an Advanced tab', unreachable.length === 0, unreachable.join(', ')]);
+        out.push(['ui: editor + graph canvases get a real size when their tab opens', blank.length === 0, blank.join(', ')]);
+
+        // 4 ── terrain chips drive P.terrain through the bound range input.
+        const chips = Array.from(document.querySelectorAll('#terrain-chips .chip')), chipFails = [];
+        chips.forEach(c => { c.click(); if (P.terrain !== +c.dataset.v || !c.classList.contains('active')) chipFails.push(c.textContent); });
+        out.push(['ui: one terrain chip per terrain, each selects it', chips.length === TERRAINS.length && chipFails.length === 0,
+                  `${chips.length} chips / ${TERRAINS.length} terrains ${chipFails.join(', ')}`]);
+
+        // 5 ── curve editor: wheel/curve switches pick the curve; presets reshape ONLY via preset
+        //      buttons (a stray `.preset-btn` binding once emptied the curve on Save/Load/Resume).
+        $('btn-rear').click(); $('btn-reb').click();
+        const picked = wheelMode === 'rear' && curveMode === 'reb' && getActivePts() === rebPts_R;
+        $('btn-front').click(); $('btn-comp').click();
+        const keep = compPts_F.map(p => ({ x: p.x, y: p.y }));
+        $('btn-resume').click();                                         // a non-preset .preset-btn
+        const survived = compPts_F.length === keep.length;
+        const btn = document.querySelector('.preset-btn[data-preset="quadratic"]'); if (btn) btn.click();
+        const applied = !!btn && compPts_F.length === PRESETS.quadratic.length && compPts_F.every((p, i) => p.y === PRESETS.quadratic[i].y);
+        compPts_F = keep; compLUT_F = buildCurveLUT(compPts_F);
+        out.push(['ui: curve switches select the right curve; presets apply; other buttons leave it alone',
+                  picked && survived && applied, `picked=${picked} survived=${survived} applied=${applied}`]);
+
+        // 6 ── a saved setup round-trips through the controls.
+        const snap = captureSetup(), kf = $('k_f'), k0 = kf.value;
+        kf.value = (+k0 === +kf.max) ? kf.min : kf.max; fire(kf);
+        applySetupToControls(snap);
+        out.push(['ui: setup capture → apply restores the controls', kf.value === k0 && P.k_f === +k0, `k_f ${kf.value} (was ${k0})`]);
+      } finally {
+        terrainEl.value = savedTerrain; fire(terrainEl);
+        setWheelMode(savedWheel); setCurveMode(savedCurve);
+        clearHolds();
+        Object.assign(tuneState, savedTune); applyTune();
+      }
+      return out;
+    },
   ];
 
   function run() {

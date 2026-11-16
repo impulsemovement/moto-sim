@@ -239,6 +239,7 @@ function shiftGear(dir) {
     document.getElementById('touch-legend-x').addEventListener('click', () => {
       tl.style.display = 'none';
       try { localStorage.setItem('motosim-hidetouchlegend', '1'); } catch {}
+      fitTunePanel();   // the sheet below just gained this row's height
     });
   }
 })();
@@ -261,26 +262,163 @@ document.querySelectorAll('.leg').forEach(el => {
 applyLegendStyle();
 
 // ═══════════════════════════════════════════════════════════
-//  COLLAPSIBLE CARDS
+//  SLIDER PAINT  (red fill · stock-value tick · "changed" flag)
 // ═══════════════════════════════════════════════════════════
-function toggleCard(titleEl) {
-  const body = titleEl.nextElementSibling;
-  const arrow = titleEl.querySelector('.card-arrow');
-  const collapsed = body.classList.toggle('collapsed');
-  arrow.textContent = collapsed ? '◀' : '▼';
-  // For curve card, toggle flex layout so the card shrinks when collapsed
-  const card = titleEl.closest('.card');
-  if (card && card.id === 'curve-card') {
-    card.classList.toggle('collapsed-curve', collapsed);
-  }
+// styles.css draws each slider's rail, fill and tick as background layers positioned by three
+// 0–1 custom properties; this keeps them current. Sliders are moved from three directions — the
+// user (an 'input' event), setup load (value + dispatched 'input'), and code that assigns .value
+// with NO event (render.js walks the Speed slider while the throttle is held; graphs.js loads a
+// track feature's numbers into the Length/Height sliders). To catch the silent ones each slider
+// gets an own-property `value` accessor that forwards to the native one and then repaints.
+const RANGE_VALUE = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+function rangeFrac(el, v) {
+  const min = el.min === '' ? 0 : +el.min, max = el.max === '' ? 100 : +el.max;
+  return Math.max(0, Math.min(1, (v - min) / ((max - min) || 1)));
 }
+function paintRange(el) {
+  const raw = RANGE_VALUE.get.call(el);
+  const key = raw + '|' + el.min + '|' + el.max;
+  if (el._painted === key) return;            // Speed is re-assigned every frame under throttle
+  el._painted = key;
+  const p = rangeFrac(el, +raw);
+  // A range that straddles zero (preload ±30 mm, amplitude ±2×) fills from zero, not from the
+  // left end — so "no preload" reads as an empty rail rather than a half-full one.
+  const z = (+el.min < 0 && +el.max > 0) ? rangeFrac(el, 0) : 0;
+  el.style.setProperty('--lo', Math.min(p, z));
+  el.style.setProperty('--hi', Math.max(p, z));
+  const row = el.closest('.ctl');
+  if (row && !row.classList.contains('ctx')) row.classList.toggle('changed', +raw !== +el.defaultValue);
+}
+document.querySelectorAll('input[type=range]').forEach(el => {
+  el.style.setProperty('--d', rangeFrac(el, +el.defaultValue));   // where the stock tick sits
+  Object.defineProperty(el, 'value', {
+    configurable: true,
+    get() { return RANGE_VALUE.get.call(this); },
+    set(v) { RANGE_VALUE.set.call(this, v); paintRange(this); }
+  });
+  el.addEventListener('input', () => paintRange(el));
+  paintRange(el);
+});
 
-// Wire the card/toggle/preset controls (was inline onclick=, which doesn't work in module
-// scope — these are bound here instead).
-document.querySelectorAll('.card-title').forEach(t => t.addEventListener('click', () => toggleCard(t)));
+// ═══════════════════════════════════════════════════════════
+//  TUNE PANEL  (in-player settings · Standard / Advanced)
+// ═══════════════════════════════════════════════════════════
+// Markup + the Standard/Advanced filtering rules are documented in index.html and styles.css.
+// This block only owns STATE (open, mode, tab, wide — persisted) and the two side effects a
+// visibility change needs: re-fitting the mobile sheet and re-sizing the editor canvases.
+const TUNE_KEY = 'motosim-tune';
+const tuneEl   = document.getElementById('tune');
+const TUNE_TABS = Array.from(tuneEl.querySelectorAll('.tune-tab')).map(b => b.dataset.tab);
+const tuneState = (() => {
+  const s = { open: null, mode: 'std', tab: 'susp', wide: false };
+  try { Object.assign(s, JSON.parse(localStorage.getItem(TUNE_KEY)) || {}); } catch {}
+  if (s.mode !== 'adv') s.mode = 'std';
+  if (!TUNE_TABS.includes(s.tab)) s.tab = TUNE_TABS[0];
+  // First visit: open wherever the panel has room that costs nothing — the mobile sheet sits
+  // below the bike, and from 980 px up the drawer clears the front wheel. In between it would
+  // land on the fork, so it waits behind the TUNE button.
+  if (typeof s.open !== 'boolean') s.open = window.innerWidth <= 640 || window.innerWidth >= 980;
+  return s;
+})();
+
+// Mobile only: cap the sheet at the screen height left under the ride controls, so canvas +
+// controls + sheet are one screenful. viewportHeight() (core-config.js) sees through the
+// WordPress iframe to the real window height, the same way resizeMain() sizes the canvas.
+function fitTunePanel() {
+  if (window.innerWidth > 640 || tuneEl.classList.contains('is-closed')) return;
+  const top = tuneEl.getBoundingClientRect().top + window.scrollY;
+  const h = Math.max(240, Math.min(560, viewportHeight() - top - 6));
+  tuneEl.style.setProperty('--tune-h', Math.round(h) + 'px');
+}
+// graphs.js sizes each canvas's backing store from its on-screen box, which is 0×0 while its
+// pane (or the whole panel) is hidden — so every time something becomes visible, size it again.
+// The second pass lands after the wide/narrow width transition (0.18 s) has finished.
+function refreshTuneCanvases() {
+  const go = () => {
+    if (typeof resizeCurveCanvas   === 'function') resizeCurveCanvas();
+    if (typeof resizeTerrainCanvas === 'function') resizeTerrainCanvas();
+    if (typeof resizeFG === 'function') resizeFG();
+    if (typeof resizeVG === 'function') resizeVG();
+  };
+  requestAnimationFrame(go);
+  setTimeout(go, 240);
+}
+function applyTune() {
+  const s = tuneState;
+  tuneEl.classList.toggle('is-closed', !s.open);
+  tuneEl.classList.toggle('wide', !!s.wide);
+  tuneEl.dataset.mode = s.mode;
+  tuneEl.dataset.tab  = s.tab;
+  document.getElementById('btn-tune').setAttribute('aria-expanded', String(s.open));
+  tuneEl.querySelectorAll('#tune-mode .toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === s.mode));
+  tuneEl.querySelectorAll('.tune-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === s.tab));
+  tuneEl.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.dataset.pane === s.tab));
+  try { localStorage.setItem(TUNE_KEY, JSON.stringify(s)); } catch {}
+  fitTunePanel();
+  refreshTuneCanvases();
+}
+function setTuneOpen(on)  { tuneState.open = !!on; applyTune(); }
+function setTuneWide(on)  { tuneState.wide = !!on; applyTune(); }
+function setTuneMode(m)   { tuneState.mode = m === 'adv' ? 'adv' : 'std'; applyTune(); document.getElementById('tune-body').scrollTop = 0; }
+function setTuneTab(t)    { if (TUNE_TABS.includes(t)) { tuneState.tab = t; applyTune(); document.getElementById('tune-body').scrollTop = 0; } }
+
+document.getElementById('btn-tune')  .addEventListener('click', () => setTuneOpen(!tuneState.open));
+document.getElementById('tune-close').addEventListener('click', () => setTuneOpen(false));
+document.getElementById('tune-wide') .addEventListener('click', () => setTuneWide(!tuneState.wide));
+tuneEl.querySelectorAll('#tune-mode .toggle-btn').forEach(b => b.addEventListener('click', () => setTuneMode(b.dataset.mode)));
+tuneEl.querySelectorAll('.tune-tab').forEach(b => b.addEventListener('click', () => setTuneTab(b.dataset.tab)));
+window.addEventListener('resize', fitTunePanel);
+window.addEventListener('keydown', e => {
+  if (isTextEntry(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 't' || e.key === 'T') { e.preventDefault(); setTuneOpen(!tuneState.open); }
+  else if (e.key === 'Escape' && tuneState.open && window.innerWidth > 640) setTuneOpen(false);
+});
+
+// Double-click a control's NAME to put it back to its stock value (the tick on its rail).
+tuneEl.addEventListener('dblclick', e => {
+  const lab = e.target.closest('.ctl:not(.ctx) > label');
+  const inp = lab && lab.parentElement.querySelector('input[type=range]');
+  if (!inp) return;
+  inp.value = inp.defaultValue;
+  inp.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
+// ── Terrain chips ───────────────────────────────────────────
+// One chip per TERRAINS entry (core-params.js), so a terrain added there shows up here as long
+// as the hidden #terrain range's max covers it. The range stays the source of truth: a chip
+// only sets its value and fires the same 'input' that bind() and saved setups already rely on.
+(function() {
+  const sl  = document.getElementById('terrain');
+  const box = document.getElementById('terrain-chips');
+  for (let i = +sl.min; i <= +sl.max && i < TERRAINS.length; i++) {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.type = 'button'; b.dataset.v = i; b.textContent = TERRAINS[i];
+    b.addEventListener('click', () => { sl.value = i; sl.dispatchEvent(new Event('input', { bubbles: true })); });
+    box.appendChild(b);
+  }
+  function sync() {
+    const v = +sl.value;
+    box.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', +c.dataset.v === v));
+    // The track builder is only on screen for the Custom terrain; it was display:none until
+    // now, so its canvas needs sizing the moment it appears.
+    const custom = /custom/i.test(TERRAINS[v] || '');
+    if (custom !== tuneEl.hasAttribute('data-custom')) {
+      tuneEl.toggleAttribute('data-custom', custom);
+      if (custom) refreshTuneCanvases();
+    }
+  }
+  sl.addEventListener('input', sync);
+  sync();
+})();
+
+// ── Curve-editor switches ───────────────────────────────────
 document.getElementById('btn-front').addEventListener('click', () => setWheelMode('front'));
 document.getElementById('btn-rear') .addEventListener('click', () => setWheelMode('rear'));
 document.getElementById('btn-comp') .addEventListener('click', () => setCurveMode('comp'));
 document.getElementById('btn-reb')  .addEventListener('click', () => setCurveMode('reb'));
-document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+// Only buttons that NAME a preset. This used to bind every `.preset-btn` — which is also the
+// class on Save / Load / Del / Resume / Add feature — so each of those called
+// applyPreset(undefined), which empties the active curve's control points and then throws.
+document.querySelectorAll('.preset-btn[data-preset]').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
 
+applyTune();
