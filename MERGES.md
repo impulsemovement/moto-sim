@@ -61,6 +61,15 @@ _(append one line per landed merge: date · branch · short summary · harness p
   every `.preset-btn`). Harness +1 scenario `uiWiring` (8 checks, drives the real DOM). Normalized to
   v=84. · ✓ **67/67 harness** on the merged result, desktop + phone widths.
 
+- 2026-11-17 · **Prime emulator switch integrated** · `ui-controls` fast-forwarded in (91ac1f3). New
+  on-player PRIME ON/OFF switch (top-centre on desktop, on the dirt strip on phones) that fits the
+  emulator as the front comp/rebound damping curves, built from the product page's published Medium-
+  preset effect vs stock (comp +63% @0.1 m/s, ~+2% on sharp hits; rebound +127% @0.05 m/s). Visitors
+  start ON; `?test` starts OFF so existing scenarios keep the stock baseline. Fork tag now follows the
+  switch (PRIME / STOCK) at a readable minimum size. Harness +1 scenario `primeToggle` (13 checks).
+  **Touches `js/render.js` (Render-owned) — fork callout block only.** v=85. · ✓ **80/80 harness** on
+  the merged result, desktop + phone widths.
+
 ## Known follow-ups (not merge blockers)
 - **Rear-contact robustness (blocks a firmer rear sag):** stiffening the springs for sag revealed an
   *erratic* `resolveTireBottom` instability — on hard kicker landings the REAR rim tunnels through the
@@ -86,3 +95,9 @@ _(append one line per landed merge: date · branch · short summary · harness p
 - **New controls go in the tune panel, not a card:** add a `.ctl` row to the right `.pane` in
   `index.html` (see the comment block above `#tune`); tag it `std` only if a first-time rider needs
   it. The `uiWiring` harness scenario fails if a slider has no readout or does not move the model.
+- **Prime curves are derived, not measured:** `PRIME_KIT` (ui.js) folds the product page's
+  per-adjuster, one-at-a-time percentages into one curve per direction. Measured on the bike the
+  effect is modest (brake dive −9%, rebound return −23% vs stock) partly because the sim's STOCK fork
+  is linear; a real damper-rod fork is closer to velocity-squared. Replace `PRIME_KIT` with dyno
+  force–velocity data when Impulse has it, and consider a velocity-squared stock baseline
+  (Physics core) — both widen the gap honestly. Don't inflate the curves to make the demo pop.
