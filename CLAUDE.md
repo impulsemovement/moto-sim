@@ -49,11 +49,11 @@ core.js was split into six domain files (loaded in original order — see the `<
 | `js/physics.js` (1058 ln) | `simStep`/`_physicsStep` integrator, `initPhysics` (static equilibrium), contact resolution (`resolveTireBottom`, chassis-body contacts), swingarm kinematics, damping force | The coupled core. **One owner at a time.** |
 | `js/render.js` (629 ln) | `draw` loop, screen-coordinate helpers, camera (`camY_m`, pan), `drawMinimap`, wheel/bike drawing | |
 | `js/graphs.js` (493 ln) | force/velocity history graphs, damping-curve editor, **custom-track builder editor** | |
-| `js/ui.js` (247 ln) | save/load setups (localStorage), gas/brake buttons, legend toggles, collapsible cards | |
+| `js/ui.js` | save/load setups (localStorage), rider input layer (pointer/keyboard holds), **tune panel** (open / Standard–Advanced / tabs), slider painting, terrain chips, legend toggles | |
 | `js/background.js` (406 ln) | Arizona parallax background, scenery (cacti, rocks, mesas, mountains) | Vertical parallax is intentionally **disabled**. |
 | `js/audio.js` (138 ln) | Web Audio engine note, tire-slip / stall sounds | |
 | `js/main.js` (220 ln) | startup, reset/pause/step/rewind/zoom buttons, camera-pan drag, key bindings | |
-| `index.html` + `css/styles.css` | DOM cards + layout | **CROSS-CUTTING** — every feature adds a card here. |
+| `index.html` + `css/styles.css` | player chrome + the in-player **tune panel** (`#tune`) that holds every setup control | **CROSS-CUTTING** — a new control is a `.ctl` row in the right `.pane` (tag `std` to show it in Standard mode); see the comment above `#tune`. |
 
 ### Public API surface (globals used to drive / inspect the sim)
 - `simStep(dt_s)` — advance physics by `dt_s` (internally sub-stepped at ≤5 ms).

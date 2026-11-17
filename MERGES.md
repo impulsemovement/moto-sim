@@ -51,6 +51,16 @@ _(append one line per landed merge: date · branch · short summary · harness p
   static-sag harness scenario. v=83. · ✓ **59/59 harness**. The calibration surfaced a contact bug
   (next item) that caps how firm the rear can go.
 
+- 2026-11-16 · **Controls redesign integrated** · `ui-controls` fast-forwarded in (b012457). All setup
+  controls moved out of the seven cards under the player into one in-player **tune panel**
+  (`#tune`): desktop drawer / mobile sheet under the ride controls, **Standard / Advanced** modes
+  (Standard = the `.std`-tagged rows of the same controls), five tabs, compact one-line slider rows.
+  Every `bind()` id unchanged. Also fixed: (1) on-screen BRAKE was dead and mobile ride buttons
+  overlaid the bike — the Wave 1 integration kept `ui.js` but restored an older `index.html`;
+  (2) Save/Load/Del/Resume/Add-feature emptied the active damping curve (preset handler was bound to
+  every `.preset-btn`). Harness +1 scenario `uiWiring` (8 checks, drives the real DOM). Normalized to
+  v=84. · ✓ **67/67 harness** on the merged result, desktop + phone widths.
+
 ## Known follow-ups (not merge blockers)
 - **Rear-contact robustness (blocks a firmer rear sag):** stiffening the springs for sag revealed an
   *erratic* `resolveTireBottom` instability — on hard kicker landings the REAR rim tunnels through the
@@ -69,3 +79,10 @@ _(append one line per landed merge: date · branch · short summary · harness p
   Rebrand the series + swatches together when graphs.js's owner is in.
 - `resetSim()` (main.js, UI-owned) does not reset Engine's `gearPrev`/`shiftTimer`. Engine self-heals
   via the `startGrace` resync and determinism passes — but if either stream touches this, revisit.
+- **Tune drawer vs. the bike at 641–979 px (tablets portrait, landscape phones):** the drawer cannot
+  clear both the front wheel and the travel meters at those widths, so it starts closed there. A real
+  fix needs `resizeMain()` in `core-config.js` (integration-owned): treat SHORT viewports like mobile
+  (`PM_base` 100) so the bike is smaller, or expose the bike's screen X so the UI can shift it.
+- **New controls go in the tune panel, not a card:** add a `.ctl` row to the right `.pane` in
+  `index.html` (see the comment block above `#tune`); tag it `std` only if a first-time rider needs
+  it. The `uiWiring` harness scenario fails if a slider has no readout or does not move the model.
