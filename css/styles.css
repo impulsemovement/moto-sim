@@ -88,6 +88,54 @@ canvas { display: block; background: var(--bg); }
 /* The canvas owns pan + pinch, so the page must not scroll from gestures started on it. */
 #c { touch-action: none; }
 
+/* ── PRIME switch ─────────────────────────────────────────────────────────────
+   The sim exists to sell this part, so its switch is the most prominent control on the player:
+   a labelled pill with a real on/off track, top-centre. OFF = dark glass with a red rim (it
+   invites the tap); ON = solid brand red. Text is never the only cue — the knob moves too. */
+#btn-prime {
+  position: absolute; z-index: 11; top: 12px; left: 50%; transform: translateX(-50%);
+  height: 38px; padding: 0 12px 0 16px;
+  display: inline-flex; align-items: center; gap: 10px; white-space: nowrap;
+  border: 1.5px solid rgba(248,0,0,0.85); border-radius: 19px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  font-family: var(--font); font-size: 12px; letter-spacing: 0.02em;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+  transition: background 0.18s, box-shadow 0.18s, border-color 0.18s;
+  /* A few pulses on load so a first-time visitor's eye lands on it, then it sits still. */
+  animation: prime-pulse 1.6s ease-out 0.8s 4;
+}
+#btn-prime:hover { background: rgba(248,0,0,0.25); }
+.prime-name   { font-weight: 600; color: rgba(255,255,255,0.82); }
+.prime-name b { font-weight: 800; letter-spacing: 0.12em; color: #fff; margin-right: 2px; }
+.prime-track {
+  position: relative; flex: none; width: 40px; height: 22px; border-radius: 11px;
+  background: rgba(255,255,255,0.20); transition: background 0.18s;
+}
+.prime-knob {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.5); transition: transform 0.18s ease;
+}
+.prime-state { min-width: 24px; font-weight: 800; letter-spacing: 0.08em; color: rgba(255,255,255,0.6); }
+#btn-prime[aria-checked="true"] {
+  background: var(--im-red); border-color: var(--im-red);
+  box-shadow: 0 6px 26px rgba(248,0,0,0.45);
+}
+#btn-prime[aria-checked="true"]:hover { background: #ff1a1a; }
+#btn-prime[aria-checked="true"] .prime-track { background: rgba(0,0,0,0.28); }
+#btn-prime[aria-checked="true"] .prime-knob  { transform: translateX(18px); }
+#btn-prime[aria-checked="true"] .prime-state { color: #fff; }
+@keyframes prime-pulse {
+  0%   { box-shadow: 0 4px 18px rgba(0,0,0,0.45), 0 0 0 0 rgba(248,0,0,0.65); }
+  100% { box-shadow: 0 4px 18px rgba(0,0,0,0.45), 0 0 0 16px rgba(248,0,0,0); }
+}
+@media (prefers-reduced-motion: reduce) { #btn-prime { animation: none; } }
+/* Narrow desktop / tablet: centred it would run into the transport row, so it tucks in beside
+   the zoom buttons instead. */
+@media (max-width: 899px) { #btn-prime { left: 138px; transform: none; } }
+#fork-kit.on { color: var(--accent-text); }
+
 /* Centered START ENGINE button — appears when the engine stalls, fades out once running */
 #btn-start-engine {
   position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%);
@@ -178,7 +226,7 @@ canvas { display: block; background: var(--bg); }
    CoM sits at 40% of the canvas width — COM_SX in core-config.js). */
 #tune {
   position: absolute; z-index: 20;
-  top: 52px; right: 58px; bottom: 74px;
+  top: 58px; right: 58px; bottom: 74px;   /* top: clears the 38 px PRIME switch where they share a column (980–1180 px) */
   width: 372px; max-width: calc(100% - 70px);
   display: flex; flex-direction: column;
   background: rgba(15,17,21,0.88);
@@ -455,6 +503,14 @@ input[type=range]:active::-webkit-slider-thumb { height: 18px; border-width: 3px
   #top-btns  { top: 8px; right: 8px; gap: 5px; }
   .top-btn   { height: 32px; min-width: 32px; padding: 0 7px; }
   .toggle-btn { padding: 8px 12px; }                   /* 31 px tall: a fair thumb target */
+
+  /* PRIME switch: the top row is full on a phone, but the strip of dirt under the wheels is
+     empty (the ride buttons moved below the canvas) — so it sits there, still ON the player.
+     --canvas-h is the live canvas height, kept current by ui.js. */
+  #btn-prime {
+    top: calc(var(--canvas-h, 260px) - 46px); left: 50%; transform: translateX(-50%);
+    height: 36px;
+  }
 
   /* The mobile canvas is only 260 px tall (resizeMain in core-config.js), and the ground line
      sits 78 px off its bottom — so an overlaid control row lands squarely on the bike. Take the

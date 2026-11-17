@@ -34,7 +34,11 @@ function captureSetup() {
     terrainPts: clone(terrainPts),
     customTrack: customTrack.map(f => { const { _x0, ...rest } = f; return { ...rest }; }),
     scales: { ...curveScaleVals },
-    wheelMode, curveMode
+    wheelMode, curveMode,
+    // Prime fitted? The curves above already ARE the Prime curves in that case; the stash is the
+    // fork's own curves to go back to when it is switched off (see "PRIME EMULATOR" below).
+    prime: primeOn,
+    primeStash: primeStash && { comp: clone(primeStash.comp), reb: clone(primeStash.reb) }
   };
 }
 function applySetupToControls(s) {
@@ -65,6 +69,9 @@ function applySetupToControls(s) {
   }
   if (typeof drawTerrainEditor === 'function') drawTerrainEditor();
   if (s.scales) Object.assign(curveScaleVals, s.scales);
+  // Prime flag follows the setup. The curves were restored above, so this only sets the STATE
+  // (no curve swap). A setup saved before the switch existed has no flag → treated as stock.
+  restorePrimeState(!!s.prime, s.primeStash);
   // 3) Active toggles + redraw.
   setWheelMode(s.wheelMode || 'front');
   setCurveMode(s.curveMode || 'comp');
@@ -410,6 +417,92 @@ tuneEl.addEventListener('dblclick', e => {
   sl.addEventListener('input', sync);
   sync();
 })();
+
+// ═══════════════════════════════════════════════════════════
+//  PRIME EMULATOR  (the product: stock fork ⇄ Prime Series emulator)
+// ═══════════════════════════════════════════════════════════
+// The Prime emulator is a valve that threads onto the stock fork spring of a damper-rod fork and
+// adds compression + rebound valving. In this sim that is exactly "the front fork's two damping
+// curves", so the switch is a curve swap — no physics change, the same mechanism as loading a
+// setup (CLAUDE.md parameter contract: the fork product maps to the FRONT damping LUTs).
+//
+// WHERE THE NUMBERS COME FROM. The curves are the stock (linear) curve multiplied by the effect
+// the product page publishes for its Medium / Sport preset, vs the stock fork:
+//     compression   +63% at 0.1 m/s   (low-speed circuit: brake dive, mid-corner support)
+//                   +16% at 0.3 m/s,  +28% at 0.75 m/s   (bias / high-speed screws)
+//                   ≈ +1–2% at 1.5 m/s and on sharp hits  (the valve blows open — no added harshness)
+//     rebound       +127% at 0.05 m/s (rebound collar: "no pogo after a bump")
+// The page quotes those one adjuster at a time; folding them into ONE curve per direction is this
+// file's interpretation, and the rebound taper above 0.1 m/s is assumed (the page gives a single
+// rebound point). When measured force–velocity data exists, replace PRIME_KIT — nothing else
+// depends on the shape. Curve x = fork speed / V_MAX_SIM (3 m/s); y = fraction of the base force.
+//   NOT modelled: the ~16 mm of spring preload the part adds (the page's optional spacer trim
+//   restores stock ride height, which is what OFF ⇄ ON assumes here).
+const PRIME_KIT = {
+  //        0 m/s        0.1 m/s ×1.63          0.3 m/s ×1.40      0.75 m/s ×1.28     1.5 m/s ×1.02     3 m/s ×1.00
+  comp: [ {x:0, y:0}, {x:0.0333, y:0.0543}, {x:0.10, y:0.140}, {x:0.25, y:0.320}, {x:0.50, y:0.510}, {x:1, y:1} ],
+  //        0 m/s        0.1 m/s ×2.00          0.3 m/s ×1.50      0.75 m/s ×1.16     1.5 m/s ×1.00     3 m/s ×1.00
+  // (×2.00 at 0.1 m/s is what puts the spline on the published ×2.27 at 0.05 m/s — the curve
+  //  bows above the chord between its first two points; the harness checks the 0.05 m/s figure.)
+  reb:  [ {x:0, y:0}, {x:0.0333, y:0.0667}, {x:0.10, y:0.150}, {x:0.25, y:0.290}, {x:0.50, y:0.500}, {x:1, y:1} ],
+};
+// The sim is a sales tool for this part and the page copy reads "Love how it rides?", so a
+// visitor starts ON the emulator and switches it off to feel what stock is like.
+const PRIME_DEFAULT_ON = true;
+
+let primeOn    = false;   // read by render.js (fork tag) and captureSetup()
+// While Prime is fitted: the fork's OWN front curves (stock, or whatever the user had drawn),
+// kept so OFF puts back exactly what was there rather than a factory default.
+let primeStash = null;
+
+const clonePts = a => a.map(p => ({ x: p.x, y: p.y }));
+function syncPrimeUI() {
+  const b = document.getElementById('btn-prime');
+  if (b) { b.setAttribute('aria-checked', String(primeOn)); b.setAttribute('aria-label', 'Prime emulator ' + (primeOn ? 'on' : 'off')); }
+  const st = document.getElementById('prime-state'); if (st) st.textContent = primeOn ? 'ON' : 'OFF';
+  const kit = document.getElementById('fork-kit');
+  if (kit) { kit.textContent = primeOn ? 'Prime emulator' : 'Stock'; kit.classList.toggle('on', primeOn); }
+}
+// Fit / remove the emulator. Live — no reset — so flipping it mid-ride is felt immediately.
+function setPrime(on) {
+  on = !!on;
+  if (on !== primeOn) {
+    if (on) {
+      primeStash = { comp: clonePts(compPts_F), reb: clonePts(rebPts_F) };
+      compPts_F = clonePts(PRIME_KIT.comp);
+      rebPts_F  = clonePts(PRIME_KIT.reb);
+    } else {
+      const own = primeStash || { comp: PRESETS.linear, reb: PRESETS.linear };
+      compPts_F = clonePts(own.comp);
+      rebPts_F  = clonePts(own.reb);
+      primeStash = null;
+    }
+    compLUT_F = buildCurveLUT(compPts_F);
+    rebLUT_F  = buildCurveLUT(rebPts_F);
+    primeOn = on;
+    drawCurveEditor();    // the Damping tab shows the fitted curves straight away
+  }
+  syncPrimeUI();
+}
+// Setup load: curves already restored by the caller; just adopt the saved state.
+function restorePrimeState(on, stash) {
+  primeOn = !!on;
+  primeStash = primeOn && stash && stash.comp && stash.reb
+    ? { comp: clonePts(stash.comp), reb: clonePts(stash.reb) } : null;
+  syncPrimeUI();
+}
+document.getElementById('btn-prime').addEventListener('click', () => setPrime(!primeOn));
+// The validation harness (?test) measures the STOCK baseline every scenario was calibrated on,
+// so it starts with the emulator off; its own primeToggle scenario covers the ON state.
+setPrime(PRIME_DEFAULT_ON && !/[?&]test/.test(location.search));
+
+// Mobile parks the switch over the dirt at the bottom of the canvas (styles.css); tell the CSS
+// how tall the canvas currently is. core-config.js's resize listener runs before this one.
+function syncCanvasHeightVar() {
+  document.getElementById('sim-wrap').style.setProperty('--canvas-h', canvas.height + 'px');
+}
+window.addEventListener('resize', syncCanvasHeightVar);
+syncCanvasHeightVar();
 
 // ── Curve-editor switches ───────────────────────────────────
 document.getElementById('btn-front').addEventListener('click', () => setWheelMode('front'));

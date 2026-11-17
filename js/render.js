@@ -883,29 +883,36 @@ function draw(ts) {
   }
   ctx.stroke();
 
-  // ── PRIME callout: the Impulse Prime Series emulator lives INSIDE the fork — point at it. ──
-  // A soft red glow on the slider pulls the eye to the suspension, and a small "PRIME" tag in the
-  // open air names the product. Small and clean: a product pointer, not a billboard.
+  // ── Fork callout: names what is INSIDE the fork — the Prime Series emulator, or stock. ──
+  // Follows the PRIME switch (ui.js `primeOn`): red "PRIME" tag + a soft red glow on the slider
+  // when the emulator is fitted, a quiet grey "STOCK" tag when it is not.
+  // The tag is a LABEL, so it has a minimum on-screen size instead of shrinking with the bike:
+  // it used to scale purely with `sc`, which put 8.5 px text on desktop and ~4 px on a phone.
   {
+    const fitted = typeof primeOn !== 'undefined' && primeOn;
     const aX = sliderMidX, aY = sliderMidY;              // anchor on the fork slider
+    const ts = Math.max(1.4, 1.65 * sc);                 // tag scale: ≥ 12 px text, 14 px at desktop zoom
+    const col = fitted ? '#F80000' : '#8a93a3';          // brand red / design-system "stock" grey
     ctx.save();
-    const glow = ctx.createRadialGradient(aX, aY, 0, aX, aY, 20 * sc);
-    glow.addColorStop(0, 'rgba(248,0,0,0.34)');
-    glow.addColorStop(1, 'rgba(248,0,0,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(aX, aY, 20 * sc, 0, Math.PI * 2); ctx.fill();
-
-    const tagCx = aX + 52 * sc, tagCy = aY - 26 * sc;    // tag out to the upper-right, in open air
-    const tw = 42 * sc, th = 15 * sc;
-    ctx.strokeStyle = '#F80000'; ctx.lineWidth = 1.2 * sc; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(tagCx - tw / 2, tagCy); ctx.stroke();
-    ctx.beginPath(); ctx.roundRect(tagCx - tw / 2, tagCy - th / 2, tw, th, 3 * sc);
-    ctx.fillStyle = 'rgba(10,10,12,0.9)'; ctx.fill();
-    ctx.strokeStyle = '#F80000'; ctx.lineWidth = 1.2 * sc; ctx.stroke();
-    ctx.fillStyle = '#ff4d40';
-    ctx.font = `bold ${Math.round(8.5 * sc)}px -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif`;
+    if (fitted) {
+      const glow = ctx.createRadialGradient(aX, aY, 0, aX, aY, 20 * sc);
+      glow.addColorStop(0, 'rgba(248,0,0,0.34)');
+      glow.addColorStop(1, 'rgba(248,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(aX, aY, 20 * sc, 0, Math.PI * 2); ctx.fill();
+    }
+    const tw = 44 * ts, th = 15 * ts;
+    const tagL  = aX + 26 * sc + 6;                      // left edge: clear of the fork leg at any zoom
+    const tagCx = tagL + tw / 2, tagCy = aY - 26 * sc - th * 0.25;   // up and to the right, in open air
+    ctx.strokeStyle = col; ctx.lineWidth = 1.2 * ts; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(aX, aY); ctx.lineTo(tagL, tagCy); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(tagL, tagCy - th / 2, tw, th, 3 * ts);
+    ctx.fillStyle = fitted ? 'rgba(248,0,0,0.92)' : 'rgba(10,10,12,0.9)'; ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.2 * ts; ctx.stroke();
+    ctx.fillStyle = fitted ? '#fff' : '#c3c9d4';
+    ctx.font = `bold ${Math.round(8.5 * ts)}px -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('PRIME', tagCx, tagCy + 0.5 * sc);
+    ctx.fillText(fitted ? 'PRIME' : 'STOCK', tagCx, tagCy + 0.5 * ts);
     ctx.restore();
   }
 

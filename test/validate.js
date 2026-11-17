@@ -435,6 +435,106 @@ const MotoValidate = (() => {
       }
       return out;
     },
+    function primeToggle() {
+      // The PRIME switch (ui.js) — the product this sim sells. It must (1) really fit and remove
+      // the emulator, (2) match the effect the product page PUBLISHES vs the stock fork (Medium
+      // preset: compression +63% at 0.1 m/s, ≈ no change on sharp hits; rebound +127% at
+      // 0.05 m/s), (3) make the bike measurably behave differently — a switch that changes a
+      // curve nobody can feel sells nothing — and (4) stay inside the same robustness bounds the
+      // stock fork is held to. The (3) bars are "≥5% slower", deliberately not higher: built from
+      // the published percentages the effect measures ≈10% on brake dive against this sim's
+      // LINEAR stock baseline. That is the honest size of it; don't inflate PRIME_KIT to pass a
+      // bigger bar — a real damper-rod (velocity-squared) stock model is what would widen the gap. If PRIME_KIT is replaced with measured data, re-point (2) at it.
+      const out = [];
+      const btn = document.getElementById('btn-prime');
+      const cp = a => a.map(p => ({ x: p.x, y: p.y }));
+      const saved = { on: primeOn, stash: primeStash && { comp: cp(primeStash.comp), reb: cp(primeStash.reb) },
+                      comp: cp(compPts_F), reb: cp(rebPts_F), speed: P.speed, terrain: P.terrain };
+      const curves = () => JSON.stringify([compPts_F, rebPts_F]);
+      const F = (v, comp) => dampForce(v, comp, false);
+      const sample = () => ({ c01: F(0.1, true), c15: F(1.5, true), c3: F(3, true), r005: F(0.05, false) });
+      const pct = (a, b) => (a / b - 1) * 100;
+      // Hard stop from 80 km/h on flat ground: how fast the fork dives, and how much it pogoes
+      // back when the brakes are dropped.
+      const brakeTest = () => {
+        P.terrain = 6; P.speed = 80; resetSim();
+        gear = 3; vChassisX = 80 / 3.6; omega_f = vChassisX / WHEEL_R_F; omega_r = vChassisX / WHEEL_R_R;
+        for (let i = 0; i < 60; i++) { clutchPulled = true; simStep(0.016); }
+        let dive = 0, ret = 0, nan = false;
+        for (let i = 0; i < 70; i++) { clutchPulled = true; brakeBothHeld = true; simStep(0.016);
+          dive = Math.max(dive, -vForkSlide_f); if (!allFinite()) nan = true; }
+        for (let i = 0; i < 70; i++) { clutchPulled = true; brakeBothHeld = false; simStep(0.016);
+          ret = Math.max(ret, vForkSlide_f); if (!allFinite()) nan = true; }
+        clutchPulled = false; brakeBothHeld = false;
+        return { dive, ret, nan };
+      };
+      try {
+        setPrime(false);
+        const stockCurves = curves(), s = sample(), sBrake = brakeTest();
+
+        // 1 ── the real button fits it, and says so
+        btn.click();
+        const p = sample();
+        out.push(['prime: the switch fits the emulator (state shown + front curves change)',
+          primeOn && btn.getAttribute('aria-checked') === 'true' && document.getElementById('prime-state').textContent === 'ON'
+          && curves() !== stockCurves, `on=${primeOn} aria=${btn.getAttribute('aria-checked')}`]);
+
+        // 2 ── it matches the published figures
+        const dC = pct(p.c01, s.c01), dR = pct(p.r005, s.r005), dH = Math.max(Math.abs(pct(p.c15, s.c15)), Math.abs(pct(p.c3, s.c3)));
+        out.push(['prime: low-speed compression = published +63% at 0.1 m/s (±8)', Math.abs(dC - 63) <= 8, `+${dC.toFixed(0)}%`]);
+        out.push(['prime: sharp hits are not harsher (within ±5% of stock at 1.5 and 3 m/s)', dH <= 5, `${dH.toFixed(1)}%`]);
+        out.push(['prime: low-speed rebound = published +127% at 0.05 m/s (±15)', Math.abs(dR - 127) <= 15, `+${dR.toFixed(0)}%`]);
+        let mono = true;
+        for (const comp of [true, false]) for (let i = 1; i <= 60; i++) if (F(i * 0.05, comp) < F((i - 1) * 0.05, comp) - 1e-6) mono = false;
+        out.push(['prime: force rises monotonically with fork speed (no dip between control points)', mono, '']);
+
+        // 3 ── you can feel it: slower brake dive, less rebound kick
+        const pBrake = brakeTest();
+        const lessDive = pct(pBrake.dive, sBrake.dive), lessRet = pct(pBrake.ret, sBrake.ret);
+        out.push(['prime: fork dives ≥5% slower under hard braking than stock', !pBrake.nan && lessDive <= -5,
+                  `${lessDive.toFixed(0)}% (${sBrake.dive.toFixed(2)} → ${pBrake.dive.toFixed(2)} m/s)`]);
+        out.push(['prime: fork returns ≥5% slower when the brakes are released ("no pogo")', lessRet <= -5,
+                  `${lessRet.toFixed(0)}% (${sBrake.ret.toFixed(2)} → ${pBrake.ret.toFixed(2)} m/s)`]);
+
+        // 4 ── same robustness bounds as the stock fork, with the emulator fitted
+        const kick = ride({ terrain: 3, amp: 1.8, freq: 1.0, speedKmh: 100, gas: 0.5 });
+        out.push(['prime ON, kicker amp1.8@100: no NaN, front rim out of ground (<30mm), fork still reaches full travel (>=95%)',
+                  !kick.nan && kick.frontPenMM < 30 && kick.forkPct >= 95, `pen ${kick.frontPenMM | 0}mm, fork ${kick.forkPct | 0}%`]);
+        const whp = ride({ terrain: 1, amp: 1.5, freq: 1.0, speedKmh: 90, gas: 0.4 });
+        out.push(['prime ON, whoops@90: no NaN, front rim out of ground (<30mm)', !whp.nan && whp.frontPenMM < 30, `${whp.frontPenMM | 0}mm`]);
+        const gainEl = document.getElementById('damp_f'), g0 = gainEl.value;
+        gainEl.value = gainEl.max; gainEl.dispatchEvent(new Event('input', { bubbles: true }));
+        const stiff = ride({ terrain: 3, amp: 1.8, freq: 1.0, speedKmh: 100, gas: 0.5 });
+        gainEl.value = g0; gainEl.dispatchEvent(new Event('input', { bubbles: true }));
+        out.push(['prime ON + damping slider at max: integrator stays stable (no NaN)', !stiff.nan, `pen ${stiff.frontPenMM | 0}mm`]);
+
+        // 5 ── OFF puts back exactly what was there — including a curve the user drew themselves
+        btn.click();
+        out.push(['prime: switching off restores the stock curves exactly', !primeOn && curves() === stockCurves, '']);
+        compPts_F[1].y = 0.21; compLUT_F = buildCurveLUT(compPts_F);
+        const drawn = curves();
+        setPrime(true); setPrime(false);
+        out.push(['prime: a hand-drawn fork curve survives on → off', curves() === drawn, '']);
+        compPts_F = JSON.parse(stockCurves)[0]; compLUT_F = buildCurveLUT(compPts_F);
+
+        // 6 ── saved setups remember whether it was fitted
+        setPrime(true);
+        const snap = captureSetup(), fittedCurves = curves();
+        setPrime(false);
+        applySetupToControls(snap);
+        const back = primeOn && curves() === fittedCurves;
+        setPrime(false);
+        out.push(['prime: a saved setup restores the emulator, and switching off still returns to stock',
+                  back && curves() === stockCurves, `restoredOn=${back}`]);
+      } finally {
+        compPts_F = saved.comp; rebPts_F = saved.reb;
+        compLUT_F = buildCurveLUT(compPts_F); rebLUT_F = buildCurveLUT(rebPts_F);
+        restorePrimeState(saved.on, saved.stash);
+        P.speed = saved.speed; P.terrain = saved.terrain;
+        if (typeof drawCurveEditor === 'function') drawCurveEditor();
+      }
+      return out;
+    },
   ];
 
   function run() {

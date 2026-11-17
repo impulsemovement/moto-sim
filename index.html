@@ -36,6 +36,17 @@
       </svg><span class="tune-lbl">TUNE</span></button>
   </div>
 
+  <!-- PRIME switch — the product this sim sells, so it is the one setting that is never tucked
+       away: always on the player, outside the tune panel. ON fits the Prime Series emulator to
+       the fork (swaps the front damping curves — ui.js → "PRIME EMULATOR"); OFF is the stock
+       fork. The canvas fork tag (render.js) reads the same `primeOn` flag. -->
+  <button id="btn-prime" role="switch" aria-checked="false"
+          title="Fit or remove the Prime Series fork emulator">
+    <span class="prime-name"><b>PRIME</b> emulator</span>
+    <span class="prime-track" aria-hidden="true"><span class="prime-knob"></span></span>
+    <span class="prime-state" id="prime-state">OFF</span>
+  </button>
+
   <!-- Ride controls. Desktop: the children stay absolutely positioned over the canvas, so this
        wrapper collapses to a zero-height box. Mobile: it becomes a static grid BELOW the canvas
        (see the media query) — the 260 px mobile canvas is too short to overlay buttons on the
@@ -113,7 +124,7 @@
            switch only picks which damping curve the editor is on. -->
       <section class="pane has-std" data-pane="susp">
         <div id="susp-front">
-          <h3 class="grp std">Front fork</h3>
+          <h3 class="grp std">Front fork <span class="grp-val" id="fork-kit">Stock</span></h3>
           <div class="ctl std"><label for="k_f">Spring rate</label>
             <input type="range" id="k_f" min="5" max="100" value="23" step="0.5"><span class="val" id="lk_f">23 N/mm</span></div>
           <div class="ctl"><label for="air_f" title="Air gap / progression">Air gap</label>
